@@ -7,3 +7,6 @@ riderModule.iml
 !/BatchConvertToCHD/bin/
 !/BatchConvertToCHD/obj/
 !/.idea/
+!/BatchConvertToCHD/bin/
+!/BatchConvertToCHD/obj/
+!/BatchConvertToCHD/obj/
