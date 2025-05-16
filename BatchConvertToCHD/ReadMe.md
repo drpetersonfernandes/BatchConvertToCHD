@@ -21,6 +21,7 @@ Batch Convert to CHD is a Windows application that provides a simple user interf
 
 - **CUE+BIN files** (CD images)
 - **ISO files** (CD images)
+- **CDI files** (CD images)
 - **GDI files** (GD-ROM images)
 - **TOC files** (CD images)
 - **IMG files** (Hard disk images)

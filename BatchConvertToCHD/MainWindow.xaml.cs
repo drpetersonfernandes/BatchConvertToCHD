@@ -33,6 +33,7 @@ public partial class MainWindow : IDisposable
         LogMessage("This program will convert the following formats to CHD:");
         LogMessage("- CUE+BIN files (CD images)");
         LogMessage("- ISO files (CD images)");
+        LogMessage("- CDI files (CD images)");
         LogMessage("- GDI files (GD-ROM images)");
         LogMessage("- TOC files (CD images)");
         LogMessage("- IMG files (Hard disk images)");
@@ -226,7 +227,7 @@ public partial class MainWindow : IDisposable
             LogMessage("Preparing for batch conversion...");
 
             // Restrict to supported file types
-            var supportedExtensions = new[] { ".cue", ".iso", ".img", ".gdi", ".toc", ".raw", ".zip" };
+            var supportedExtensions = new[] { ".cue", ".iso", ".img", ".cdi", ".gdi", ".toc", ".raw", ".zip" };
             var files = Directory.GetFiles(inputFolder, "*.*", SearchOption.TopDirectoryOnly)
                 .Where(file => supportedExtensions.Contains(Path.GetExtension(file).ToLowerInvariant()))
                 .ToArray();
@@ -715,7 +716,7 @@ public partial class MainWindow : IDisposable
             }
 
             // Find the first supported file in the extracted directory
-            var supportedExtensions = new[] { ".cue", ".iso", ".img", ".gdi", ".toc", ".raw" };
+            var supportedExtensions = new[] { ".cue", ".iso", ".img", ".cdi", ".gdi", ".toc", ".raw" };
             var supportedFile = Directory.GetFiles(tempDir, "*.*", SearchOption.AllDirectories)
                 .FirstOrDefault(f => supportedExtensions.Contains(Path.GetExtension(f).ToLowerInvariant()));
 
@@ -771,7 +772,7 @@ public partial class MainWindow : IDisposable
         }
     }
 
-    // Add this method to parse GDI files (similar to how you parse CUE files)
+    // Parse GDI files (similar to how you parse CUE files)
     private List<string> GetReferencedFilesFromGdi(string gdiPath)
     {
         var referencedFiles = new List<string>();
