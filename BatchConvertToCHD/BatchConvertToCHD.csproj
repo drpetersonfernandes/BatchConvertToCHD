@@ -8,8 +8,8 @@
     <UseWPF>true</UseWPF>
     <ApplicationIcon>icon\icon.ico</ApplicationIcon>
     <SupportedOSPlatformVersion>7.0</SupportedOSPlatformVersion>
-    <AssemblyVersion>1.2</AssemblyVersion>
-    <FileVersion>1.2</FileVersion>
+    <AssemblyVersion>1.4</AssemblyVersion> <!-- Incremented version -->
+    <FileVersion>1.4</FileVersion> <!-- Incremented version -->
     <IsPackable>false</IsPackable>
     <NeutralLanguage>en</NeutralLanguage>
   </PropertyGroup>
@@ -24,6 +24,12 @@
 
   <ItemGroup>
     <None Update="chdman.exe">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
+    <None Update="7z.exe"> <!-- Added 7z.exe -->
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
+    <None Update="7z.dll"> <!-- Added 7z.dll, if needed by your 7z.exe version -->
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
   </ItemGroup>

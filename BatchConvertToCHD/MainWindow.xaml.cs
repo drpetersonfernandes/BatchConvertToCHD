@@ -20,6 +20,17 @@ public partial class MainWindow : IDisposable
     private const string ApplicationName = "BatchConvertToCHD";
     private static readonly char[] Separator = [' ', '\t'];
 
+    private const string SevenZipExeName = "7z.exe"; // Or 7za.exe if you prefer standalone
+    private readonly string _sevenZipPath;
+    private readonly bool _isSevenZipAvailable;
+
+    private static readonly string[] AllSupportedInputExtensions = { ".cue", ".iso", ".img", ".cdi", ".gdi", ".toc", ".raw", ".zip", ".7z", ".rar" };
+    private static readonly string[] ArchiveExtensions = { ".zip", ".7z", ".rar" };
+    private static readonly string[] PrimaryTargetExtensionsInsideArchive = { ".cue", ".iso", ".img", ".cdi", ".gdi", ".toc", ".raw" };
+
+    private int _currentDegreeOfParallelismForFiles = 1;
+
+
     public MainWindow()
     {
         InitializeComponent();
@@ -38,13 +49,14 @@ public partial class MainWindow : IDisposable
         LogMessage("- TOC files (CD images)");
         LogMessage("- IMG files (Hard disk images)");
         LogMessage("- RAW files (Raw data)");
-        LogMessage("- ZIP files (containing any of the above formats)");
+        LogMessage("- ZIP, 7Z, RAR files (containing any of the above formats)");
         LogMessage("");
         LogMessage("Please follow these steps:");
         LogMessage("1. Select the input folder containing files to convert");
         LogMessage("2. Select the output folder where CHD files will be saved");
         LogMessage("3. Choose whether to delete original files after conversion");
-        LogMessage("4. Click 'Start Conversion' to begin the process");
+        LogMessage("4. Optionally, enable parallel processing for faster conversion of multiple files");
+        LogMessage("5. Click 'Start Conversion' to begin the process");
         LogMessage("");
 
         // Verify chdman.exe exists
@@ -59,22 +71,36 @@ public partial class MainWindow : IDisposable
         {
             LogMessage("WARNING: chdman.exe not found in the application directory!");
             LogMessage("Please ensure chdman.exe is in the same folder as this application.");
-
-            // Report this as a potential issue
             Task.Run(async () => await ReportBugAsync("chdman.exe not found in the application directory. This will prevent the application from functioning correctly."));
+        }
+
+        // Verify 7z.exe exists
+        _sevenZipPath = Path.Combine(appDirectory, SevenZipExeName);
+        if (File.Exists(_sevenZipPath))
+        {
+            _isSevenZipAvailable = true;
+            LogMessage($"{SevenZipExeName} found. .7z and .rar extraction enabled.");
+        }
+        else
+        {
+            _isSevenZipAvailable = false;
+            LogMessage($"WARNING: {SevenZipExeName} not found. .7z and .rar extraction will be disabled.");
         }
     }
 
     private void Window_Closing(object sender, CancelEventArgs e)
     {
         _cts.Cancel();
+        // Let the application shut down gracefully if tasks are running.
+        // Consider awaiting tasks or providing a timeout if needed.
+        // For simplicity, direct shutdown.
         Application.Current.Shutdown();
-        Environment.Exit(0);
+        Environment.Exit(0); // Force exit if shutdown doesn't complete quickly
     }
 
     private void LogMessage(string message)
     {
-        var timestampedMessage = $"[{DateTime.Now}] {message}";
+        var timestampedMessage = $"[{DateTime.Now:HH:mm:ss.fff}] {message}"; // Added milliseconds for better parallel logging
 
         Application.Current.Dispatcher.Invoke((Action)(() =>
         {
@@ -112,8 +138,6 @@ public partial class MainWindow : IDisposable
             {
                 LogMessage("Error: chdman.exe not found in the application folder.");
                 ShowError("chdman.exe is missing from the application folder. Please ensure it's in the same directory as this application.");
-
-                // Report this issue
                 await ReportBugAsync("chdman.exe not found when trying to start conversion",
                     new FileNotFoundException("The required chdman.exe file was not found.", chdmanPath));
                 return;
@@ -122,6 +146,14 @@ public partial class MainWindow : IDisposable
             var inputFolder = InputFolderTextBox.Text;
             var outputFolder = OutputFolderTextBox.Text;
             var deleteFiles = DeleteFilesCheckBox.IsChecked ?? false;
+            var useParallelFileProcessing = ParallelProcessingCheckBox.IsChecked ?? false;
+
+            _currentDegreeOfParallelismForFiles = useParallelFileProcessing ? Environment.ProcessorCount : 1;
+            if (_currentDegreeOfParallelismForFiles <= 0)
+            {
+                _currentDegreeOfParallelismForFiles = 1;
+            }
+
 
             if (string.IsNullOrEmpty(inputFolder))
             {
@@ -137,17 +169,13 @@ public partial class MainWindow : IDisposable
                 return;
             }
 
-            // Reset cancellation token if it was previously used
             if (_cts.IsCancellationRequested)
             {
                 _cts.Dispose();
                 _cts = new CancellationTokenSource();
             }
 
-            // Clear any previous progress display
             ClearProgressDisplay();
-
-            // Disable input controls during conversion
             SetControlsState(false);
 
             LogMessage("Starting batch conversion process...");
@@ -155,10 +183,12 @@ public partial class MainWindow : IDisposable
             LogMessage($"Input folder: {inputFolder}");
             LogMessage($"Output folder: {outputFolder}");
             LogMessage($"Delete original files: {deleteFiles}");
+            LogMessage($"Parallel file processing: {useParallelFileProcessing} (Max concurrency: {_currentDegreeOfParallelismForFiles})");
+
 
             try
             {
-                await PerformBatchConversionAsync(chdmanPath, inputFolder, outputFolder, deleteFiles);
+                await PerformBatchConversionAsync(chdmanPath, inputFolder, outputFolder, deleteFiles, useParallelFileProcessing, _currentDegreeOfParallelismForFiles);
             }
             catch (OperationCanceledException)
             {
@@ -167,13 +197,10 @@ public partial class MainWindow : IDisposable
             catch (Exception ex)
             {
                 LogMessage($"Error: {ex.Message}");
-
-                // Report the exception to our bug reporting service
                 await ReportBugAsync("Error during batch conversion process", ex);
             }
             finally
             {
-                // Re-enable input controls
                 SetControlsState(true);
             }
         }
@@ -186,7 +213,7 @@ public partial class MainWindow : IDisposable
     private void CancelButton_Click(object sender, RoutedEventArgs e)
     {
         _cts.Cancel();
-        LogMessage("Cancellation requested. Waiting for current operation to complete...");
+        LogMessage("Cancellation requested. Waiting for current operation(s) to complete...");
     }
 
     private void SetControlsState(bool enabled)
@@ -196,14 +223,13 @@ public partial class MainWindow : IDisposable
         BrowseInputButton.IsEnabled = enabled;
         BrowseOutputButton.IsEnabled = enabled;
         DeleteFilesCheckBox.IsEnabled = enabled;
+        ParallelProcessingCheckBox.IsEnabled = enabled;
         StartButton.IsEnabled = enabled;
 
-        // Show/hide progress controls
         ProgressBar.Visibility = enabled ? Visibility.Collapsed : Visibility.Visible;
         CancelButton.Visibility = enabled ? Visibility.Collapsed : Visibility.Visible;
         ProgressText.Visibility = enabled ? Visibility.Collapsed : Visibility.Visible;
 
-        // When re-enabling the controls, make sure to clear any progress display
         if (enabled)
         {
             ClearProgressDisplay();
@@ -216,83 +242,136 @@ public partial class MainWindow : IDisposable
         {
             Title = description
         };
-
         return dialog.ShowDialog() == true ? dialog.FolderName : null;
     }
 
-    private async Task PerformBatchConversionAsync(string chdmanPath, string inputFolder, string outputFolder, bool deleteFiles)
+    private async Task PerformBatchConversionAsync(string chdmanPath, string inputFolder, string outputFolder, bool deleteFiles, bool useParallelFileProcessing, int degreeOfParallelismForFiles)
     {
         try
         {
             LogMessage("Preparing for batch conversion...");
-
-            // Restrict to supported file types
-            var supportedExtensions = new[] { ".cue", ".iso", ".img", ".cdi", ".gdi", ".toc", ".raw", ".zip" };
             var files = Directory.GetFiles(inputFolder, "*.*", SearchOption.TopDirectoryOnly)
-                .Where(file => supportedExtensions.Contains(Path.GetExtension(file).ToLowerInvariant()))
+                .Where(file => AllSupportedInputExtensions.Contains(Path.GetExtension(file).ToLowerInvariant()))
                 .ToArray();
 
-            LogMessage($"Found {files.Length} files to convert.");
-
+            LogMessage($"Found {files.Length} files to process.");
             if (files.Length == 0)
             {
                 LogMessage("No supported files found in the input folder.");
                 return;
             }
 
-            // Setup progress tracking
             ProgressBar.Maximum = files.Length;
             ProgressBar.Value = 0;
 
             var successCount = 0;
             var failureCount = 0;
+            var filesProcessedCount = 0; // For progress reporting in parallel mode
 
-            for (var i = 0; i < files.Length; i++)
+            if (useParallelFileProcessing && files.Length > 1)
             {
-                if (_cts.Token.IsCancellationRequested)
+                LogMessage($"Using parallel processing with up to {degreeOfParallelismForFiles} concurrent tasks.");
+                var semaphore = new SemaphoreSlim(degreeOfParallelismForFiles);
+                var tasks = new List<Task>();
+
+                foreach (var inputFile in files)
                 {
-                    LogMessage("Operation canceled by user.");
-                    break;
+                    if (_cts.Token.IsCancellationRequested) break;
+
+                    await semaphore.WaitAsync(_cts.Token);
+                    if (_cts.Token.IsCancellationRequested)
+                    {
+                        semaphore.Release();
+                        break;
+                    }
+
+                    tasks.Add(Task.Run(async () =>
+                    {
+                        try
+                        {
+                            var fileName = Path.GetFileName(inputFile);
+                            var currentFileNumber = Interlocked.Increment(ref filesProcessedCount);
+
+                            LogMessage($"[Parallel {currentFileNumber}/{files.Length}] Starting: {fileName}");
+                            UpdateProgressStatus(currentFileNumber, files.Length, fileName);
+
+                            var success = await ProcessFileAsync(chdmanPath, inputFile, outputFolder, deleteFiles, degreeOfParallelismForFiles);
+                            if (success)
+                            {
+                                LogMessage($"[Parallel {currentFileNumber}/{files.Length}] Successful: {fileName}");
+                                Interlocked.Increment(ref successCount);
+                            }
+                            else
+                            {
+                                LogMessage($"[Parallel {currentFileNumber}/{files.Length}] Failed: {fileName}");
+                                Interlocked.Increment(ref failureCount);
+                            }
+
+                            Application.Current.Dispatcher.Invoke(() => ProgressBar.Value = filesProcessedCount);
+                        }
+                        catch (OperationCanceledException)
+                        {
+                            LogMessage($"Operation canceled for file (parallel): {Path.GetFileName(inputFile)}");
+                        }
+                        catch (Exception ex)
+                        {
+                            LogMessage($"Error processing file (parallel): {Path.GetFileName(inputFile)} - {ex.Message}");
+                            Interlocked.Increment(ref failureCount);
+                            await ReportBugAsync($"Error during parallel processing of {Path.GetFileName(inputFile)}", ex);
+                        }
+                        finally
+                        {
+                            semaphore.Release();
+                        }
+                    }, _cts.Token));
                 }
 
-                var inputFile = files[i];
-                var fileName = Path.GetFileName(inputFile);
-
-                // Show progress information
-                UpdateProgressStatus(i + 1, files.Length, fileName);
-                LogMessage($"[{i + 1}/{files.Length}] Processing: {fileName}");
-
-                // Process the file
-                var success = await ProcessFileAsync(chdmanPath, inputFile, outputFolder, deleteFiles);
-
-                if (success)
+                await Task.WhenAll(tasks);
+            }
+            else // Sequential processing
+            {
+                LogMessage("Using sequential processing.");
+                foreach (var t in files)
                 {
-                    LogMessage($"Conversion successful: {fileName}");
-                    successCount++;
-                }
-                else
-                {
-                    LogMessage($"Conversion failed: {fileName}");
-                    failureCount++;
-                }
+                    if (_cts.Token.IsCancellationRequested)
+                    {
+                        LogMessage("Operation canceled by user.");
+                        break;
+                    }
 
-                // Update progress
-                ProgressBar.Value = i + 1;
+                    var fileName = Path.GetFileName(t);
+                    Interlocked.Increment(ref filesProcessedCount);
+
+                    UpdateProgressStatus(filesProcessedCount, files.Length, fileName);
+                    LogMessage($"[{filesProcessedCount}/{files.Length}] Processing: {fileName}");
+
+                    var success = await ProcessFileAsync(chdmanPath, t, outputFolder, deleteFiles, 1); // degreeOfParallelism is 1 for sequential
+                    if (success)
+                    {
+                        LogMessage($"Conversion successful: {fileName}");
+                        successCount++;
+                    }
+                    else
+                    {
+                        LogMessage($"Conversion failed: {fileName}");
+                        failureCount++;
+                    }
+
+                    ProgressBar.Value = filesProcessedCount;
+                }
             }
 
             LogMessage("");
             LogMessage("Batch conversion completed.");
             LogMessage($"Successfully converted: {successCount} files");
-            if (failureCount > 0)
-            {
-                LogMessage($"Failed to convert: {failureCount} files");
-            }
+            if (failureCount > 0) LogMessage($"Failed to convert: {failureCount} files");
 
-            ShowMessageBox($"Batch conversion completed.\n\n" +
-                           $"Successfully converted: {successCount} files\n" +
-                           $"Failed to convert: {failureCount} files",
-                "Conversion Complete", MessageBoxButton.OK,
-                failureCount > 0 ? MessageBoxImage.Warning : MessageBoxImage.Information);
+            ShowMessageBox($"Batch conversion completed.\n\nSuccessfully converted: {successCount} files\nFailed to convert: {failureCount} files",
+                "Conversion Complete", MessageBoxButton.OK, failureCount > 0 ? MessageBoxImage.Warning : MessageBoxImage.Information);
+        }
+        catch (OperationCanceledException)
+        {
+            LogMessage("Batch conversion operation was canceled.");
         }
         catch (Exception ex)
         {
@@ -304,18 +383,12 @@ public partial class MainWindow : IDisposable
 
     private void UpdateProgressStatus(int current, int total, string currentFile)
     {
-        // Calculate percentage
-        var percentage = (double)current / total * 100;
-
-        // Update UI elements on the UI thread
+        var percentage = total > 0 ? (double)current / total * 100 : 0;
         Application.Current.Dispatcher.Invoke(() =>
         {
-            // Update progress bar
             ProgressBar.Value = current;
             ProgressBar.Maximum = total;
             ProgressBar.Visibility = Visibility.Visible;
-
-            // Update the progress text
             ProgressText.Text = $"Processing file {current} of {total}: {Path.GetFileName(currentFile)} ({percentage:F1}%)";
             ProgressText.Visibility = Visibility.Visible;
         });
@@ -325,10 +398,7 @@ public partial class MainWindow : IDisposable
     {
         Application.Current.Dispatcher.Invoke(() =>
         {
-            // Hide the progress bar
             ProgressBar.Visibility = Visibility.Collapsed;
-
-            // Clear and hide the progress text
             ProgressText.Text = string.Empty;
             ProgressText.Visibility = Visibility.Collapsed;
         });
@@ -338,68 +408,70 @@ public partial class MainWindow : IDisposable
     {
         var referencedFiles = new List<string>();
         var cueDir = Path.GetDirectoryName(cuePath) ?? string.Empty;
-
         try
         {
-            LogMessage($"Parsing CUE file to find referenced files: {Path.GetFileName(cuePath)}");
+            LogMessage($"Parsing CUE file: {Path.GetFileName(cuePath)}");
             var lines = File.ReadAllLines(cuePath);
-
             foreach (var line in lines)
             {
                 var trimmedLine = line.Trim();
                 if (!trimmedLine.StartsWith("FILE ", StringComparison.OrdinalIgnoreCase)) continue;
-                // Extract filename from the FILE line
-                // Format: FILE "filename.ext" FILETYPE
+
                 var parts = trimmedLine.Split('"');
                 if (parts.Length < 2) continue;
 
                 var fileName = parts[1];
                 var filePath = Path.Combine(cueDir, fileName);
-
                 LogMessage($"Found referenced file in CUE: {fileName}");
                 referencedFiles.Add(filePath);
             }
         }
         catch (Exception ex)
         {
-            LogMessage($"Error parsing CUE file: {ex.Message}");
-
-            // Report CUE parsing error
+            LogMessage($"Error parsing CUE file {Path.GetFileName(cuePath)}: {ex.Message}");
             Task.Run(async () => await ReportBugAsync($"Error parsing CUE file: {Path.GetFileName(cuePath)}", ex));
         }
 
         return referencedFiles;
     }
 
-    private async Task<bool> ConvertToChdAsync(string chdmanPath, string inputFile, string outputFile)
+    private async Task<bool> ConvertToChdAsync(string chdmanPath, string inputFile, string outputFile, int degreeOfParallelismForFiles)
     {
         try
         {
-            // Determine which command to use based on file extension
-            var command = "createcd"; // Default for CD-ROM formats
+            var command = "createcd";
             var extension = Path.GetExtension(inputFile).ToLowerInvariant();
-
             switch (extension)
             {
-                case ".img":
-                    // For .img files, we could be dealing with a hard disk or raw image
-                    // You might need a more sophisticated way to determine this
-                    command = "createhd";
-                    break;
-                case ".raw":
-                    command = "createraw";
-                    break;
+                case ".img": command = "createhd"; break;
+                case ".raw": command = "createraw"; break;
             }
 
-            LogMessage($"Using CHDMAN command: {command}");
+            int numProcessorsForChdman;
+            if (degreeOfParallelismForFiles > 1) // Multiple files processed in parallel by the app
+            {
+                numProcessorsForChdman = 1; // Each chdman uses 1 core
+            }
+            else // Sequential file processing by the app (degreeOfParallelismForFiles is 1)
+            {
+                numProcessorsForChdman = Environment.ProcessorCount; // Let this single chdman use all cores
+            }
 
-            // Create the process
+            if (numProcessorsForChdman <= 0)
+            {
+                numProcessorsForChdman = 1;
+            }
+
+
+            LogMessage($"Using CHDMAN command: {command} with {numProcessorsForChdman} processor(s) for this instance.");
+            var arguments = $"{command} -i \"{inputFile}\" -o \"{outputFile}\" -f -np {numProcessorsForChdman}";
+
             var process = new Process
             {
                 StartInfo = new ProcessStartInfo
                 {
                     FileName = chdmanPath,
-                    Arguments = $"{command} -i \"{inputFile}\" -o \"{outputFile}\" -f",
+                    Arguments = arguments,
                     RedirectStandardOutput = true,
                     RedirectStandardError = true,
                     UseShellExecute = false,
@@ -408,66 +480,51 @@ public partial class MainWindow : IDisposable
                 EnableRaisingEvents = true
             };
 
-            // Set up output handling for detailed progress
             var outputBuilder = new StringBuilder();
             var errorBuilder = new StringBuilder();
-
             process.OutputDataReceived += (_, args) =>
             {
                 if (string.IsNullOrEmpty(args.Data)) return;
 
                 outputBuilder.AppendLine(args.Data);
-
-                // Check for progress information
-                if (args.Data.Contains("Compressing") && args.Data.Contains('%'))
-                {
-                    // Extract percentage and update UI
-                    UpdateConversionProgress(args.Data);
-                }
+                if (args.Data.Contains("Compressing") && args.Data.Contains('%')) UpdateConversionProgress(args.Data);
             };
-
             process.ErrorDataReceived += (_, args) =>
             {
                 if (string.IsNullOrEmpty(args.Data)) return;
 
                 errorBuilder.AppendLine(args.Data);
-
-                // Check if this is a progress update or completion message rather than an actual error
-                if ((args.Data.Contains("Compressing") && args.Data.Contains('%')) ||
-                    args.Data.Contains("Compression complete"))
+                if ((args.Data.Contains("Compressing") && args.Data.Contains('%')) || args.Data.Contains("Compression complete"))
                 {
-                    // This is a progress update or completion message, not an error
-                    if (args.Data.Contains("Compression complete"))
-                    {
-                        LogMessage($"Compression completed with {args.Data.Substring(args.Data.IndexOf("ratio =", StringComparison.Ordinal) + 8)}");
-                    }
-                    else
-                    {
-                        UpdateConversionProgress(args.Data);
-                    }
+                    if (args.Data.Contains("Compression complete")) LogMessage($"CHDMAN: {args.Data}");
+                    else UpdateConversionProgress(args.Data);
                 }
                 else
                 {
-                    // This is likely an actual error
-                    LogMessage($"[ERROR] {args.Data}");
+                    LogMessage($"[CHDMAN ERROR] {args.Data}");
                 }
             };
 
-            // Start the process
             process.Start();
             process.BeginOutputReadLine();
             process.BeginErrorReadLine();
 
-            await Task.Run(() => process.WaitForExit(), _cts.Token);
+            await process.WaitForExitAsync(_cts.Token);
 
-            // Log detailed output for debugging
-            LogMessage($"CHDMAN output: {outputBuilder}");
+            LogMessage($"CHDMAN raw output for {Path.GetFileName(inputFile)}: {outputBuilder}");
+            if (errorBuilder.Length > 0 && process.ExitCode != 0) LogMessage($"CHDMAN raw error for {Path.GetFileName(inputFile)}: {errorBuilder}");
+
 
             return process.ExitCode == 0;
         }
+        catch (OperationCanceledException)
+        {
+            LogMessage($"Conversion cancelled for {Path.GetFileName(inputFile)}.");
+            throw; // Re-throw to be handled by PerformBatchConversionAsync
+        }
         catch (Exception ex)
         {
-            LogMessage($"Error converting file: {ex.Message}");
+            LogMessage($"Error converting file {Path.GetFileName(inputFile)}: {ex.Message}");
             await ReportBugAsync($"Error converting file: {Path.GetFileName(inputFile)}", ex);
             return false;
         }
@@ -475,8 +532,7 @@ public partial class MainWindow : IDisposable
 
     private void ShowMessageBox(string message, string title, MessageBoxButton buttons, MessageBoxImage icon)
     {
-        Dispatcher.Invoke((Action)(() =>
-            MessageBox.Show(message, title, buttons, icon)));
+        Dispatcher.Invoke(() => MessageBox.Show(this, message, title, buttons, icon));
     }
 
     private void ShowError(string message)
@@ -484,16 +540,11 @@ public partial class MainWindow : IDisposable
         ShowMessageBox(message, "Error", MessageBoxButton.OK, MessageBoxImage.Error);
     }
 
-    /// <summary>
-    /// Silently reports bugs/errors to the API
-    /// </summary>
     private async Task ReportBugAsync(string message, Exception? exception = null)
     {
         try
         {
             var fullReport = new StringBuilder();
-
-            // Add system information
             fullReport.AppendLine("=== Bug Report ===");
             fullReport.AppendLine($"Application: {ApplicationName}");
             fullReport.AppendLine(CultureInfo.InvariantCulture, $"Version: {GetType().Assembly.GetName().Version}");
@@ -501,86 +552,72 @@ public partial class MainWindow : IDisposable
             fullReport.AppendLine(CultureInfo.InvariantCulture, $".NET Version: {Environment.Version}");
             fullReport.AppendLine(CultureInfo.InvariantCulture, $"Date/Time: {DateTime.Now}");
             fullReport.AppendLine();
-
-            // Add a message
             fullReport.AppendLine("=== Error Message ===");
             fullReport.AppendLine(message);
             fullReport.AppendLine();
 
-            // Add exception details if available
             if (exception != null)
             {
                 fullReport.AppendLine("=== Exception Details ===");
-                fullReport.AppendLine(CultureInfo.InvariantCulture, $"Type: {exception.GetType().FullName}");
-                fullReport.AppendLine(CultureInfo.InvariantCulture, $"Message: {exception.Message}");
-                fullReport.AppendLine(CultureInfo.InvariantCulture, $"Source: {exception.Source}");
-                fullReport.AppendLine("Stack Trace:");
-                fullReport.AppendLine(exception.StackTrace);
-
-                // Add inner exception if available
-                if (exception.InnerException != null)
-                {
-                    fullReport.AppendLine("Inner Exception:");
-                    fullReport.AppendLine(CultureInfo.InvariantCulture, $"Type: {exception.InnerException.GetType().FullName}");
-                    fullReport.AppendLine(CultureInfo.InvariantCulture, $"Message: {exception.InnerException.Message}");
-                    fullReport.AppendLine("Stack Trace:");
-                    fullReport.AppendLine(exception.InnerException.StackTrace);
-                }
+                AppendExceptionDetailsToReport(fullReport, exception);
             }
 
-            // Add log contents if available
             if (LogViewer != null)
             {
-                var logContent = string.Empty;
-
-                // Safely get log content from UI thread
-                await Dispatcher.InvokeAsync(() =>
-                {
-                    logContent = LogViewer.Text;
-                });
-
+                var logContent = await Dispatcher.InvokeAsync(() => LogViewer.Text);
                 if (!string.IsNullOrEmpty(logContent))
                 {
-                    fullReport.AppendLine();
-                    fullReport.AppendLine("=== Application Log ===");
-                    fullReport.Append(logContent);
+                    fullReport.AppendLine().AppendLine("=== Application Log ===").Append(logContent);
                 }
             }
 
-            // Silently send the report
             await _bugReportService.SendBugReportAsync(fullReport.ToString());
         }
         catch
         {
-            // Silently fail if error reporting itself fails
+            /* Silently fail reporting */
         }
     }
+
+    private static void AppendExceptionDetailsToReport(StringBuilder sb, Exception? ex, int level = 0)
+    {
+        while (ex != null)
+        {
+            var indent = new string(' ', level * 2);
+            sb.AppendLine(CultureInfo.InvariantCulture, $"{indent}Type: {ex.GetType().FullName}");
+            sb.AppendLine(CultureInfo.InvariantCulture, $"{indent}Message: {ex.Message}");
+            sb.AppendLine(CultureInfo.InvariantCulture, $"{indent}Source: {ex.Source}");
+            sb.AppendLine(CultureInfo.InvariantCulture, $"{indent}StackTrace:");
+            sb.AppendLine(CultureInfo.InvariantCulture, $"{indent}{ex.StackTrace}");
+            if (ex.InnerException != null)
+            {
+                sb.AppendLine(CultureInfo.InvariantCulture, $"{indent}Inner Exception:");
+                ex = ex.InnerException;
+                level++;
+            }
+            else
+            {
+                break;
+            }
+        }
+    }
+
 
     private void UpdateConversionProgress(string progressLine)
     {
         try
         {
-            // Extract percentage from a line like "Compressing, 45.6% complete... (ratio=40.5%)"
             var match = MyRegex().Match(progressLine);
             if (!match.Success) return;
 
-            // Get the percentage string, handling both decimal point and comma formats
-            var percentageStr = match.Groups[1].Value;
+            var percentageStr = match.Groups[1].Value.Replace(',', '.');
+            if (!double.TryParse(percentageStr, NumberStyles.Any, CultureInfo.InvariantCulture, out var percentage)) return;
 
-            // Replace comma with a period to ensure proper parsing regardless of culture
-            percentageStr = percentageStr.Replace(',', '.');
-
-            if (!double.TryParse(percentageStr, NumberStyles.Any,
-                    CultureInfo.InvariantCulture, out var percentage)) return;
-
-            // Ensure percentage is within the expected range (0-100)
-            // If it's consistently 10x too high, divide by 10
             if (percentage > 100)
             {
-                percentage = percentage / 10;
+                percentage /= 10;
             }
 
-            // Get the ratio if available
             var ratio = "unknown";
             var ratioMatch = MyRegex1().Match(progressLine);
             if (ratioMatch.Success)
@@ -588,71 +625,54 @@ public partial class MainWindow : IDisposable
                 ratio = ratioMatch.Groups[1].Value.Replace(',', '.') + "%";
             }
 
-            // Just log the progress without adding file-specific progress bars
-            LogMessage($"Converting: {percentage:F1}% complete (compression ratio: {ratio})");
+            LogMessage($"CHDMAN Converting: {percentage:F1}% complete (compression ratio: {ratio})");
         }
         catch (Exception ex)
         {
-            // Just log and continue - don't let progress updates crash the app
-            LogMessage($"Error updating progress: {ex.Message}");
+            LogMessage($"Error updating chdman progress: {ex.Message}");
         }
     }
 
-    private async Task<bool> ProcessFileAsync(string chdmanPath, string inputFile, string outputFolder, bool deleteOriginal)
+    private async Task<bool> ProcessFileAsync(string chdmanPath, string inputFile, string outputFolder, bool deleteOriginal, int degreeOfParallelismForFiles)
     {
         try
         {
             var fileToProcess = inputFile;
-            var isZipFile = false;
+            var isArchiveFile = false;
             var tempDir = string.Empty;
+            var fileExtension = Path.GetExtension(inputFile).ToLowerInvariant();
 
-            // Check if the file is a ZIP
-            if (Path.GetExtension(inputFile).Equals(".zip", StringComparison.OrdinalIgnoreCase))
+            if (ArchiveExtensions.Contains(fileExtension))
             {
-                LogMessage($"Processing ZIP file: {Path.GetFileName(inputFile)}");
-                var extractResult = await ExtractZipFileAsync(inputFile);
-
+                LogMessage($"Processing archive: {Path.GetFileName(inputFile)}");
+                var extractResult = await ExtractArchiveAsync(inputFile);
                 if (extractResult.Success)
                 {
                     fileToProcess = extractResult.FilePath;
                     tempDir = extractResult.TempDir;
-                    isZipFile = true;
-                    LogMessage($"Using extracted file: {Path.GetFileName(fileToProcess)}");
+                    isArchiveFile = true;
+                    LogMessage($"Using extracted file: {Path.GetFileName(fileToProcess)} from archive {Path.GetFileName(inputFile)}");
                 }
                 else
                 {
-                    LogMessage($"Error extracting ZIP: {extractResult.ErrorMessage}");
+                    LogMessage($"Error extracting archive {Path.GetFileName(inputFile)}: {extractResult.ErrorMessage}");
                     return false;
                 }
             }
 
             try
             {
-                // Determine the output file path
                 var outputFile = Path.Combine(outputFolder, Path.GetFileNameWithoutExtension(fileToProcess) + ".chd");
+                var success = await ConvertToChdAsync(chdmanPath, fileToProcess, outputFile, degreeOfParallelismForFiles);
 
-                // Perform the conversion
-                var success = await ConvertToChdAsync(chdmanPath, fileToProcess, outputFile);
-
-                // Handle cleanup
                 if (!success || !deleteOriginal) return success;
 
-                if (isZipFile)
+                if (isArchiveFile) // Delete original archive
                 {
-                    // For ZIP files, delete the original ZIP file
-                    try
-                    {
-                        File.Delete(inputFile);
-                        LogMessage($"Deleted original ZIP file: {Path.GetFileName(inputFile)}");
-                    }
-                    catch (Exception ex)
-                    {
-                        LogMessage($"Failed to delete ZIP file: {ex.Message}");
-                    }
+                    TryDeleteFile(inputFile, $"original archive file: {Path.GetFileName(inputFile)}");
                 }
-                else
+                else // Delete original game files (cue+bin, gdi+tracks, etc.)
                 {
-                    // For regular files, delete according to existing logic
                     await DeleteOriginalFilesAsync(fileToProcess);
                 }
 
@@ -660,20 +680,16 @@ public partial class MainWindow : IDisposable
             }
             finally
             {
-                // Always clean up temp directory if we extracted a ZIP
-                if (isZipFile && !string.IsNullOrEmpty(tempDir) && Directory.Exists(tempDir))
+                if (isArchiveFile && !string.IsNullOrEmpty(tempDir) && Directory.Exists(tempDir))
                 {
-                    try
-                    {
-                        Directory.Delete(tempDir, true);
-                        LogMessage("Temporary extraction directory cleaned up");
-                    }
-                    catch (Exception ex)
-                    {
-                        LogMessage($"Failed to clean up temp directory: {ex.Message}");
-                    }
+                    TryDeleteDirectory(tempDir, "temporary extraction directory");
                 }
             }
+        }
+        catch (OperationCanceledException)
+        {
+            LogMessage($"Processing cancelled for {Path.GetFileName(inputFile)}.");
+            throw; // Re-throw
         }
         catch (Exception ex)
         {
@@ -683,127 +699,200 @@ public partial class MainWindow : IDisposable
         }
     }
 
-    private Task<(bool Success, string FilePath, string TempDir, string ErrorMessage)> ExtractZipFileAsync(string zipPath)
+    private void TryDeleteFile(string filePath, string description)
     {
-        var tempDir = Path.Combine(Path.GetTempPath(), Path.GetRandomFileName());
-
         try
         {
-            LogMessage($"Extracting ZIP file to temporary directory: {tempDir}");
-            Directory.CreateDirectory(tempDir);
+            if (!File.Exists(filePath)) return;
 
-            // Extract the ZIP file
-            using (var archive = ZipFile.OpenRead(zipPath))
-            {
-                foreach (var entry in archive.Entries)
-                {
-                    var entryPath = Path.Combine(tempDir, entry.FullName);
-
-                    // Create directory if needed
-                    var dirPath = Path.GetDirectoryName(entryPath);
-                    if (!string.IsNullOrEmpty(dirPath) && !Directory.Exists(dirPath))
-                    {
-                        Directory.CreateDirectory(dirPath);
-                    }
-
-                    // Skip directories
-                    if (string.IsNullOrEmpty(entry.Name))
-                        continue;
-
-                    // Extract the file
-                    entry.ExtractToFile(entryPath, true);
-                }
-            }
-
-            // Find the first supported file in the extracted directory
-            var supportedExtensions = new[] { ".cue", ".iso", ".img", ".cdi", ".gdi", ".toc", ".raw" };
-            var supportedFile = Directory.GetFiles(tempDir, "*.*", SearchOption.AllDirectories)
-                .FirstOrDefault(f => supportedExtensions.Contains(Path.GetExtension(f).ToLowerInvariant()));
-
-            if (supportedFile != null)
-            {
-                return Task.FromResult((true, supportedFile, tempDir, string.Empty));
-            }
-
-            return Task.FromResult((false, string.Empty, tempDir, "No supported files found in ZIP archive"));
+            File.Delete(filePath);
+            LogMessage($"Deleted {description}: {Path.GetFileName(filePath)}");
         }
         catch (Exception ex)
         {
-            return Task.FromResult((false, string.Empty, tempDir, $"Error extracting ZIP: {ex.Message}"));
+            LogMessage($"Failed to delete {description} {Path.GetFileName(filePath)}: {ex.Message}");
         }
     }
 
-    private async Task DeleteOriginalFilesAsync(string inputFile)
+    private void TryDeleteDirectory(string dirPath, string description)
     {
         try
         {
-            // For .cue files, get all referenced files first
-            var filesToDelete = new List<string>();
+            if (!Directory.Exists(dirPath)) return;
 
-            if (Path.GetExtension(inputFile).Equals(".cue", StringComparison.OrdinalIgnoreCase))
+            Directory.Delete(dirPath, true);
+            LogMessage($"Cleaned up {description}: {dirPath}");
+        }
+        catch (Exception ex)
+        {
+            LogMessage($"Failed to clean up {description} {dirPath}: {ex.Message}");
+        }
+    }
+
+
+    private async Task<(bool Success, string FilePath, string TempDir, string ErrorMessage)> ExtractArchiveAsync(string archivePath)
+    {
+        var tempDir = Path.Combine(Path.GetTempPath(), Path.GetRandomFileName());
+        var extension = Path.GetExtension(archivePath).ToLowerInvariant();
+        var archiveFileName = Path.GetFileName(archivePath);
+
+        try
+        {
+            Directory.CreateDirectory(tempDir);
+            LogMessage($"Extracting {archiveFileName} to temporary directory: {tempDir}");
+
+            if (extension == ".zip")
             {
-                // Get all files referenced in the .cue file
-                var referencedFiles = GetReferencedFilesFromCue(inputFile);
-                filesToDelete.AddRange(referencedFiles);
+                await Task.Run(() => ZipFile.ExtractToDirectory(archivePath, tempDir, true), _cts.Token);
             }
-            // Handle GDI files similarly to CUE files
-            else if (Path.GetExtension(inputFile).Equals(".gdi", StringComparison.OrdinalIgnoreCase))
+            else if (extension is ".7z" or ".rar")
             {
-                var referencedFiles = GetReferencedFilesFromGdi(inputFile);
-                filesToDelete.AddRange(referencedFiles);
+                if (!_isSevenZipAvailable)
+                {
+                    return (false, string.Empty, tempDir, $"{SevenZipExeName} not found. Cannot extract {extension} files.");
+                }
+
+                var process = new Process
+                {
+                    StartInfo = new ProcessStartInfo
+                    {
+                        FileName = _sevenZipPath,
+                        Arguments = $"x \"{archivePath}\" -o\"{tempDir}\" -y",
+                        RedirectStandardOutput = true,
+                        RedirectStandardError = true,
+                        UseShellExecute = false,
+                        CreateNoWindow = true
+                    }
+                };
+                var outputBuilder = new StringBuilder();
+                var errorBuilder = new StringBuilder();
+                process.OutputDataReceived += (_, args) =>
+                {
+                    if (args.Data != null) outputBuilder.AppendLine(args.Data);
+                };
+                process.ErrorDataReceived += (_, args) =>
+                {
+                    if (args.Data != null) errorBuilder.AppendLine(args.Data);
+                };
+
+                process.Start();
+                process.BeginOutputReadLine();
+                process.BeginErrorReadLine();
+
+                try
+                {
+                    await process.WaitForExitAsync(_cts.Token);
+                }
+                catch (OperationCanceledException)
+                {
+                    if (!process.HasExited)
+                    {
+                        process.Kill(true);
+                    }
+
+                    LogMessage($"Extraction of {archiveFileName} cancelled.");
+                    throw;
+                }
+
+                if (process.ExitCode != 0)
+                {
+                    LogMessage($"Error extracting {archiveFileName} with {SevenZipExeName}. Exit code: {process.ExitCode}. Output: {outputBuilder}. Error: {errorBuilder}");
+                    return (false, string.Empty, tempDir, $"7z.exe failed. Error: {errorBuilder.ToString().Trim()}");
+                }
+
+                LogMessage($"{SevenZipExeName} output for {archiveFileName}: {outputBuilder}");
+            }
+            else
+            {
+                return (false, string.Empty, tempDir, $"Unsupported archive type: {extension}");
             }
 
-            // Always add the original file to be deleted
-            filesToDelete.Add(inputFile);
+            var supportedFile = Directory.GetFiles(tempDir, "*.*", SearchOption.AllDirectories)
+                .FirstOrDefault(f => PrimaryTargetExtensionsInsideArchive.Contains(Path.GetExtension(f).ToLowerInvariant()));
 
-            // Delete all files
+            if (supportedFile != null)
+            {
+                return (true, supportedFile, tempDir, string.Empty);
+            }
+
+            return (false, string.Empty, tempDir, "No supported primary files found in archive.");
+        }
+        catch (OperationCanceledException)
+        {
+            TryDeleteDirectory(tempDir, $"cancelled extraction directory for {archiveFileName}");
+            throw; // Re-throw
+        }
+        catch (Exception ex)
+        {
+            LogMessage($"Error extracting archive {archiveFileName}: {ex.Message}");
+            await ReportBugAsync($"Error extracting archive: {archiveFileName}", ex);
+            TryDeleteDirectory(tempDir, $"failed extraction directory for {archiveFileName}");
+            return (false, string.Empty, tempDir, $"Exception during extraction: {ex.Message}");
+        }
+    }
+
+
+    private async Task DeleteOriginalFilesAsync(string inputFile) // the inputFile is the primary file like .cue,
+                                                                  // .gdi, .iso
+    {
+        try
+        {
+            var filesToDelete = new List<string> { inputFile }; // Always add the main input file
+
+            var inputFileExtension = Path.GetExtension(inputFile).ToLowerInvariant();
+            if (inputFileExtension == ".cue")
+            {
+                filesToDelete.AddRange(GetReferencedFilesFromCue(inputFile)
+                    .Where(f => !f.Equals(inputFile, StringComparison.OrdinalIgnoreCase))); // Add referenced,
+                                                                                            // avoid duplicates
+            }
+            else if (inputFileExtension == ".gdi")
+            {
+                filesToDelete.AddRange(GetReferencedFilesFromGdi(inputFile)
+                    .Where(f => !f.Equals(inputFile, StringComparison.OrdinalIgnoreCase))); // Add referenced,
+                                                                                            // avoid duplicates
+            }
+
+            filesToDelete = filesToDelete.Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+
+
             foreach (var fileToDelete in filesToDelete)
             {
-                if (!File.Exists(fileToDelete)) continue;
-
-                File.Delete(fileToDelete);
-                LogMessage($"Deleted file: {Path.GetFileName(fileToDelete)}");
+                TryDeleteFile(fileToDelete, "original file");
             }
         }
         catch (Exception ex)
         {
-            LogMessage($"Failed to delete original file(s): {ex.Message}");
+            LogMessage($"Failed to delete original file(s) for {Path.GetFileName(inputFile)}: {ex.Message}");
             await ReportBugAsync($"Failed to delete original file(s): {Path.GetFileName(inputFile)}", ex);
         }
     }
 
-    // Parse GDI files (similar to how you parse CUE files)
     private List<string> GetReferencedFilesFromGdi(string gdiPath)
     {
         var referencedFiles = new List<string>();
         var gdiDir = Path.GetDirectoryName(gdiPath) ?? string.Empty;
-
         try
         {
-            LogMessage($"Parsing GDI file to find referenced files: {Path.GetFileName(gdiPath)}");
+            LogMessage($"Parsing GDI file: {Path.GetFileName(gdiPath)}");
             var lines = File.ReadAllLines(gdiPath);
-
-            // Skip the first line (track count)
-            for (var i = 1; i < lines.Length; i++)
+            for (var i = 1; i < lines.Length; i++) // Skip track count line
             {
                 var trimmedLine = lines[i].Trim();
-                if (string.IsNullOrWhiteSpace(trimmedLine))
-                    continue;
+                if (string.IsNullOrWhiteSpace(trimmedLine)) continue;
 
-                // GDI format: Track LBA Type SectorSize FileName
                 var parts = trimmedLine.Split(Separator, StringSplitOptions.RemoveEmptyEntries);
                 if (parts.Length < 5) continue;
 
                 var fileName = parts[4].Trim('"');
                 var filePath = Path.Combine(gdiDir, fileName);
-
                 LogMessage($"Found referenced file in GDI: {fileName}");
                 referencedFiles.Add(filePath);
             }
         }
         catch (Exception ex)
         {
-            LogMessage($"Error parsing GDI file: {ex.Message}");
+            LogMessage($"Error parsing GDI file {Path.GetFileName(gdiPath)}: {ex.Message}");
             Task.Run(async () => await ReportBugAsync($"Error parsing GDI file: {Path.GetFileName(gdiPath)}", ex));
         }
 
@@ -812,7 +901,6 @@ public partial class MainWindow : IDisposable
 
     private void ExitMenuItem_Click(object sender, RoutedEventArgs e)
     {
-        // This will close the application
         Close();
     }
 
@@ -820,17 +908,11 @@ public partial class MainWindow : IDisposable
     {
         try
         {
-            var aboutWindow = new AboutWindow
-            {
-                Owner = this // Set the owner to center the About window relative to MainWindow
-            };
-            aboutWindow.ShowDialog();
+            new AboutWindow { Owner = this }.ShowDialog();
         }
         catch (Exception ex)
         {
             LogMessage($"Error opening About window: {ex.Message}");
-
-            // Report the exception to our bug reporting service
             Task.Run(async () => await ReportBugAsync("Error opening About window", ex));
         }
     }
@@ -843,15 +925,9 @@ public partial class MainWindow : IDisposable
 
     public void Dispose()
     {
-        // Dispose the cancellation token source
         _cts?.Cancel();
         _cts?.Dispose();
-        // _cts = null;
-
-        // Dispose the bug report service
         _bugReportService?.Dispose();
-
-        // Suppress finalization since we've explicitly disposed resources
         GC.SuppressFinalize(this);
     }
 }

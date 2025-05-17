@@ -30,7 +30,7 @@ public partial class AboutWindow
                 UseShellExecute = true
             });
 
-            // Dispose the Process object if non-null
+            // Dispose of the Process object if non-null
             process?.Dispose();
         }
         catch (Exception ex)
@@ -43,7 +43,7 @@ public partial class AboutWindow
 
             _ = bugReportService.SendBugReportAsync($"Error opening URL: {e.Uri.AbsoluteUri}. Exception: {ex.Message}");
 
-            // Show error to user
+            // Show error to the user
             MessageBox.Show($"Unable to open link: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
         }
 
