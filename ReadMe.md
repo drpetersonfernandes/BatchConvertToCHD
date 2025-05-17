@@ -2,7 +2,7 @@
 
 A Windows desktop utility for batch converting various disk image formats to CHD (Compressed Hunks of Data) format.
 
-![Batch Convert to CHD](images/logo.png)
+![Batch Convert to CHD](screenshot.png)
 
 ## Overview
 
@@ -32,7 +32,7 @@ Batch Convert to CHD is a Windows application that provides a simple user interf
 
 - Windows 7 or later
 - [.NET 9.0 Runtime](https://dotnet.microsoft.com/download/dotnet/9.0)
-- CHDMAN.exe (included with the application)
+- CHDMAN. exe (included with the application)
 
 ## Installation
 
@@ -45,7 +45,7 @@ Batch Convert to CHD is a Windows application that provides a simple user interf
 
 1. **Select Input Folder**: Click "Browse" next to "Input Folder" to select the directory containing files to convert
 2. **Select Output Folder**: Click "Browse" next to "Output Folder" to choose where the CHD files will be saved
-3. **Delete Option**: Check "Delete original files after conversion" if you want to remove source files after successful conversion
+3. **Delete Option**: Check "Delete original files after conversion" if you want to remove source files after a successful conversion
 4. **Start Conversion**: Click "Start Conversion" to begin the batch process
 5. **Monitor Progress**: The application will display progress and log messages during conversion
 6. **Cancel (if needed)**: Click "Cancel" to stop the conversion process
@@ -56,7 +56,7 @@ CHD (Compressed Hunks of Data) is a compressed disk image format developed for t
 
 - **Efficient Compression**: Significantly reduces file sizes compared to raw disk images
 - **Metadata Storage**: Preserves important disk metadata
-- **Checksumming**: Includes data verification to ensure integrity
+- **Check-summing**: Includes data verification to ensure integrity
 - **Multiple Compression Methods**: Uses optimal compression methods for different data types
 
 ## Why Use CHD?
@@ -64,7 +64,7 @@ CHD (Compressed Hunks of Data) is a compressed disk image format developed for t
 - **Save Disk Space**: CHD files are often much smaller than the original formats
 - **Preserve All Data**: Unlike some compression methods, CHD retains all necessary data and metadata
 - **MAME Compatibility**: Directly usable with MAME and other emulators that support CHD
-- **Data Integrity**: Built-in checksumming helps ensure your disk images remain valid
+- **Data Integrity**: Built-in check-summing helps ensure your disk images remain valid
 
 ## Troubleshooting
 
@@ -74,5 +74,5 @@ CHD (Compressed Hunks of Data) is a compressed disk image format developed for t
 
 ## Acknowledgements
 
-- Uses CHDMAN from the [MAME project](https://www.mamedev.org/) for CHD conversion
+- Use CHDMAN from the [MAME project](https://www.mamedev.org/) for CHD conversion
 - Developed by [Pure Logic Code](https://www.purelogiccode.com)
