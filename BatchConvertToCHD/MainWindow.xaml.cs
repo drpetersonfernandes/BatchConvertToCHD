@@ -20,7 +20,7 @@ public partial class MainWindow : IDisposable
     private const string ApplicationName = "BatchConvertToCHD";
     private static readonly char[] Separator = [' ', '\t'];
 
-    private const string SevenZipExeName = "7z.exe"; // Or 7za.exe if you prefer standalone
+    private const string SevenZipExeName = "7z.exe";
     private readonly string _sevenZipPath;
     private readonly bool _isSevenZipAvailable;
 
@@ -58,7 +58,6 @@ public partial class MainWindow : IDisposable
         LogMessage("5. Click 'Start Conversion' to begin the process");
         LogMessage("");
 
-        // Verify chdman.exe exists
         var appDirectory = AppDomain.CurrentDomain.BaseDirectory;
         var chdmanPath = Path.Combine(appDirectory, "chdman.exe");
 
@@ -73,7 +72,6 @@ public partial class MainWindow : IDisposable
             Task.Run(async () => await ReportBugAsync("chdman.exe not found in the application directory. This will prevent the application from functioning correctly."));
         }
 
-        // Verify 7z.exe exists
         _sevenZipPath = Path.Combine(appDirectory, SevenZipExeName);
         if (File.Exists(_sevenZipPath))
         {
@@ -702,70 +700,68 @@ public partial class MainWindow : IDisposable
             Directory.CreateDirectory(tempDir);
             LogMessage($"Extracting {archiveFileName} to temporary directory: {tempDir}");
 
-            if (extension == ".zip")
+            switch (extension)
             {
-                await Task.Run(() => ZipFile.ExtractToDirectory(archivePath, tempDir, true), _cts.Token);
-            }
-            else if (extension is ".7z" or ".rar")
-            {
-                if (!_isSevenZipAvailable)
-                {
+                case ".zip":
+                    await Task.Run(() => ZipFile.ExtractToDirectory(archivePath, tempDir, true), _cts.Token);
+                    break;
+                case ".7z" or ".rar" when !_isSevenZipAvailable:
                     return (false, string.Empty, tempDir, $"{SevenZipExeName} not found. Cannot extract {extension} files.");
-                }
-
-                var process = new Process
+                case ".7z" or ".rar":
                 {
-                    StartInfo = new ProcessStartInfo
+                    var process = new Process
                     {
-                        FileName = _sevenZipPath,
-                        Arguments = $"x \"{archivePath}\" -o\"{tempDir}\" -y",
-                        RedirectStandardOutput = true,
-                        RedirectStandardError = true,
-                        UseShellExecute = false,
-                        CreateNoWindow = true
-                    }
-                };
-                var outputBuilder = new StringBuilder();
-                var errorBuilder = new StringBuilder();
-                process.OutputDataReceived += (_, args) =>
-                {
-                    if (args.Data != null) outputBuilder.AppendLine(args.Data);
-                };
-                process.ErrorDataReceived += (_, args) =>
-                {
-                    if (args.Data != null) errorBuilder.AppendLine(args.Data);
-                };
-
-                process.Start();
-                process.BeginOutputReadLine();
-                process.BeginErrorReadLine();
-
-                try
-                {
-                    await process.WaitForExitAsync(_cts.Token);
-                }
-                catch (OperationCanceledException)
-                {
-                    if (!process.HasExited)
+                        StartInfo = new ProcessStartInfo
+                        {
+                            FileName = _sevenZipPath,
+                            Arguments = $"x \"{archivePath}\" -o\"{tempDir}\" -y",
+                            RedirectStandardOutput = true,
+                            RedirectStandardError = true,
+                            UseShellExecute = false,
+                            CreateNoWindow = true
+                        }
+                    };
+                    var outputBuilder = new StringBuilder();
+                    var errorBuilder = new StringBuilder();
+                    process.OutputDataReceived += (_, args) =>
                     {
-                        process.Kill(true);
+                        if (args.Data != null) outputBuilder.AppendLine(args.Data);
+                    };
+                    process.ErrorDataReceived += (_, args) =>
+                    {
+                        if (args.Data != null) errorBuilder.AppendLine(args.Data);
+                    };
+
+                    process.Start();
+                    process.BeginOutputReadLine();
+                    process.BeginErrorReadLine();
+
+                    try
+                    {
+                        await process.WaitForExitAsync(_cts.Token);
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        if (!process.HasExited)
+                        {
+                            process.Kill(true);
+                        }
+
+                        LogMessage($"Extraction of {archiveFileName} cancelled.");
+                        throw;
                     }
 
-                    LogMessage($"Extraction of {archiveFileName} cancelled.");
-                    throw;
-                }
+                    if (process.ExitCode != 0)
+                    {
+                        LogMessage($"Error extracting {archiveFileName} with {SevenZipExeName}. Exit code: {process.ExitCode}. Output: {outputBuilder}. Error: {errorBuilder}");
+                        return (false, string.Empty, tempDir, $"7z.exe failed. Error: {errorBuilder.ToString().Trim()}");
+                    }
 
-                if (process.ExitCode != 0)
-                {
-                    LogMessage($"Error extracting {archiveFileName} with {SevenZipExeName}. Exit code: {process.ExitCode}. Output: {outputBuilder}. Error: {errorBuilder}");
-                    return (false, string.Empty, tempDir, $"7z.exe failed. Error: {errorBuilder.ToString().Trim()}");
+                    LogMessage($"{SevenZipExeName} output for {archiveFileName}: {outputBuilder}");
+                    break;
                 }
-
-                LogMessage($"{SevenZipExeName} output for {archiveFileName}: {outputBuilder}");
-            }
-            else
-            {
-                return (false, string.Empty, tempDir, $"Unsupported archive type: {extension}");
+                default:
+                    return (false, string.Empty, tempDir, $"Unsupported archive type: {extension}");
             }
 
             var supportedFile = Directory.GetFiles(tempDir, "*.*", SearchOption.AllDirectories)
