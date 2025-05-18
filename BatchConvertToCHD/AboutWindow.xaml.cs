@@ -11,7 +11,6 @@ public partial class AboutWindow
     {
         InitializeComponent();
 
-        // Set version information
         AppVersionTextBlock.Text = $"Version: {GetApplicationVersion()}";
     }
 
@@ -30,21 +29,20 @@ public partial class AboutWindow
                 UseShellExecute = true
             });
 
-            // Dispose of the Process object if non-null
             process?.Dispose();
         }
         catch (Exception ex)
         {
-            // Log error silently using the bug report service
+            // Notify developer
             var bugReportService = new BugReportService(
                 "https://www.purelogiccode.com/bugreport/api/send-bug-report",
                 "hjh7yu6t56tyr540o9u8767676r5674534453235264c75b6t7ggghgg76trf564e",
                 "BatchConvertToCHD");
-
             _ = bugReportService.SendBugReportAsync($"Error opening URL: {e.Uri.AbsoluteUri}. Exception: {ex.Message}");
 
-            // Show error to the user
-            MessageBox.Show($"Unable to open link: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            // Notify user
+            MessageBox.Show($"Unable to open link: {ex.Message}",
+                "Error", MessageBoxButton.OK, MessageBoxImage.Error);
         }
 
         // Mark the event as handled

@@ -5,7 +5,7 @@ namespace BatchConvertToCHD;
 
 /// <inheritdoc />
 /// <summary>
-/// Service responsible for silently sending bug reports to the BugReport API
+/// Service responsible for sending bug reports to the BugReport API
 /// </summary>
 public class BugReportService(string apiUrl, string apiKey, string applicationName) : IDisposable
 {
@@ -15,7 +15,7 @@ public class BugReportService(string apiUrl, string apiKey, string applicationNa
     private readonly string _applicationName = applicationName;
 
     /// <summary>
-    /// Silently sends a bug report to the API
+    /// Sends a bug report to the API
     /// </summary>
     /// <param name="message">The error message or bug report</param>
     /// <returns>A task representing the asynchronous operation</returns>
@@ -23,7 +23,6 @@ public class BugReportService(string apiUrl, string apiKey, string applicationNa
     {
         try
         {
-            // Add the API key to the headers
             _httpClient.DefaultRequestHeaders.Clear();
             _httpClient.DefaultRequestHeaders.Add("X-API-KEY", _apiKey);
 
@@ -47,10 +46,6 @@ public class BugReportService(string apiUrl, string apiKey, string applicationNa
         }
     }
 
-    /// <inheritdoc />
-    /// <summary>
-    /// Releases all resources used by the BugReportService.
-    /// </summary>
     public void Dispose()
     {
         // Dispose the HttpClient to release resources

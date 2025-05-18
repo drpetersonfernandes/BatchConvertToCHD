@@ -30,7 +30,6 @@ public partial class MainWindow : IDisposable
 
     private int _currentDegreeOfParallelismForFiles = 1;
 
-
     public MainWindow()
     {
         InitializeComponent();
@@ -154,7 +153,6 @@ public partial class MainWindow : IDisposable
                 _currentDegreeOfParallelismForFiles = 1;
             }
 
-
             if (string.IsNullOrEmpty(inputFolder))
             {
                 LogMessage("Error: No input folder selected.");
@@ -184,7 +182,6 @@ public partial class MainWindow : IDisposable
             LogMessage($"Output folder: {outputFolder}");
             LogMessage($"Delete original files: {deleteFiles}");
             LogMessage($"Parallel file processing: {useParallelFileProcessing} (Max concurrency: {_currentDegreeOfParallelismForFiles})");
-
 
             try
             {
@@ -251,7 +248,7 @@ public partial class MainWindow : IDisposable
         {
             LogMessage("Preparing for batch conversion...");
             var files = Directory.GetFiles(inputFolder, "*.*", SearchOption.TopDirectoryOnly)
-                .Where(file => AllSupportedInputExtensions.Contains(Path.GetExtension(file).ToLowerInvariant()))
+                .Where(static file => AllSupportedInputExtensions.Contains(Path.GetExtension(file).ToLowerInvariant()))
                 .ToArray();
 
             LogMessage($"Found {files.Length} files to process.");
@@ -602,7 +599,6 @@ public partial class MainWindow : IDisposable
         }
     }
 
-
     private void UpdateConversionProgress(string progressLine)
     {
         try
@@ -729,7 +725,6 @@ public partial class MainWindow : IDisposable
         }
     }
 
-
     private async Task<(bool Success, string FilePath, string TempDir, string ErrorMessage)> ExtractArchiveAsync(string archivePath)
     {
         var tempDir = Path.Combine(Path.GetTempPath(), Path.GetRandomFileName());
@@ -808,7 +803,7 @@ public partial class MainWindow : IDisposable
             }
 
             var supportedFile = Directory.GetFiles(tempDir, "*.*", SearchOption.AllDirectories)
-                .FirstOrDefault(f => PrimaryTargetExtensionsInsideArchive.Contains(Path.GetExtension(f).ToLowerInvariant()));
+                .FirstOrDefault(static f => PrimaryTargetExtensionsInsideArchive.Contains(Path.GetExtension(f).ToLowerInvariant()));
 
             if (supportedFile != null)
             {
@@ -830,7 +825,6 @@ public partial class MainWindow : IDisposable
             return (false, string.Empty, tempDir, $"Exception during extraction: {ex.Message}");
         }
     }
-
 
     private async Task DeleteOriginalFilesAsync(string inputFile) // the inputFile is the primary file like .cue,
                                                                   // .gdi, .iso

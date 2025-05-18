@@ -38,7 +38,7 @@
         <!-- Input Folder Selection -->
         <Grid Grid.Row="1" Margin="10,10,10,5">
             <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="100"/>
                 <ColumnDefinition Width="*"/>
                 <ColumnDefinition Width="Auto"/>
             </Grid.ColumnDefinitions>
@@ -50,7 +50,7 @@
         <!-- Output Folder Selection -->
         <Grid Grid.Row="2" Margin="10,5,10,5">
             <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="100"/>
                 <ColumnDefinition Width="*"/>
                 <ColumnDefinition Width="Auto"/>
             </Grid.ColumnDefinitions>

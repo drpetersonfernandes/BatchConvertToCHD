@@ -4,10 +4,6 @@ using System.Windows.Threading;
 
 namespace BatchConvertToCHD;
 
-/// <inheritdoc cref="System.Windows.Application" />
-/// <summary>
-/// Interaction logic for App.xaml
-/// </summary>
 public partial class App : IDisposable
 {
     // Bug Report API configuration
@@ -54,7 +50,7 @@ public partial class App : IDisposable
         {
             var message = BuildExceptionReport(exception, source);
 
-            // Silently report the exception to our API
+            // Notify developer
             if (_bugReportService != null)
             {
                 await _bugReportService.SendBugReportAsync(message);
