@@ -90,22 +90,19 @@ public partial class MainWindow : IDisposable
     private void Window_Closing(object sender, CancelEventArgs e)
     {
         _cts.Cancel();
-        // Let the application shut down gracefully if tasks are running.
-        // Consider awaiting tasks or providing a timeout if needed.
-        // For simplicity, direct shutdown.
         Application.Current.Shutdown();
         Environment.Exit(0); // Force exit if shutdown doesn't complete quickly
     }
 
     private void LogMessage(string message)
     {
-        var timestampedMessage = $"[{DateTime.Now:HH:mm:ss.fff}] {message}"; // Added milliseconds for better parallel logging
+        var timestampedMessage = $"[{DateTime.Now:HH:mm:ss.fff}] {message}";
 
-        Application.Current.Dispatcher.Invoke((Action)(() =>
+        Application.Current.Dispatcher.Invoke(() =>
         {
             LogViewer.AppendText($"{timestampedMessage}{Environment.NewLine}");
             LogViewer.ScrollToEnd();
-        }));
+        });
     }
 
     private void BrowseInputButton_Click(object sender, RoutedEventArgs e)
@@ -147,8 +144,11 @@ public partial class MainWindow : IDisposable
             var deleteFiles = DeleteFilesCheckBox.IsChecked ?? false;
             var useParallelFileProcessing = ParallelProcessingCheckBox.IsChecked ?? false;
 
-            _currentDegreeOfParallelismForFiles = useParallelFileProcessing ? Environment.ProcessorCount : 1;
-            if (_currentDegreeOfParallelismForFiles <= 0)
+            if (useParallelFileProcessing)
+            {
+                _currentDegreeOfParallelismForFiles = 3; // Fixed maximum concurrency = 3
+            }
+            else
             {
                 _currentDegreeOfParallelismForFiles = 1;
             }
@@ -242,7 +242,7 @@ public partial class MainWindow : IDisposable
         return dialog.ShowDialog() == true ? dialog.FolderName : null;
     }
 
-    private async Task PerformBatchConversionAsync(string chdmanPath, string inputFolder, string outputFolder, bool deleteFiles, bool useParallelFileProcessing, int degreeOfParallelismForFiles)
+    private async Task PerformBatchConversionAsync(string chdmanPath, string inputFolder, string outputFolder, bool deleteFiles, bool useParallelFileProcessing, int maxConcurrency)
     {
         try
         {
@@ -263,70 +263,63 @@ public partial class MainWindow : IDisposable
 
             var successCount = 0;
             var failureCount = 0;
-            var filesProcessedCount = 0; // For progress reporting in parallel mode
+            var filesProcessedCount = 0;
+
+            int coresPerConversion;
+            if (useParallelFileProcessing)
+            {
+                var totalCores = Environment.ProcessorCount;
+                coresPerConversion = Math.Max(1, totalCores / 3); // Divide cores by 3
+                LogMessage($"Parallel processing enabled with max concurrency {maxConcurrency}, {coresPerConversion} cores assigned per conversion.");
+            }
+            else
+            {
+                coresPerConversion = Environment.ProcessorCount;
+                LogMessage($"Sequential processing enabled, all {coresPerConversion} cores assigned to the conversion.");
+            }
 
             if (useParallelFileProcessing && files.Length > 1)
             {
-                LogMessage($"Using parallel processing with up to {degreeOfParallelismForFiles} concurrent tasks.");
-                var semaphore = new SemaphoreSlim(degreeOfParallelismForFiles);
-                var tasks = new List<Task>();
-
-                foreach (var inputFile in files)
+                // Use Parallel.ForEachAsync with limited concurrency
+                var parallelOptions = new ParallelOptions
                 {
-                    if (_cts.Token.IsCancellationRequested) break;
+                    MaxDegreeOfParallelism = maxConcurrency,
+                    CancellationToken = _cts.Token
+                };
 
-                    await semaphore.WaitAsync(_cts.Token);
-                    if (_cts.Token.IsCancellationRequested)
+                await Parallel.ForEachAsync(files, parallelOptions, async (inputFile, token) =>
+                {
+                    var fileName = Path.GetFileName(inputFile);
+                    LogMessage($"[Parallel] Starting: {fileName}");
+
+                    var success = await ProcessFileAsync(chdmanPath, inputFile, outputFolder, deleteFiles, coresPerConversion);
+
+                    if (success)
                     {
-                        semaphore.Release();
-                        break;
+                        Interlocked.Increment(ref successCount);
+                        LogMessage($"[Parallel] Successful: {fileName}");
+                    }
+                    else
+                    {
+                        Interlocked.Increment(ref failureCount);
+                        LogMessage($"[Parallel] Failed: {fileName}");
                     }
 
-                    tasks.Add(Task.Run(async () =>
+                    var processed = Interlocked.Increment(ref filesProcessedCount);
+                    var percentage = (double)processed / files.Length * 100;
+
+                    Application.Current.Dispatcher.Invoke(() =>
                     {
-                        try
-                        {
-                            var fileName = Path.GetFileName(inputFile);
-                            var currentFileNumber = Interlocked.Increment(ref filesProcessedCount);
-
-                            LogMessage($"[Parallel {currentFileNumber}/{files.Length}] Starting: {fileName}");
-                            UpdateProgressStatus(currentFileNumber, files.Length, fileName);
-
-                            var success = await ProcessFileAsync(chdmanPath, inputFile, outputFolder, deleteFiles, degreeOfParallelismForFiles);
-                            if (success)
-                            {
-                                LogMessage($"[Parallel {currentFileNumber}/{files.Length}] Successful: {fileName}");
-                                Interlocked.Increment(ref successCount);
-                            }
-                            else
-                            {
-                                LogMessage($"[Parallel {currentFileNumber}/{files.Length}] Failed: {fileName}");
-                                Interlocked.Increment(ref failureCount);
-                            }
-
-                            Application.Current.Dispatcher.Invoke(() => ProgressBar.Value = filesProcessedCount);
-                        }
-                        catch (OperationCanceledException)
-                        {
-                            LogMessage($"Operation canceled for file (parallel): {Path.GetFileName(inputFile)}");
-                        }
-                        catch (Exception ex)
-                        {
-                            LogMessage($"Error processing file (parallel): {Path.GetFileName(inputFile)} - {ex.Message}");
-                            Interlocked.Increment(ref failureCount);
-                            await ReportBugAsync($"Error during parallel processing of {Path.GetFileName(inputFile)}", ex);
-                        }
-                        finally
-                        {
-                            semaphore.Release();
-                        }
-                    }, _cts.Token));
-                }
-
-                await Task.WhenAll(tasks);
+                        ProgressBar.Value = processed;
+                        ProgressText.Text = $"Processing file {processed} of {files.Length}: {fileName} ({percentage:F1}%)";
+                        ProgressBar.Visibility = Visibility.Visible;
+                        ProgressText.Visibility = Visibility.Visible;
+                    });
+                });
             }
-            else // Sequential processing
+            else
             {
+                // Sequential processing
                 LogMessage("Using sequential processing.");
                 foreach (var t in files)
                 {
@@ -337,24 +330,32 @@ public partial class MainWindow : IDisposable
                     }
 
                     var fileName = Path.GetFileName(t);
-                    Interlocked.Increment(ref filesProcessedCount);
 
-                    UpdateProgressStatus(filesProcessedCount, files.Length, fileName);
-                    LogMessage($"[{filesProcessedCount}/{files.Length}] Processing: {fileName}");
+                    LogMessage($"[Sequential] Processing: {fileName}");
 
-                    var success = await ProcessFileAsync(chdmanPath, t, outputFolder, deleteFiles, 1); // degreeOfParallelism is 1 for sequential
+                    var success = await ProcessFileAsync(chdmanPath, t, outputFolder, deleteFiles, coresPerConversion);
+
                     if (success)
                     {
-                        LogMessage($"Conversion successful: {fileName}");
                         successCount++;
+                        LogMessage($"Conversion successful: {fileName}");
                     }
                     else
                     {
-                        LogMessage($"Conversion failed: {fileName}");
                         failureCount++;
+                        LogMessage($"Conversion failed: {fileName}");
                     }
 
-                    ProgressBar.Value = filesProcessedCount;
+                    var processed = ++filesProcessedCount;
+                    var percentage = (double)processed / files.Length * 100;
+
+                    Application.Current.Dispatcher.Invoke(() =>
+                    {
+                        ProgressBar.Value = processed;
+                        ProgressText.Text = $"Processing file {processed} of {files.Length}: {fileName} ({percentage:F1}%)";
+                        ProgressBar.Visibility = Visibility.Visible;
+                        ProgressText.Visibility = Visibility.Visible;
+                    });
                 }
             }
 
@@ -376,29 +377,6 @@ public partial class MainWindow : IDisposable
             ShowError($"Error during batch conversion: {ex.Message}");
             await ReportBugAsync("Error during batch conversion operation", ex);
         }
-    }
-
-    private void UpdateProgressStatus(int current, int total, string currentFile)
-    {
-        var percentage = total > 0 ? (double)current / total * 100 : 0;
-        Application.Current.Dispatcher.Invoke(() =>
-        {
-            ProgressBar.Value = current;
-            ProgressBar.Maximum = total;
-            ProgressBar.Visibility = Visibility.Visible;
-            ProgressText.Text = $"Processing file {current} of {total}: {Path.GetFileName(currentFile)} ({percentage:F1}%)";
-            ProgressText.Visibility = Visibility.Visible;
-        });
-    }
-
-    private void ClearProgressDisplay()
-    {
-        Application.Current.Dispatcher.Invoke(() =>
-        {
-            ProgressBar.Visibility = Visibility.Collapsed;
-            ProgressText.Text = string.Empty;
-            ProgressText.Visibility = Visibility.Collapsed;
-        });
     }
 
     private List<string> GetReferencedFilesFromCue(string cuePath)
@@ -432,7 +410,7 @@ public partial class MainWindow : IDisposable
         return referencedFiles;
     }
 
-    private async Task<bool> ConvertToChdAsync(string chdmanPath, string inputFile, string outputFile, int degreeOfParallelismForFiles)
+    private async Task<bool> ConvertToChdAsync(string chdmanPath, string inputFile, string outputFile, int coresForChdman)
     {
         try
         {
@@ -444,24 +422,13 @@ public partial class MainWindow : IDisposable
                 case ".raw": command = "createraw"; break;
             }
 
-            int numProcessorsForChdman;
-            if (degreeOfParallelismForFiles > 1) // Multiple files processed in parallel by the app
+            if (coresForChdman <= 0)
             {
-                numProcessorsForChdman = 1; // Each chdman uses 1 core
-            }
-            else // Sequential file processing by the app (degreeOfParallelismForFiles is 1)
-            {
-                numProcessorsForChdman = Environment.ProcessorCount; // Let this single chdman use all cores
+                coresForChdman = 1;
             }
 
-            if (numProcessorsForChdman <= 0)
-            {
-                numProcessorsForChdman = 1;
-            }
-
-
-            LogMessage($"Using CHDMAN command: {command} with {numProcessorsForChdman} processor(s) for this instance.");
-            var arguments = $"{command} -i \"{inputFile}\" -o \"{outputFile}\" -f -np {numProcessorsForChdman}";
+            LogMessage($"Using CHDMAN command: {command} with {coresForChdman} processor(s) for this instance.");
+            var arguments = $"{command} -i \"{inputFile}\" -o \"{outputFile}\" -f -np {coresForChdman}";
 
             var process = new Process
             {
@@ -511,13 +478,12 @@ public partial class MainWindow : IDisposable
             LogMessage($"CHDMAN raw output for {Path.GetFileName(inputFile)}: {outputBuilder}");
             if (errorBuilder.Length > 0 && process.ExitCode != 0) LogMessage($"CHDMAN raw error for {Path.GetFileName(inputFile)}: {errorBuilder}");
 
-
             return process.ExitCode == 0;
         }
         catch (OperationCanceledException)
         {
             LogMessage($"Conversion cancelled for {Path.GetFileName(inputFile)}.");
-            throw; // Re-throw to be handled by PerformBatchConversionAsync
+            throw;
         }
         catch (Exception ex)
         {
@@ -629,7 +595,7 @@ public partial class MainWindow : IDisposable
         }
     }
 
-    private async Task<bool> ProcessFileAsync(string chdmanPath, string inputFile, string outputFolder, bool deleteOriginal, int degreeOfParallelismForFiles)
+    private async Task<bool> ProcessFileAsync(string chdmanPath, string inputFile, string outputFolder, bool deleteOriginal, int coresForChdman)
     {
         try
         {
@@ -659,7 +625,7 @@ public partial class MainWindow : IDisposable
             try
             {
                 var outputFile = Path.Combine(outputFolder, Path.GetFileNameWithoutExtension(fileToProcess) + ".chd");
-                var success = await ConvertToChdAsync(chdmanPath, fileToProcess, outputFile, degreeOfParallelismForFiles);
+                var success = await ConvertToChdAsync(chdmanPath, fileToProcess, outputFile, coresForChdman);
 
                 if (!success || !deleteOriginal) return success;
 
@@ -685,7 +651,7 @@ public partial class MainWindow : IDisposable
         catch (OperationCanceledException)
         {
             LogMessage($"Processing cancelled for {Path.GetFileName(inputFile)}.");
-            throw; // Re-throw
+            throw;
         }
         catch (Exception ex)
         {
@@ -815,7 +781,7 @@ public partial class MainWindow : IDisposable
         catch (OperationCanceledException)
         {
             TryDeleteDirectory(tempDir, $"cancelled extraction directory for {archiveFileName}");
-            throw; // Re-throw
+            throw;
         }
         catch (Exception ex)
         {
@@ -826,29 +792,25 @@ public partial class MainWindow : IDisposable
         }
     }
 
-    private async Task DeleteOriginalFilesAsync(string inputFile) // the inputFile is the primary file like .cue,
-                                                                  // .gdi, .iso
+    private async Task DeleteOriginalFilesAsync(string inputFile)
     {
         try
         {
-            var filesToDelete = new List<string> { inputFile }; // Always add the main input file
+            var filesToDelete = new List<string> { inputFile };
 
             var inputFileExtension = Path.GetExtension(inputFile).ToLowerInvariant();
             if (inputFileExtension == ".cue")
             {
                 filesToDelete.AddRange(GetReferencedFilesFromCue(inputFile)
-                    .Where(f => !f.Equals(inputFile, StringComparison.OrdinalIgnoreCase))); // Add referenced,
-                                                                                            // avoid duplicates
+                    .Where(f => !f.Equals(inputFile, StringComparison.OrdinalIgnoreCase)));
             }
             else if (inputFileExtension == ".gdi")
             {
                 filesToDelete.AddRange(GetReferencedFilesFromGdi(inputFile)
-                    .Where(f => !f.Equals(inputFile, StringComparison.OrdinalIgnoreCase))); // Add referenced,
-                                                                                            // avoid duplicates
+                    .Where(f => !f.Equals(inputFile, StringComparison.OrdinalIgnoreCase)));
             }
 
             filesToDelete = filesToDelete.Distinct(StringComparer.OrdinalIgnoreCase).ToList();
-
 
             foreach (var fileToDelete in filesToDelete)
             {
@@ -870,7 +832,7 @@ public partial class MainWindow : IDisposable
         {
             LogMessage($"Parsing GDI file: {Path.GetFileName(gdiPath)}");
             var lines = File.ReadAllLines(gdiPath);
-            for (var i = 1; i < lines.Length; i++) // Skip track count line
+            for (var i = 1; i < lines.Length; i++)
             {
                 var trimmedLine = lines[i].Trim();
                 if (string.IsNullOrWhiteSpace(trimmedLine)) continue;
@@ -909,6 +871,16 @@ public partial class MainWindow : IDisposable
             LogMessage($"Error opening About window: {ex.Message}");
             Task.Run(async () => await ReportBugAsync("Error opening About window", ex));
         }
+    }
+
+    private void ClearProgressDisplay()
+    {
+        Application.Current.Dispatcher.Invoke(() =>
+        {
+            ProgressBar.Visibility = Visibility.Collapsed;
+            ProgressText.Text = string.Empty;
+            ProgressText.Visibility = Visibility.Collapsed;
+        });
     }
 
     [System.Text.RegularExpressions.GeneratedRegex(@"(\d+[\.,]\d+)%")]

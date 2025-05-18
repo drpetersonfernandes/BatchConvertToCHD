@@ -72,7 +72,7 @@
                   Content="Enable parallel processing (multiple files at once)" 
                   Margin="10,5,10,5"
                   HorizontalAlignment="Left"
-                  IsChecked="True"/> <!-- Default to enabled -->
+                  IsChecked="False"/>
         
         <!-- Start Conversion Button -->
         <Button x:Name="StartButton" 
