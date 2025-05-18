@@ -4,4 +4,6 @@ obj/
 riderModule.iml
 /_ReSharper.Caches/!/.idea/
 !/BatchConvertToCHD/bin/
+!/.idea/!/BatchConvertToCHD/obj/
+!/BatchConvertToCHD/bin/
 !/.idea/
