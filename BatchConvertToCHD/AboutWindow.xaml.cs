@@ -12,6 +12,8 @@ public partial class AboutWindow
         InitializeComponent();
 
         AppVersionTextBlock.Text = $"Version: {GetApplicationVersion()}";
+        // Update description to reflect both functionalities
+        DescriptionTextBlock.Text = "A utility for batch converting various disc image formats to CHD and for verifying the integrity of CHD files.";
     }
 
     private void CloseButton_Click(object sender, RoutedEventArgs e)
@@ -37,7 +39,7 @@ public partial class AboutWindow
             var bugReportService = new BugReportService(
                 "https://www.purelogiccode.com/bugreport/api/send-bug-report",
                 "hjh7yu6t56tyr540o9u8767676r5674534453235264c75b6t7ggghgg76trf564e",
-                "BatchConvertToCHD");
+                "BatchConvertToCHD"); // ApplicationName is still BatchConvertToCHD
             _ = bugReportService.SendBugReportAsync($"Error opening URL: {e.Uri.AbsoluteUri}. Exception: {ex.Message}");
 
             // Notify user

@@ -1,23 +1,19 @@
 ﻿<Window x:Class="BatchConvertToCHD.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="Batch Convert to CHD" 
-        Height="550" Width="800" MinHeight="500" MinWidth="600"
+        Title="Batch Convert to CHD &amp; Verify Tool" 
+        Height="700" Width="900" MinHeight="650" MinWidth="700" 
         Closing="Window_Closing">
     <Grid>
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/> <!-- Menu -->
-            <RowDefinition Height="Auto"/> <!-- Input Folder -->
-            <RowDefinition Height="Auto"/> <!-- Output Folder -->
-            <RowDefinition Height="Auto"/> <!-- Delete Files Checkbox -->
-            <RowDefinition Height="Auto"/> <!-- Parallel Processing Checkbox -->
-            <RowDefinition Height="Auto"/> <!-- Start Button -->
+            <RowDefinition Height="Auto"/> <!-- TabControl -->
             <RowDefinition Height="*"/>    <!-- LogViewer -->
+            <RowDefinition Height="Auto"/> <!-- Stats Panel -->
             <RowDefinition Height="Auto"/> <!-- ProgressText -->
             <RowDefinition Height="Auto"/> <!-- ProgressBar Grid -->
         </Grid.RowDefinitions>
         
-        <!-- Menu Bar -->
         <Menu Grid.Row="0">
             <MenuItem Header="File">
                 <MenuItem Header="Exit" Click="ExitMenuItem_Click">
@@ -34,89 +30,149 @@
                 </MenuItem>
             </MenuItem>
         </Menu>
-        
-        <!-- Input Folder Selection -->
-        <Grid Grid.Row="1" Margin="10,10,10,5">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="100"/>
-                <ColumnDefinition Width="*"/>
-                <ColumnDefinition Width="Auto"/>
-            </Grid.ColumnDefinitions>
-            <Label Grid.Column="0" Content="Input Folder:" VerticalAlignment="Center"/>
-            <TextBox x:Name="InputFolderTextBox" Grid.Column="1" Margin="5,0,5,0" Padding="5" IsReadOnly="True"/>
-            <Button x:Name="BrowseInputButton" Grid.Column="2" Content="Browse" Click="BrowseInputButton_Click" Padding="10,5"/>
-        </Grid>
-        
-        <!-- Output Folder Selection -->
-        <Grid Grid.Row="2" Margin="10,5,10,5">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="100"/>
-                <ColumnDefinition Width="*"/>
-                <ColumnDefinition Width="Auto"/>
-            </Grid.ColumnDefinitions>
-            <Label Grid.Column="0" Content="Output Folder:" VerticalAlignment="Center"/>
-            <TextBox x:Name="OutputFolderTextBox" Grid.Column="1" Margin="5,0,5,0" Padding="5" IsReadOnly="True"/>
-            <Button x:Name="BrowseOutputButton" Grid.Column="2" Content="Browse" Click="BrowseOutputButton_Click" Padding="10,5"/>
-        </Grid>
-        
-        <!-- Delete Files Checkbox -->
-        <CheckBox x:Name="DeleteFilesCheckBox" 
-                  Grid.Row="3"
-                  Content="Delete original files after conversion" 
-                  Margin="10,5,10,5"
-                  HorizontalAlignment="Left"/>
 
-        <!-- Parallel Processing Checkbox -->
-        <CheckBox x:Name="ParallelProcessingCheckBox" 
-                  Grid.Row="4"
-                  Content="Enable parallel processing (multiple files at once)" 
-                  Margin="10,5,10,5"
-                  HorizontalAlignment="Left"
-                  IsChecked="False"/>
+        <TabControl Grid.Row="1" x:Name="MainTabControl" Margin="10" SelectionChanged="MainTabControl_SelectionChanged">
+            <TabItem Header="Convert to CHD" x:Name="ConvertTab">
+                <StackPanel Margin="10">
+                    <Grid Margin="0,0,0,5">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="120"/>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <Label Grid.Column="0" Content="Source Files Folder:" VerticalAlignment="Center"/>
+                        <TextBox x:Name="ConversionInputFolderTextBox" Grid.Column="1" Margin="5,0,5,0" Padding="5" IsReadOnly="True"/>
+                        <Button x:Name="BrowseConversionInputButton" Grid.Column="2" Content="Browse" Click="BrowseConversionInputButton_Click" Padding="10,5"/>
+                    </Grid>
+                    
+                    <Grid Margin="0,0,0,5">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="120"/>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <Label Grid.Column="0" Content="Output CHD Folder:" VerticalAlignment="Center"/>
+                        <TextBox x:Name="ConversionOutputFolderTextBox" Grid.Column="1" Margin="5,0,5,0" Padding="5" IsReadOnly="True"/>
+                        <Button x:Name="BrowseConversionOutputButton" Grid.Column="2" Content="Browse" Click="BrowseConversionOutputButton_Click" Padding="10,5"/>
+                    </Grid>
+                    
+                    <CheckBox x:Name="DeleteOriginalsCheckBox" Content="Delete original files after successful conversion" Margin="0,5,0,5" HorizontalAlignment="Left"/>
+                    <CheckBox x:Name="ParallelProcessingCheckBox" Content="Enable parallel processing (multiple files at once)" Margin="0,5,0,10" HorizontalAlignment="Left" IsChecked="False"/>
+                    
+                    <Button x:Name="StartConversionButton" Content="Start Conversion" Click="StartConversionButton_Click" Margin="0,10,0,0" Padding="15,8" HorizontalAlignment="Center" FontWeight="Bold"/>
+                </StackPanel>
+            </TabItem>
+
+            <TabItem Header="Verify CHD Files" x:Name="VerifyTab">
+                <StackPanel Margin="10">
+                     <Grid Margin="0,0,0,5">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="120"/>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <Label Grid.Column="0" Content="CHD Files Folder:" VerticalAlignment="Center"/>
+                        <TextBox x:Name="VerificationInputFolderTextBox" Grid.Column="1" Margin="5,0,5,0" Padding="5" IsReadOnly="True"/>
+                        <Button x:Name="BrowseVerificationInputButton" Grid.Column="2" Content="Browse" Click="BrowseVerificationInputButton_Click" Padding="10,5"/>
+                    </Grid>
+
+                    <CheckBox x:Name="VerificationIncludeSubfoldersCheckBox" Content="Include subfolders in CHD search" Margin="0,10,0,5" HorizontalAlignment="Left" IsChecked="True"/>
+                    
+                    <CheckBox x:Name="MoveSuccessFilesCheckBox" Content="Move successfully tested CHD files to Success Folder" Margin="0,10,0,0" HorizontalAlignment="Left" Checked="MoveSuccessFilesCheckBox_CheckedUnchecked" Unchecked="MoveSuccessFilesCheckBox_CheckedUnchecked"/>
+                    <Grid x:Name="SuccessFolderPanel" Margin="20,0,0,5" Visibility="Collapsed">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="100"/>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <Label Grid.Column="0" Content="Success Folder:" VerticalAlignment="Center"/>
+                        <TextBox x:Name="SuccessFolderTextBox" Grid.Column="1" Margin="5,0,5,0" Padding="5" IsReadOnly="True"/>
+                        <Button x:Name="BrowseSuccessFolderButton" Grid.Column="2" Content="Browse" Click="BrowseSuccessFolderButton_Click" Padding="10,5"/>
+                    </Grid>
+
+                    <CheckBox x:Name="MoveFailedFilesCheckBox" Content="Move failed tested CHD files to Failed Folder" Margin="0,10,0,0" HorizontalAlignment="Left" Checked="MoveFailedFilesCheckBox_CheckedUnchecked" Unchecked="MoveFailedFilesCheckBox_CheckedUnchecked"/>
+                    <Grid x:Name="FailedFolderPanel" Margin="20,0,0,10" Visibility="Collapsed">
+                         <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="100"/>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <Label Grid.Column="0" Content="Failed Folder:" VerticalAlignment="Center"/>
+                        <TextBox x:Name="FailedFolderTextBox" Grid.Column="1" Margin="5,0,5,0" Padding="5" IsReadOnly="True"/>
+                        <Button x:Name="BrowseFailedFolderButton" Grid.Column="2" Content="Browse" Click="BrowseFailedFolderButton_Click" Padding="10,5"/>
+                    </Grid>
+                    
+                    <Button x:Name="StartVerificationButton" Content="Start Verification" Click="StartVerificationButton_Click" Margin="0,10,0,0" Padding="15,8" HorizontalAlignment="Center" FontWeight="Bold"/>
+                </StackPanel>
+            </TabItem>
+        </TabControl>
         
-        <!-- Start Conversion Button -->
-        <Button x:Name="StartButton" 
-                Grid.Row="5" 
-                Content="Start Conversion" 
-                Click="StartButton_Click" 
-                Margin="10,10,10,15" 
-                Padding="15,8" 
-                HorizontalAlignment="Center" 
-                FontWeight="Bold"/>
-        
-        <!-- Log TextBox -->
         <TextBox x:Name="LogViewer"
-                 Grid.Row="6"
+                 Grid.Row="2"
                  AcceptsReturn="True"
                  VerticalScrollBarVisibility="Visible"
                  IsReadOnly="True"
-                 Margin="10,0,10,0"
+                 Margin="10,0,10,10"
                  FontFamily="Consolas"/>
 
-        <!-- Progress Text -->
+        <Grid Grid.Row="3" Margin="10,0,10,5">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="*" /> <!-- Added for Write Speed -->
+            </Grid.ColumnDefinitions>
+
+            <Border Grid.Column="0" BorderBrush="LightGray" BorderThickness="1" Margin="2" Padding="5">
+                <StackPanel Orientation="Vertical" HorizontalAlignment="Center">
+                    <TextBlock Text="Total Files:" FontWeight="Bold" HorizontalAlignment="Center"/>
+                    <TextBlock x:Name="TotalFilesValue" Text="0" HorizontalAlignment="Center"/>
+                </StackPanel>
+            </Border>
+
+            <Border Grid.Column="1" BorderBrush="LightGray" BorderThickness="1" Margin="2" Padding="5">
+                <StackPanel Orientation="Vertical" HorizontalAlignment="Center">
+                    <TextBlock Text="Success:" FontWeight="Bold" Foreground="Green" HorizontalAlignment="Center"/> <!-- Changed Label -->
+                    <TextBlock x:Name="SuccessValue" Text="0" HorizontalAlignment="Center"/> <!-- Changed Name -->
+                </StackPanel>
+            </Border>
+
+            <Border Grid.Column="2" BorderBrush="LightGray" BorderThickness="1" Margin="2" Padding="5">
+                <StackPanel Orientation="Vertical" HorizontalAlignment="Center">
+                    <TextBlock Text="Failed:" FontWeight="Bold" Foreground="Red" HorizontalAlignment="Center"/>
+                    <TextBlock x:Name="FailedValue" Text="0" HorizontalAlignment="Center"/>
+                </StackPanel>
+            </Border>
+
+            <Border Grid.Column="3" BorderBrush="LightGray" BorderThickness="1" Margin="2" Padding="5">
+                <StackPanel Orientation="Vertical" HorizontalAlignment="Center">
+                    <TextBlock Text="Processing Time:" FontWeight="Bold" HorizontalAlignment="Center"/>
+                    <TextBlock x:Name="ProcessingTimeValue" Text="00:00:00" HorizontalAlignment="Center"/>
+                </StackPanel>
+            </Border>
+            
+            <Border Grid.Column="4" BorderBrush="LightGray" BorderThickness="1" Margin="2" Padding="5"> <!-- New Write Speed Border -->
+                <StackPanel Orientation="Vertical" HorizontalAlignment="Center">
+                    <TextBlock Text="Write Speed:" FontWeight="Bold" HorizontalAlignment="Center"/>
+                    <TextBlock x:Name="WriteSpeedValue" Text="0.0 MB/s" HorizontalAlignment="Center"/>
+                </StackPanel>
+            </Border>
+        </Grid>
+
         <TextBlock x:Name="ProgressText"
-                  Grid.Row="7"
+                  Grid.Row="4"
                   Margin="10,5,10,2"
+                  HorizontalAlignment="Center"
                   Visibility="Collapsed"/>
         
-        <!-- Progress Bar -->
-        <Grid Grid.Row="8" Margin="10,2,10,10">
+        <Grid Grid.Row="5" Margin="10,2,10,10">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*"/>
                 <ColumnDefinition Width="Auto"/>
             </Grid.ColumnDefinitions>
-            <ProgressBar x:Name="ProgressBar" 
-                         Height="20" 
-                         Grid.Column="0" 
-                         Visibility="Collapsed"/>
-            <Button x:Name="CancelButton" 
-                    Content="Cancel" 
-                    Width="100" 
-                    Height="25" 
-                    Grid.Column="1" 
-                    Margin="10,0,0,0" 
-                    Visibility="Collapsed" 
-                    Click="CancelButton_Click"/>
+            <ProgressBar x:Name="ProgressBar" Height="25" Grid.Column="0" Visibility="Collapsed"/>
+            <Button x:Name="CancelButton" Content="Cancel" Width="100" Height="25" Grid.Column="1" Margin="10,0,0,0" Visibility="Collapsed" Click="CancelButton_Click"/>
         </Grid>
     </Grid>
 </Window>
