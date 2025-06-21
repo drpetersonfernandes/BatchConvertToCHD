@@ -22,13 +22,16 @@ public partial class MainWindow : IDisposable
     private static readonly char[] Separator = [' ', '\t'];
 
     private const string SevenZipExeName = "7z.exe";
+    private const string MaxCsoExeName = "maxcso.exe"; // Added for CSO support
     private readonly string _sevenZipPath;
+    private readonly string _maxCsoPath; // Added for CSO support
     private readonly bool _isSevenZipAvailable;
+    private readonly bool _isMaxCsoAvailable; // Added for CSO support
     private readonly bool _isChdmanAvailable;
 
-    private static readonly string[] AllSupportedInputExtensionsForConversion = { ".cue", ".iso", ".img", ".cdi", ".gdi", ".toc", ".raw", ".zip", ".7z", ".rar" };
-    private static readonly string[] ArchiveExtensions = { ".zip", ".7z", ".rar" };
-    private static readonly string[] PrimaryTargetExtensionsInsideArchive = { ".cue", ".iso", ".img", ".cdi", ".gdi", ".toc", ".raw" };
+    private static readonly string[] AllSupportedInputExtensionsForConversion = { ".cue", ".iso", ".img", ".cdi", ".gdi", ".toc", ".raw", ".zip", ".7z", ".rar", ".cso" }; // Added .cso
+    private static readonly string[] ArchiveExtensions = { ".zip", ".7z", ".rar" }; // CSO is handled separately, not as a generic archive
+    private static readonly string[] PrimaryTargetExtensionsInsideArchive = { ".cue", ".iso", ".img", ".cdi", ".gdi", ".toc", ".raw" }; // CSO extracts to .iso
 
     private int _currentDegreeOfParallelismForFiles = 1;
 
@@ -56,6 +59,9 @@ public partial class MainWindow : IDisposable
         _sevenZipPath = Path.Combine(appDirectory, SevenZipExeName);
         _isSevenZipAvailable = File.Exists(_sevenZipPath);
 
+        _maxCsoPath = Path.Combine(appDirectory, MaxCsoExeName); // Added for CSO support
+        _isMaxCsoAvailable = File.Exists(_maxCsoPath); // Added for CSO support
+
         DisplayConversionInstructionsInLog();
         ResetOperationStats();
     }
@@ -72,6 +78,7 @@ public partial class MainWindow : IDisposable
         LogMessage("- TOC files (CD images)");
         LogMessage("- IMG files (Hard disk images)");
         LogMessage("- RAW files (Raw data)");
+        LogMessage("- CSO files (Compressed ISO, will be decompressed to ISO first)"); // Added for CSO
         LogMessage("- ZIP, 7Z, RAR files (containing any of the above formats)");
         LogMessage("");
         LogMessage("Please follow these steps for conversion:");
@@ -95,6 +102,10 @@ public partial class MainWindow : IDisposable
 
         if (_isSevenZipAvailable) LogMessage("7z.exe found. .7z and .rar extraction enabled for conversion.");
         else LogMessage("WARNING: 7z.exe not found. .7z and .rar extraction will be disabled for conversion.");
+
+        if (_isMaxCsoAvailable) LogMessage("maxcso.exe found. .cso decompression enabled for conversion."); // Added for CSO
+        else LogMessage("WARNING: maxcso.exe not found. .cso decompression will be disabled for conversion."); // Added for CSO
+
         LogMessage("--- Ready for Conversion ---");
     }
 
@@ -533,11 +544,34 @@ public partial class MainWindow : IDisposable
         try
         {
             var fileToProcess = inputFile;
-            var isArchiveFile = false;
+            var isArchiveOrCsoFile = false;
             var tempDir = string.Empty;
             var fileExtension = Path.GetExtension(inputFile).ToLowerInvariant();
 
-            if (ArchiveExtensions.Contains(fileExtension))
+            if (fileExtension == ".cso")
+            {
+                if (!_isMaxCsoAvailable)
+                {
+                    LogMessage($"Skipping {fileName}: {MaxCsoExeName} is not available for .cso decompression. This file will be marked as failed.");
+                    return false;
+                }
+
+                LogMessage($"CSO file detected: {fileName}. Attempting decompression.");
+                var extractResult = await ExtractCsoAsync(inputFile, token);
+                if (extractResult.Success)
+                {
+                    fileToProcess = extractResult.FilePath; // Path to the extracted .iso
+                    tempDir = extractResult.TempDir;
+                    isArchiveOrCsoFile = true;
+                    LogMessage($"Using decompressed ISO: {Path.GetFileName(fileToProcess)} from CSO {fileName}");
+                }
+                else
+                {
+                    LogMessage($"Error decompressing CSO {fileName}: {extractResult.ErrorMessage}");
+                    return false;
+                }
+            }
+            else if (ArchiveExtensions.Contains(fileExtension)) // Handles .zip, .7z, .rar
             {
                 LogMessage($"Archive detected: {fileName}. Attempting extraction.");
                 var extractResult = await ExtractArchiveAsync(inputFile, token);
@@ -545,7 +579,7 @@ public partial class MainWindow : IDisposable
                 {
                     fileToProcess = extractResult.FilePath;
                     tempDir = extractResult.TempDir;
-                    isArchiveFile = true;
+                    isArchiveOrCsoFile = true;
                     LogMessage($"Using extracted file: {Path.GetFileName(fileToProcess)} from archive {fileName}");
                 }
                 else
@@ -562,20 +596,27 @@ public partial class MainWindow : IDisposable
 
                 var success = await ConvertToChdAsync(chdmanPath, fileToProcess, outputChdFile, coresForChdman, token);
 
-                if (success) LogMessage($"Successfully converted: {Path.GetFileName(fileToProcess)} to {Path.GetFileName(outputChdFile)}");
-                else LogMessage($"Failed to convert: {Path.GetFileName(fileToProcess)}");
+                if (success) LogMessage($"Successfully converted: {Path.GetFileName(fileToProcess)} (from {fileName}) to {Path.GetFileName(outputChdFile)}");
+                else LogMessage($"Failed to convert: {Path.GetFileName(fileToProcess)} (from {fileName})");
 
                 if (!success || !deleteOriginal) return success;
 
-                if (isArchiveFile) TryDeleteFile(inputFile, $"original archive file: {fileName}");
-                else await DeleteOriginalGameFilesAsync(fileToProcess);
+                if (isArchiveOrCsoFile)
+                {
+                    TryDeleteFile(inputFile, $"original {fileExtension} file: {fileName}");
+                }
+                else
+                {
+                    await DeleteOriginalGameFilesAsync(fileToProcess); // fileToProcess is inputFile in this case
+                }
+
                 return success;
             }
             finally
             {
-                if (isArchiveFile && !string.IsNullOrEmpty(tempDir) && Directory.Exists(tempDir))
+                if (isArchiveOrCsoFile && !string.IsNullOrEmpty(tempDir) && Directory.Exists(tempDir))
                 {
-                    TryDeleteDirectory(tempDir, "temporary extraction directory");
+                    TryDeleteDirectory(tempDir, "temporary extraction/decompression directory");
                 }
             }
         }
@@ -700,6 +741,7 @@ public partial class MainWindow : IDisposable
             {
                 case ".img": command = "createhd"; break;
                 case ".raw": command = "createraw"; break;
+                // .iso, .cue, .gdi, .cdi, .toc will use createcd by default
             }
 
             coresForChdman = Math.Max(1, coresForChdman);
@@ -1042,6 +1084,92 @@ public partial class MainWindow : IDisposable
         return referencedFiles;
     }
 
+    private async Task<(bool Success, string FilePath, string TempDir, string ErrorMessage)> ExtractCsoAsync(string csoPath, CancellationToken token)
+    {
+        var tempDir = Path.Combine(Path.GetTempPath(), Path.GetRandomFileName());
+        var csoFileName = Path.GetFileName(csoPath);
+        var outputIsoName = Path.ChangeExtension(csoFileName, ".iso");
+        var outputIsoPath = Path.Combine(tempDir, outputIsoName);
+        var process = new Process();
+
+        try
+        {
+            // _isMaxCsoAvailable check is now done in ProcessSingleFileForConversionAsync before calling this
+            Directory.CreateDirectory(tempDir);
+            LogMessage($"Decompressing {csoFileName} to temporary ISO: {outputIsoPath}");
+
+            process.StartInfo = new ProcessStartInfo
+            {
+                FileName = _maxCsoPath,
+                Arguments = $"decompress \"{csoPath}\" \"{outputIsoPath}\"",
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true
+            };
+
+            var outputBuilder = new StringBuilder(); // To capture output for error reporting
+            process.OutputDataReceived += (_, args) =>
+            {
+                if (args.Data != null) outputBuilder.AppendLine(args.Data);
+            };
+            process.ErrorDataReceived += (_, args) =>
+            {
+                if (args.Data == null) return;
+
+                outputBuilder.AppendLine(args.Data);
+                LogMessage($"[MAXCSO STDERR] {args.Data}"); // Log errors immediately
+            };
+
+            process.Start();
+            process.BeginOutputReadLine();
+            process.BeginErrorReadLine();
+            await process.WaitForExitAsync(token);
+
+            if (process.ExitCode != 0)
+            {
+                LogMessage($"Error decompressing {csoFileName} with {MaxCsoExeName}. Exit code: {process.ExitCode}. Output: {outputBuilder.ToString().Trim()}");
+                return (false, string.Empty, tempDir, $"{MaxCsoExeName} failed. Exit code: {process.ExitCode}. Output: {outputBuilder.ToString().Trim()}");
+            }
+
+            if (!File.Exists(outputIsoPath))
+            {
+                LogMessage($"Decompression of {csoFileName} with {MaxCsoExeName} completed (Exit Code 0), but output ISO not found at {outputIsoPath}. Output: {outputBuilder.ToString().Trim()}");
+                return (false, string.Empty, tempDir, $"{MaxCsoExeName} completed, but output ISO not found. Output: {outputBuilder.ToString().Trim()}");
+            }
+
+            LogMessage($"Successfully decompressed {csoFileName} to {outputIsoPath}");
+            return (true, outputIsoPath, tempDir, string.Empty);
+        }
+        catch (OperationCanceledException)
+        {
+            LogMessage($"CSO decompression cancelled for {csoFileName}.");
+            // tempDir will be cleaned up by the caller's finally block if this throws
+            try
+            {
+                if (!process.HasExited) process.Kill(true);
+            }
+            catch
+            {
+                /*ignore*/
+            }
+
+            throw;
+        }
+        catch (Exception ex)
+        {
+            LogMessage($"Error decompressing CSO {csoFileName}: {ex.Message}");
+            await ReportBugAsync($"Error decompressing CSO: {csoFileName}", ex);
+            // tempDir will be cleaned up by the caller's finally block
+            return (false, string.Empty, tempDir, $"Exception during CSO decompression: {ex.Message}");
+        }
+        finally
+        {
+            process?.Dispose();
+        }
+    }
+
+
     private async Task<(bool Success, string FilePath, string TempDir, string ErrorMessage)> ExtractArchiveAsync(string archivePath, CancellationToken token)
     {
         var tempDir = Path.Combine(Path.GetTempPath(), Path.GetRandomFileName());
@@ -1083,17 +1211,17 @@ public partial class MainWindow : IDisposable
                     }
 
                     break;
-                default: return (false, string.Empty, tempDir, $"Unsupported archive type: {extension}");
+                default: return (false, string.Empty, tempDir, $"Unsupported archive type: {extension}"); // Should not happen if called correctly
             }
 
             var supportedFile = Directory.GetFiles(tempDir, "*.*", SearchOption.AllDirectories)
-                .FirstOrDefault(f => PrimaryTargetExtensionsInsideArchive.Contains(Path.GetExtension(f).ToLowerInvariant()));
+                .FirstOrDefault(static f => PrimaryTargetExtensionsInsideArchive.Contains(Path.GetExtension(f).ToLowerInvariant()));
 
             return supportedFile != null ? (true, supportedFile, tempDir, string.Empty) : (false, string.Empty, tempDir, "No supported primary files found in archive.");
         }
         catch (OperationCanceledException)
         {
-            TryDeleteDirectory(tempDir, $"cancelled extraction for {archiveFileName}");
+            // tempDir will be cleaned up by the caller's finally block if this throws
             try
             {
                 if (process.HasExited == false) process.Kill(true);
@@ -1109,7 +1237,7 @@ public partial class MainWindow : IDisposable
         {
             LogMessage($"Error extracting archive {archiveFileName}: {ex.Message}");
             await ReportBugAsync($"Error extracting archive: {archiveFileName}", ex);
-            TryDeleteDirectory(tempDir, $"failed extraction for {archiveFileName}");
+            // tempDir will be cleaned up by the caller's finally block
             return (false, string.Empty, tempDir, $"Exception during extraction: {ex.Message}");
         }
         finally

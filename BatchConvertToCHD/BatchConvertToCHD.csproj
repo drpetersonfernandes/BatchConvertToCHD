@@ -32,6 +32,9 @@
     <None Update="7z.dll"> 
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
+    <None Update="maxcso.exe">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
   </ItemGroup>
 
 </Project>
