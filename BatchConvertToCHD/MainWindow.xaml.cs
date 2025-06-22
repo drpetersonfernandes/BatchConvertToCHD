@@ -4,6 +4,7 @@ using System.Globalization;
 using System.IO;
 using System.IO.Compression;
 using System.Text;
+using System.Text.RegularExpressions; // Added for filename sanitization
 using System.Windows;
 using System.Windows.Controls; // Required for TabControl
 using Microsoft.Win32;
@@ -64,6 +65,25 @@ public partial class MainWindow : IDisposable
 
         DisplayConversionInstructionsInLog();
         ResetOperationStats();
+    }
+
+    private static string SanitizeFileName(string name)
+    {
+        var invalidChars = Regex.Escape(new string(Path.GetInvalidFileNameChars()));
+        var invalidRegStr = string.Format(CultureInfo.InvariantCulture, @"([{0}]*\.+$)|([{0}]+)", invalidChars);
+        var sanitizedName = Regex.Replace(name, invalidRegStr, "_");
+        // Further replace common problematic characters not covered by GetInvalidFileNameChars but problematic for command lines
+        sanitizedName = sanitizedName.Replace("…", "_ellipsis_")
+            .Replace("â€¦", "_ellipsis_"); // Handle the misinterpretation too
+        return sanitizedName;
+    }
+
+    private string GetSafeTempFileName(string originalFileNameWithExtension, string desiredExtensionWithoutDot, string tempDirectory)
+    {
+        // Use a GUID to ensure uniqueness and avoid issues with original name length or complex chars for the temp file itself.
+        // The original name is still used for the *final* CHD output.
+        var safeBaseName = Guid.NewGuid().ToString("N");
+        return Path.Combine(tempDirectory, safeBaseName + "." + desiredExtensionWithoutDot);
     }
 
     private void DisplayConversionInstructionsInLog()
@@ -540,64 +560,95 @@ public partial class MainWindow : IDisposable
 
     private async Task<bool> ProcessSingleFileForConversionAsync(string chdmanPath, string inputFile, string outputFolder, bool deleteOriginal, int coresForChdman, CancellationToken token)
     {
-        var fileName = Path.GetFileName(inputFile);
-        LogMessage($"Starting to process for conversion: {fileName}");
-        var fileToProcess = inputFile;
-        var isArchiveOrCsoFile = false;
+        var originalInputFileName = Path.GetFileName(inputFile); // Store original name for logging and final CHD
+        LogMessage($"Starting to process for conversion: {originalInputFileName}");
+
+        string fileToProcessForChdman; // This will be the path to the sanitized temp file
+        var originalFileExtension = Path.GetExtension(inputFile).ToLowerInvariant();
         var tempDir = string.Empty;
-        var fileExtension = Path.GetExtension(inputFile).ToLowerInvariant();
         var outputChdFile = string.Empty;
 
         try
         {
             token.ThrowIfCancellationRequested();
 
-            if (fileExtension == ".cso")
+            // Determine the base name for the final CHD from the original input file
+            var chdBaseName = Path.GetFileNameWithoutExtension(originalInputFileName);
+            outputChdFile = Path.Combine(outputFolder, SanitizeFileName(chdBaseName) + ".chd"); // Sanitize final CHD name too
+
+            if (originalFileExtension == ".cso")
             {
                 if (!_isMaxCsoAvailable)
                 {
-                    LogMessage($"Skipping {fileName}: {MaxCsoExeName} is not available for .cso decompression. This file will be marked as failed.");
+                    LogMessage($"Skipping {originalInputFileName}: {MaxCsoExeName} is not available. This file will be marked as failed.");
                     return false;
                 }
 
-                LogMessage($"CSO file detected: {fileName}. Attempting decompression.");
-                var extractResult = await ExtractCsoAsync(inputFile, token);
+                LogMessage($"CSO file detected: {originalInputFileName}. Attempting decompression.");
+                tempDir = Path.Combine(Path.GetTempPath(), Path.GetRandomFileName());
+                await Task.Run(() => Directory.CreateDirectory(tempDir), token);
+
+                // Use a safe, unique name for the temporary ISO
+                var tempIsoPath = GetSafeTempFileName(originalInputFileName, "iso", tempDir);
+
+                var extractResult = await ExtractCsoAsync(inputFile, tempIsoPath, tempDir, token);
                 token.ThrowIfCancellationRequested();
                 if (extractResult.Success)
                 {
-                    fileToProcess = extractResult.FilePath;
-                    tempDir = extractResult.TempDir;
-                    isArchiveOrCsoFile = true;
-                    LogMessage($"Using decompressed ISO: {Path.GetFileName(fileToProcess)} from CSO {fileName}");
+                    fileToProcessForChdman = extractResult.FilePath; // This is tempIsoPath
+                    LogMessage($"Using decompressed ISO: {Path.GetFileName(fileToProcessForChdman)} from CSO {originalInputFileName}");
                 }
                 else
                 {
-                    LogMessage($"Error decompressing CSO {fileName}: {extractResult.ErrorMessage}");
+                    LogMessage($"Error decompressing CSO {originalInputFileName}: {extractResult.ErrorMessage}");
                     return false;
                 }
             }
-            else if (ArchiveExtensions.Contains(fileExtension))
+            else if (ArchiveExtensions.Contains(originalFileExtension))
             {
-                LogMessage($"Archive detected: {fileName}. Attempting extraction.");
-                var extractResult = await ExtractArchiveAsync(inputFile, token);
+                LogMessage($"Archive detected: {originalInputFileName}. Attempting extraction.");
+                tempDir = Path.Combine(Path.GetTempPath(), Path.GetRandomFileName()); // tempDir is set here
+                await Task.Run(() => Directory.CreateDirectory(tempDir), token);
+
+                var extractResult = await ExtractArchiveAsync(inputFile, tempDir, token);
                 token.ThrowIfCancellationRequested();
                 if (extractResult.Success)
                 {
-                    fileToProcess = extractResult.FilePath;
-                    tempDir = extractResult.TempDir;
-                    isArchiveOrCsoFile = true;
-                    LogMessage($"Using extracted file: {Path.GetFileName(fileToProcess)} from archive {fileName}");
+                    // The extracted file path might still have special chars if it was deep in an archive.
+                    // Copy it to a sanitized name within our tempDir to be safe for chdman.
+                    var extractedFileOriginalName = Path.GetFileName(extractResult.FilePath);
+                    var extractedFileOriginalExt = Path.GetExtension(extractResult.FilePath).TrimStart('.');
+
+                    fileToProcessForChdman = GetSafeTempFileName(extractedFileOriginalName, extractedFileOriginalExt, tempDir);
+
+                    await Task.Run(() => File.Copy(extractResult.FilePath, fileToProcessForChdman, true), token);
+                    LogMessage($"Copied extracted file to sanitized temp path: {fileToProcessForChdman}");
+
+                    LogMessage($"Using extracted file: {Path.GetFileName(fileToProcessForChdman)} (original in archive: {extractedFileOriginalName}) from archive {originalInputFileName}");
                 }
                 else
                 {
-                    LogMessage($"Error extracting archive {fileName}: {extractResult.ErrorMessage}");
+                    LogMessage($"Error extracting archive {originalInputFileName}: {extractResult.ErrorMessage}");
                     return false;
                 }
+            }
+            else
+            {
+                // For direct files like .iso, .cue, etc., that are not archives or CSO.
+                // We should still process them from a temporary sanitized copy to be safe.
+                tempDir = Path.Combine(Path.GetTempPath(), Path.GetRandomFileName());
+                await Task.Run(() => Directory.CreateDirectory(tempDir), token);
+
+                var directFileExt = originalFileExtension.TrimStart('.');
+                fileToProcessForChdman = GetSafeTempFileName(originalInputFileName, directFileExt, tempDir);
+
+                await Task.Run(() => File.Copy(inputFile, fileToProcessForChdman, true), token);
+                LogMessage($"Copied direct input file {originalInputFileName} to sanitized temp path: {fileToProcessForChdman}");
+                // isArchiveOrCsoFile remains false, but tempDir is used for this temporary copy.
             }
 
             UpdateWriteSpeedDisplay(0);
 
-            outputChdFile = Path.Combine(outputFolder, Path.GetFileNameWithoutExtension(fileToProcess) + ".chd");
             var outputDir = Path.GetDirectoryName(outputChdFile) ?? outputFolder;
             if (!await Task.Run(() => Directory.Exists(outputDir), token))
             {
@@ -609,20 +660,21 @@ public partial class MainWindow : IDisposable
             bool conversionSuccessful;
             try
             {
-                conversionSuccessful = await ConvertToChdAsync(chdmanPath, fileToProcess, outputChdFile, coresForChdman, token);
+                // Pass fileToProcessForChdman (sanitized temp path) to ConvertToChdAsync
+                conversionSuccessful = await ConvertToChdAsync(chdmanPath, fileToProcessForChdman, outputChdFile, coresForChdman, token);
                 token.ThrowIfCancellationRequested();
             }
             catch (OperationCanceledException)
             {
-                LogMessage($"Conversion of {fileName} was cancelled during chdman execution.");
+                LogMessage($"Conversion of {originalInputFileName} was cancelled during chdman execution.");
                 if (!string.IsNullOrEmpty(outputChdFile))
                     await TryDeleteFileAsync(outputChdFile, "partially converted/cancelled CHD file", CancellationToken.None);
                 throw;
             }
             catch (Exception exConv)
             {
-                LogMessage($"Error during CHD conversion of {fileName}: {exConv.Message}");
-                await ReportBugAsync($"CHD conversion error for {fileName}", exConv);
+                LogMessage($"Error during CHD conversion of {originalInputFileName}: {exConv.Message}");
+                await ReportBugAsync($"CHD conversion error for {originalInputFileName}", exConv);
                 if (!string.IsNullOrEmpty(outputChdFile))
                     await TryDeleteFileAsync(outputChdFile, "partially converted/failed CHD file (exception)", CancellationToken.None);
                 return false;
@@ -634,23 +686,22 @@ public partial class MainWindow : IDisposable
 
             if (conversionSuccessful)
             {
-                LogMessage($"Successfully converted: {Path.GetFileName(fileToProcess)} (from {fileName}) to {Path.GetFileName(outputChdFile)}");
+                LogMessage($"Successfully converted: {Path.GetFileName(fileToProcessForChdman)} (from {originalInputFileName}) to {Path.GetFileName(outputChdFile)}");
                 if (!deleteOriginal) return true;
-
-                if (isArchiveOrCsoFile)
+                // Delete the *original* input file, not the temp one.
+                await TryDeleteFileAsync(inputFile, $"original {originalFileExtension} file: {originalInputFileName}", token);
+                if (originalFileExtension is ".cue" or ".gdi") // If it was a cue/gdi, delete its referenced files too
                 {
-                    await TryDeleteFileAsync(inputFile, $"original {fileExtension} file: {fileName}", token);
-                }
-                else
-                {
-                    await DeleteOriginalGameFilesAsync(fileToProcess, token);
+                    // We need to pass the original inputFile path to DeleteOriginalGameFilesAsync
+                    // as it parses the cue/gdi from its original location.
+                    await DeleteOriginalGameFilesAsync(inputFile, token);
                 }
 
                 return true;
             }
             else
             {
-                LogMessage($"Failed to convert (chdman process error): {Path.GetFileName(fileToProcess)} (from {fileName})");
+                LogMessage($"Failed to convert (chdman process error): {Path.GetFileName(fileToProcessForChdman)} (from {originalInputFileName})");
                 if (!string.IsNullOrEmpty(outputChdFile))
                     await TryDeleteFileAsync(outputChdFile, "partially converted/failed CHD file (chdman error)", CancellationToken.None);
                 return false;
@@ -658,14 +709,14 @@ public partial class MainWindow : IDisposable
         }
         catch (OperationCanceledException)
         {
-            LogMessage($"Conversion processing cancelled for {fileName}.");
+            LogMessage($"Conversion processing cancelled for {originalInputFileName}.");
             UpdateWriteSpeedDisplay(0);
             throw;
         }
         catch (Exception ex)
         {
-            LogMessage($"Error processing file {fileName} for conversion: {ex.Message}");
-            await ReportBugAsync($"Error processing file for conversion: {fileName}", ex);
+            LogMessage($"Error processing file {originalInputFileName} for conversion: {ex.Message}");
+            await ReportBugAsync($"Error processing file for conversion: {originalInputFileName}", ex);
             if (!string.IsNullOrEmpty(outputChdFile))
             {
                 await TryDeleteFileAsync(outputChdFile, "partially converted/failed CHD file (general error)", CancellationToken.None);
@@ -676,34 +727,28 @@ public partial class MainWindow : IDisposable
         }
         finally
         {
-            // Ensure tempDir is cleaned up if it was used.
-            // This 'finally' block executes on the same thread as the rest of ProcessSingleFileForConversionAsync,
-            // which is a background thread from Parallel.ForEachAsync or the sequential loop.
-            if (isArchiveOrCsoFile && !string.IsNullOrEmpty(tempDir))
+            // Cleanup tempDir which now holds the sanitized copy (fileToProcessForChdman)
+            // or was used for CSO/archive extraction.
+            if (!string.IsNullOrEmpty(tempDir)) // tempDir is created for all paths now
             {
                 bool tempDirExists;
                 try
                 {
-                    // Quick, synchronous check as we are already on a background thread.
                     tempDirExists = Directory.Exists(tempDir);
                 }
                 catch (Exception ex)
                 {
                     LogMessage($"Error checking existence of temp directory {tempDir} for cleanup: {ex.Message}");
-                    // If checking existence fails, still attempt deletion if path is known.
-                    // TryDeleteDirectoryAsync will handle non-existence gracefully.
                     tempDirExists = true;
                 }
 
                 if (tempDirExists)
                 {
-                     // Pass CancellationToken.None for cleanup to use its internal timeouts.
-                     await TryDeleteDirectoryAsync(tempDir, "temporary extraction/decompression directory (final cleanup)", CancellationToken.None);
+                    await TryDeleteDirectoryAsync(tempDir, "temporary processing directory (final cleanup)", CancellationToken.None);
                 }
             }
         }
     }
-
 
     private async Task PerformBatchVerificationAsync(string chdmanPath, string inputFolder, bool includeSubfolders, bool moveSuccess, string successFolder, bool moveFailed, string failedFolder, CancellationToken token)
     {
@@ -811,25 +856,28 @@ public partial class MainWindow : IDisposable
     }
 
 
-    private async Task<bool> ConvertToChdAsync(string chdmanPath, string inputFile, string outputFile, int coresForChdman, CancellationToken token)
+    private async Task<bool> ConvertToChdAsync(string chdmanPath, string sanitizedInputFile, string outputChdFile, int coresForChdman, CancellationToken token)
     {
+        // sanitizedInputFile is the path to the file with a safe name in a temp directory
+        // outputChdFile is the path to the final CHD, named based on the original input
         var process = new Process();
         try
         {
             token.ThrowIfCancellationRequested();
             var command = "createcd";
-            var extension = Path.GetExtension(inputFile).ToLowerInvariant();
+            var extension = Path.GetExtension(sanitizedInputFile).ToLowerInvariant(); // Use extension of the temp file
             switch (extension)
             {
                 case ".img": command = "createhd"; break;
                 case ".raw": command = "createraw"; break;
+                // .iso, .cue, .gdi, .cdi, .toc (from sanitized temp) will use createcd
             }
 
             coresForChdman = Math.Max(1, coresForChdman);
 
-            LogMessage($"CHDMAN Convert: Using command '{command}' with {coresForChdman} core(s) for {Path.GetFileName(inputFile)}.");
-            var arguments = $"{command} -i \"{inputFile}\" -o \"{outputFile}\" -f -np {coresForChdman}";
-
+            LogMessage($"CHDMAN Convert: Using command '{command}' with {coresForChdman} core(s) for {Path.GetFileName(sanitizedInputFile)} -> {Path.GetFileName(outputChdFile)}.");
+            var arguments = $"{command} -i \"{sanitizedInputFile}\" -o \"{outputChdFile}\" -f -np {coresForChdman}";
+            // ... (rest of ConvertToChdAsync remains the same, using sanitizedInputFile for -i) ...
             process.StartInfo = new ProcessStartInfo
             {
                 FileName = chdmanPath,
@@ -853,7 +901,7 @@ public partial class MainWindow : IDisposable
                 if (string.IsNullOrEmpty(args.Data)) return;
 
                 errorBuilder.AppendLine(args.Data);
-                LogMessage($"[CHDMAN CONVERT STDERR] {args.Data}");
+                LogMessage($"[CHDMAN CONVERT STDERR] {args.Data}"); // Log the raw error from chdman
                 UpdateConversionProgressFromChdman(args.Data);
             };
 
@@ -863,9 +911,9 @@ public partial class MainWindow : IDisposable
 
             var lastSpeedCheckTime = DateTime.UtcNow;
             long lastFileSize = 0;
-            if (await Task.Run(() => File.Exists(outputFile), token))
+            if (await Task.Run(() => File.Exists(outputChdFile), token))
             {
-                lastFileSize = await Task.Run(() => new FileInfo(outputFile).Length, token);
+                lastFileSize = await Task.Run(() => new FileInfo(outputChdFile).Length, token);
             }
 
 
@@ -882,7 +930,6 @@ public partial class MainWindow : IDisposable
                         /* ignore */
                     }
 
-                    // LogMessage($"Conversion process for {Path.GetFileName(inputFile)} cancelled by user."); // Logged by caller
                     token.ThrowIfCancellationRequested();
                 }
 
@@ -892,9 +939,9 @@ public partial class MainWindow : IDisposable
 
                 try
                 {
-                    if (await Task.Run(() => File.Exists(outputFile), token))
+                    if (await Task.Run(() => File.Exists(outputChdFile), token))
                     {
-                        var currentFileSize = await Task.Run(() => new FileInfo(outputFile).Length, token);
+                        var currentFileSize = await Task.Run(() => new FileInfo(outputChdFile).Length, token);
                         var currentTime = DateTime.UtcNow;
                         var timeDelta = currentTime - lastSpeedCheckTime;
 
@@ -924,7 +971,6 @@ public partial class MainWindow : IDisposable
         }
         catch (OperationCanceledException)
         {
-            // LogMessage($"Conversion cancelled for {Path.GetFileName(inputFile)}."); // Logged by caller
             try
             {
                 if (!process.HasExited) process.Kill(true);
@@ -936,8 +982,6 @@ public partial class MainWindow : IDisposable
 
             throw;
         }
-        // Other exceptions will propagate to the caller (ProcessSingleFileForConversionAsync)
-        // and be handled there, including deleting the partial output file.
         finally
         {
             process?.Dispose();
@@ -1157,24 +1201,23 @@ public partial class MainWindow : IDisposable
         return referencedFiles;
     }
 
-    private async Task<(bool Success, string FilePath, string TempDir, string ErrorMessage)> ExtractCsoAsync(string csoPath, CancellationToken token)
+    private async Task<(bool Success, string FilePath, string TempDir, string ErrorMessage)> ExtractCsoAsync(string originalCsoPath, string tempOutputIsoPath, string tempDirectoryRoot, CancellationToken token)
     {
-        var tempDir = Path.Combine(Path.GetTempPath(), Path.GetRandomFileName());
-        var csoFileName = Path.GetFileName(csoPath);
-        var outputIsoName = Path.ChangeExtension(csoFileName, ".iso");
-        var outputIsoPath = Path.Combine(tempDir, outputIsoName);
+        // tempOutputIsoPath is the full path for the sanitized temporary ISO
+        // tempDirectoryRoot is the parent temp folder (e.g., C:\Users\...\Temp\randomname\)
+        var csoFileNameForLog = Path.GetFileName(originalCsoPath);
         var process = new Process();
 
         try
         {
             token.ThrowIfCancellationRequested();
-            await Task.Run(() => Directory.CreateDirectory(tempDir), token);
-            LogMessage($"Decompressing {csoFileName} to temporary ISO: {outputIsoPath}");
+            // tempDirectoryRoot is already created by the caller (ProcessSingleFileForConversionAsync)
+            LogMessage($"Decompressing {csoFileNameForLog} to temporary ISO: {tempOutputIsoPath}");
 
             process.StartInfo = new ProcessStartInfo
             {
                 FileName = _maxCsoPath,
-                Arguments = $"--decompress \"{csoPath}\" -o \"{outputIsoPath}\"",
+                Arguments = $"--decompress \"{originalCsoPath}\" -o \"{tempOutputIsoPath}\"",
                 RedirectStandardOutput = true, RedirectStandardError = true, UseShellExecute = false, CreateNoWindow = true
             };
 
@@ -1211,22 +1254,19 @@ public partial class MainWindow : IDisposable
                         /* ignore */
                     }
 
-                    // LogMessage($"CSO decompression for {csoFileName} cancelled by user."); // Logged by caller
                     token.ThrowIfCancellationRequested();
                 }
 
                 await Task.Delay(WriteSpeedUpdateIntervalMs, token);
-
                 if (process.HasExited || token.IsCancellationRequested) break;
 
                 try
                 {
-                    if (await Task.Run(() => File.Exists(outputIsoPath), token))
+                    if (await Task.Run(() => File.Exists(tempOutputIsoPath), token))
                     {
-                        var currentFileSize = await Task.Run(() => new FileInfo(outputIsoPath).Length, token);
+                        var currentFileSize = await Task.Run(() => new FileInfo(tempOutputIsoPath).Length, token);
                         var currentTime = DateTime.UtcNow;
                         var timeDelta = currentTime - lastSpeedCheckTime;
-
                         if (timeDelta.TotalSeconds > 0)
                         {
                             var bytesDelta = currentFileSize - lastFileSize;
@@ -1252,22 +1292,21 @@ public partial class MainWindow : IDisposable
 
             if (process.ExitCode != 0)
             {
-                LogMessage($"Error decompressing {csoFileName} with {MaxCsoExeName}. Exit code: {process.ExitCode}. Output: {outputBuilder.ToString().Trim()}");
-                return (false, string.Empty, tempDir, $"{MaxCsoExeName} failed. Exit code: {process.ExitCode}. Output: {outputBuilder.ToString().Trim()}");
+                LogMessage($"Error decompressing {csoFileNameForLog} with {MaxCsoExeName}. Exit code: {process.ExitCode}. Output: {outputBuilder.ToString().Trim()}");
+                return (false, string.Empty, tempDirectoryRoot, $"{MaxCsoExeName} failed. Exit code: {process.ExitCode}. Output: {outputBuilder.ToString().Trim()}");
             }
 
-            if (!await Task.Run(() => File.Exists(outputIsoPath), token))
+            if (!await Task.Run(() => File.Exists(tempOutputIsoPath), token))
             {
-                LogMessage($"Decompression of {csoFileName} with {MaxCsoExeName} completed (Exit Code 0), but output ISO not found at {outputIsoPath}. Output: {outputBuilder.ToString().Trim()}");
-                return (false, string.Empty, tempDir, $"{MaxCsoExeName} completed, but output ISO not found. Output: {outputBuilder.ToString().Trim()}");
+                LogMessage($"Decompression of {csoFileNameForLog} with {MaxCsoExeName} completed (Exit Code 0), but output ISO not found at {tempOutputIsoPath}. Output: {outputBuilder.ToString().Trim()}");
+                return (false, string.Empty, tempDirectoryRoot, $"{MaxCsoExeName} completed, but output ISO not found. Output: {outputBuilder.ToString().Trim()}");
             }
 
-            LogMessage($"Successfully decompressed {csoFileName} to {outputIsoPath}");
-            return (true, outputIsoPath, tempDir, string.Empty);
+            LogMessage($"Successfully decompressed {csoFileNameForLog} to {tempOutputIsoPath}");
+            return (true, tempOutputIsoPath, tempDirectoryRoot, string.Empty); // Return tempOutputIsoPath as FilePath
         }
         catch (OperationCanceledException)
         {
-            // LogMessage($"CSO decompression cancelled for {csoFileName}."); // Logged by caller
             try
             {
                 if (!process.HasExited) process.Kill(true);
@@ -1279,26 +1318,25 @@ public partial class MainWindow : IDisposable
 
             throw;
         }
-        // Other exceptions will propagate to the caller (ProcessSingleFileForConversionAsync)
         finally
         {
             process?.Dispose();
         }
     }
 
-
-    private async Task<(bool Success, string FilePath, string TempDir, string ErrorMessage)> ExtractArchiveAsync(string archivePath, CancellationToken token)
+    private async Task<(bool Success, string FilePath, string TempDir, string ErrorMessage)> ExtractArchiveAsync(string originalArchivePath, string tempDirectoryRoot, CancellationToken token)
     {
-        var tempDir = Path.Combine(Path.GetTempPath(), Path.GetRandomFileName());
-        var extension = Path.GetExtension(archivePath).ToLowerInvariant();
-        var archiveFileName = Path.GetFileName(archivePath);
+        // tempDirectoryRoot is the parent temp folder (e.g., C:\Users\...\Temp\randomname\)
+        // The actual extracted files will be inside this root.
+        var extension = Path.GetExtension(originalArchivePath).ToLowerInvariant();
+        var archiveFileNameForLog = Path.GetFileName(originalArchivePath);
         var process = new Process();
 
         try
         {
             token.ThrowIfCancellationRequested();
-            await Task.Run(() => Directory.CreateDirectory(tempDir), token);
-            LogMessage($"Extracting {archiveFileName} to temporary directory: {tempDir}");
+            // tempDirectoryRoot is already created by the caller (ProcessSingleFileForConversionAsync)
+            LogMessage($"Extracting {archiveFileNameForLog} to temporary directory: {tempDirectoryRoot}");
 
             var lastSpeedCheckTime = DateTime.UtcNow;
             long lastTotalTempDirSize = 0;
@@ -1306,14 +1344,13 @@ public partial class MainWindow : IDisposable
             switch (extension)
             {
                 case ".zip":
-                    LogMessage($"Extracting ZIP {archiveFileName} (write speed not shown for this step).");
-                    await Task.Run(() => ZipFile.ExtractToDirectory(archivePath, tempDir, true), token);
-                    // UpdateWriteSpeedDisplay(0); // Caller will reset after this method returns
+                    LogMessage($"Extracting ZIP {archiveFileNameForLog} (write speed not shown for this step).");
+                    await Task.Run(() => ZipFile.ExtractToDirectory(originalArchivePath, tempDirectoryRoot, true), token);
                     break;
                 case ".7z" or ".rar":
-                    if (!_isSevenZipAvailable) return (false, string.Empty, tempDir, $"{SevenZipExeName} not found. Cannot extract {extension} files.");
+                    if (!_isSevenZipAvailable) return (false, string.Empty, tempDirectoryRoot, $"{SevenZipExeName} not found. Cannot extract {extension} files.");
 
-                    process.StartInfo = new ProcessStartInfo { FileName = _sevenZipPath, Arguments = $"x \"{archivePath}\" -o\"{tempDir}\" -y", RedirectStandardOutput = true, RedirectStandardError = true, UseShellExecute = false, CreateNoWindow = true };
+                    process.StartInfo = new ProcessStartInfo { FileName = _sevenZipPath, Arguments = $"x \"{originalArchivePath}\" -o\"{tempDirectoryRoot}\" -y", RedirectStandardOutput = true, RedirectStandardError = true, UseShellExecute = false, CreateNoWindow = true };
                     var outputBuilder = new StringBuilder();
                     process.OutputDataReceived += (_, args) =>
                     {
@@ -1326,7 +1363,6 @@ public partial class MainWindow : IDisposable
                     process.Start();
                     process.BeginOutputReadLine();
                     process.BeginErrorReadLine();
-
                     while (!process.HasExited)
                     {
                         if (token.IsCancellationRequested)
@@ -1340,20 +1376,17 @@ public partial class MainWindow : IDisposable
                                 /* ignore */
                             }
 
-                            // LogMessage($"Archive extraction for {archiveFileName} cancelled by user."); // Logged by caller
                             token.ThrowIfCancellationRequested();
                         }
 
                         await Task.Delay(WriteSpeedUpdateIntervalMs, token);
-
                         if (process.HasExited || token.IsCancellationRequested) break;
 
                         try
                         {
-                            var currentTotalTempDirSize = await GetDirectorySizeAsync(tempDir, token);
+                            var currentTotalTempDirSize = await GetDirectorySizeAsync(tempDirectoryRoot, token);
                             var currentTime = DateTime.UtcNow;
                             var timeDelta = currentTime - lastSpeedCheckTime;
-
                             if (timeDelta.TotalSeconds > 0)
                             {
                                 var bytesDelta = currentTotalTempDirSize - lastTotalTempDirSize;
@@ -1375,23 +1408,24 @@ public partial class MainWindow : IDisposable
                     }
 
                     await process.WaitForExitAsync(token);
-
                     if (process.ExitCode != 0)
                     {
-                        LogMessage($"Error extracting {archiveFileName} with {SevenZipExeName}. Exit code: {process.ExitCode}. Output: {outputBuilder}");
-                        return (false, string.Empty, tempDir, $"7z.exe failed. Output: {outputBuilder.ToString().Trim()}");
+                        LogMessage($"Error extracting {archiveFileNameForLog} with {SevenZipExeName}. Exit code: {process.ExitCode}. Output: {outputBuilder}");
+                        return (false, string.Empty, tempDirectoryRoot, $"7z.exe failed. Output: {outputBuilder.ToString().Trim()}");
                     }
 
                     break;
-                default: return (false, string.Empty, tempDir, $"Unsupported archive type: {extension}");
+                default: return (false, string.Empty, tempDirectoryRoot, $"Unsupported archive type: {extension}");
             }
 
             token.ThrowIfCancellationRequested();
-            var supportedFile = await Task.Run(() =>
-                Directory.GetFiles(tempDir, "*.*", SearchOption.AllDirectories)
-                    .FirstOrDefault(f => PrimaryTargetExtensionsInsideArchive.Contains(Path.GetExtension(f).ToLowerInvariant())), token);
 
-            return supportedFile != null ? (true, supportedFile, tempDir, string.Empty) : (false, string.Empty, tempDir, "No supported primary files found in archive.");
+            // Search for the primary target file within the tempDirectoryRoot
+            var foundPrimaryFilePathInTemp = await Task.Run(() =>
+                Directory.GetFiles(tempDirectoryRoot, "*.*", SearchOption.AllDirectories)
+                    .FirstOrDefault(static f => PrimaryTargetExtensionsInsideArchive.Contains(Path.GetExtension(f).ToLowerInvariant())), token);
+
+            return foundPrimaryFilePathInTemp != null ? (true, foundPrimaryFilePathInTemp, tempDirectoryRoot, string.Empty) : (false, string.Empty, tempDirectoryRoot, "No supported primary files found in archive.");
         }
         catch (OperationCanceledException)
         {
@@ -1406,11 +1440,9 @@ public partial class MainWindow : IDisposable
 
             throw;
         }
-        // Other exceptions will propagate
         finally
         {
             process?.Dispose();
-            // The tempDir is cleaned up by the caller (ProcessSingleFileForConversionAsync) in its finally block
         }
     }
 
@@ -1432,7 +1464,6 @@ public partial class MainWindow : IDisposable
             return size;
         }, token);
     }
-
 
     private async Task DeleteOriginalGameFilesAsync(string inputFile, CancellationToken token)
     {
@@ -1613,11 +1644,11 @@ public partial class MainWindow : IDisposable
         }
     }
 
-    [System.Text.RegularExpressions.GeneratedRegex(@"Compressing\s+(?:(?:\d+/\d+)|(?:hunk\s+\d+))\s+\((?<percent>\d+[\.,]?\d*)%\)")]
-    private static partial System.Text.RegularExpressions.Regex ChdmanCompressionProgressRegex();
+    [GeneratedRegex(@"Compressing\s+(?:(?:\d+/\d+)|(?:hunk\s+\d+))\s+\((?<percent>\d+[\.,]?\d*)%\)")]
+    private static partial Regex ChdmanCompressionProgressRegex();
 
-    [System.Text.RegularExpressions.GeneratedRegex(@"ratio=(\d+[\.,]\d+)%")]
-    private static partial System.Text.RegularExpressions.Regex ChdmanCompressionRatioRegex();
+    [GeneratedRegex(@"ratio=(\d+[\.,]\d+)%")]
+    private static partial Regex ChdmanCompressionRatioRegex();
 
 
     public void Dispose()
