@@ -142,9 +142,10 @@ public partial class MainWindow : IDisposable
     {
         if (e.Source is not TabControl tabControl) return;
 
+        // Only clear and update if not currently busy
         if (!StartConversionButton.IsEnabled || !StartVerificationButton.IsEnabled) return;
 
-        Application.Current.Dispatcher.InvokeAsync(() => LogViewer.Clear());
+        Application.Current.Dispatcher.InvokeAsync(() => LogViewer.Clear()); // Clear log on tab change
         if (tabControl.SelectedItem is TabItem selectedTab)
         {
             switch (selectedTab.Name)
@@ -238,6 +239,9 @@ public partial class MainWindow : IDisposable
     {
         try
         {
+            await Application.Current.Dispatcher.InvokeAsync(() => LogViewer.Clear());
+            DisplayConversionInstructionsInLog();
+
             if (!_isChdmanAvailable)
             {
                 LogMessage("Error: chdman.exe not found. Cannot start conversion.");
@@ -273,7 +277,6 @@ public partial class MainWindow : IDisposable
 
             _cts = new CancellationTokenSource();
 
-
             ResetOperationStats();
             SetControlsState(false);
             _operationTimer.Restart();
@@ -302,7 +305,7 @@ public partial class MainWindow : IDisposable
                 _operationTimer.Stop();
                 UpdateProcessingTimeDisplay();
                 UpdateWriteSpeedDisplay(0);
-                SetControlsState(true);
+                SetControlsState(true); // Log will persist here now
                 LogOperationSummary("Conversion");
             }
         }
@@ -316,6 +319,9 @@ public partial class MainWindow : IDisposable
     {
         try
         {
+            await Application.Current.Dispatcher.InvokeAsync(() => LogViewer.Clear());
+            DisplayVerificationInstructionsInLog();
+
             if (!_isChdmanAvailable)
             {
                 LogMessage("Error: chdman.exe not found. Cannot start verification.");
@@ -402,7 +408,7 @@ public partial class MainWindow : IDisposable
                 _operationTimer.Stop();
                 UpdateProcessingTimeDisplay();
                 UpdateWriteSpeedDisplay(0);
-                SetControlsState(true);
+                SetControlsState(true); // Log will persist here now
                 LogOperationSummary("Verification");
             }
         }
@@ -448,16 +454,18 @@ public partial class MainWindow : IDisposable
         ProgressBar.Visibility = enabled ? Visibility.Collapsed : Visibility.Visible;
         CancelButton.Visibility = enabled ? Visibility.Collapsed : Visibility.Visible;
 
-        if (!enabled) return;
+        if (!enabled) return; // If the operation is starting (controls disabled), do nothing further here.
 
+        // --- MODIFICATION: Removed log clearing and instruction display from here ---
+        // This block runs when 'enabled' is true (operation finished and controls re-enabled).
+        // The log should persist.
         ClearProgressDisplay();
-        if (MainTabControl.SelectedItem is TabItem selectedTab)
-        {
-            Application.Current.Dispatcher.InvokeAsync(() => LogViewer.Clear());
-            if (selectedTab.Name == "ConvertTab") DisplayConversionInstructionsInLog();
-            else if (selectedTab.Name == "VerifyTab") DisplayVerificationInstructionsInLog();
-        }
-
+        // if (MainTabControl.SelectedItem is TabItem selectedTab)
+        // {
+        //     Application.Current.Dispatcher.InvokeAsync(() => LogViewer.Clear()); // REMOVED
+        //     if (selectedTab.Name == "ConvertTab") DisplayConversionInstructionsInLog(); // REMOVED
+        //     else if (selectedTab.Name == "VerifyTab") DisplayVerificationInstructionsInLog(); // REMOVED
+        // }
         UpdateWriteSpeedDisplay(0);
     }
 
