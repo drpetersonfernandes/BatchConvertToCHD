@@ -1,6 +1,6 @@
 # Batch Convert to CHD
 
-A Windows desktop utility for batch converting various disk image formats to CHD (Compressed Hunks of Data) format.
+A Windows desktop utility for batch converting various disk image formats to CHD (Compressed Hunks of Data) format and for verifying the integrity of existing CHD files.
 
 ![Batch Convert to CHD](screenshot.png)
 

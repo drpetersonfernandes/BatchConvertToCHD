@@ -6,17 +6,20 @@ namespace BatchConvertToCHD;
 
 public partial class App : IDisposable
 {
-    // Bug Report API configuration
-    private const string BugReportApiUrl = "https://www.purelogiccode.com/bugreport/api/send-bug-report";
-    private const string BugReportApiKey = "hjh7yu6t56tyr540o9u8767676r5674534453235264c75b6t7ggghgg76trf564e";
-    private const string ApplicationName = "BatchConvertToCHD"; // This remains the primary application name
+    // Bug Report API configuration is now in AppConfig
 
     private readonly BugReportService? _bugReportService;
 
+    /// <summary>
+    /// Provides a shared, static instance of the BugReportService for the entire application.
+    /// </summary>
+    public static BugReportService? SharedBugReportService { get; private set; }
+
     public App()
     {
-        // Initialize the bug report service
-        _bugReportService = new BugReportService(BugReportApiUrl, BugReportApiKey, ApplicationName);
+        // Initialize the bug report service as a shared instance
+        SharedBugReportService = new BugReportService(AppConfig.BugReportApiUrl, AppConfig.BugReportApiKey, AppConfig.ApplicationName);
+        _bugReportService = SharedBugReportService;
 
         // Set up global exception handling
         AppDomain.CurrentDomain.UnhandledException += CurrentDomain_UnhandledException;
@@ -50,7 +53,7 @@ public partial class App : IDisposable
         {
             var message = BuildExceptionReport(exception, source);
 
-            // Notify developer
+            // Notify the developer using the shared service instance
             if (_bugReportService != null)
             {
                 await _bugReportService.SendBugReportAsync(message);
@@ -62,7 +65,7 @@ public partial class App : IDisposable
         }
     }
 
-    private string BuildExceptionReport(Exception exception, string source)
+    internal static string BuildExceptionReport(Exception exception, string source)
     {
         var sb = new StringBuilder();
         sb.AppendLine(CultureInfo.InvariantCulture, $"Error Source: {source}");
@@ -78,7 +81,7 @@ public partial class App : IDisposable
         return sb.ToString();
     }
 
-    private void AppendExceptionDetails(StringBuilder sb, Exception exception, int level = 0)
+    internal static void AppendExceptionDetails(StringBuilder sb, Exception exception, int level = 0)
     {
         while (true)
         {
@@ -109,8 +112,9 @@ public partial class App : IDisposable
     /// </summary>
     public void Dispose()
     {
-        // Dispose the BugReportService if it exists
+        // Dispose of the shared BugReportService instance
         _bugReportService?.Dispose();
+        SharedBugReportService = null;
 
         // Unregister event handlers to prevent memory leaks
         AppDomain.CurrentDomain.UnhandledException -= CurrentDomain_UnhandledException;

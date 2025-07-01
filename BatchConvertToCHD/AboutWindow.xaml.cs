@@ -33,12 +33,11 @@ public partial class AboutWindow
         }
         catch (Exception ex)
         {
-            // Notify developer
-            var bugReportService = new BugReportService(
-                "https://www.purelogiccode.com/bugreport/api/send-bug-report",
-                "hjh7yu6t56tyr540o9u8767676r5674534453235264c75b6t7ggghgg76trf564e",
-                "BatchConvertToCHD"); // ApplicationName is still BatchConvertToCHD
-            _ = bugReportService.SendBugReportAsync($"Error opening URL: {e.Uri.AbsoluteUri}. Exception: {ex.Message}");
+            // Notify developer using the shared BugReportService
+            if (App.SharedBugReportService != null)
+            {
+                _ = App.SharedBugReportService.SendBugReportAsync($"Error opening URL: {e.Uri.AbsoluteUri}. Exception: {ex.Message}");
+            }
 
             // Notify user
             MessageBox.Show($"Unable to open link: {ex.Message}",

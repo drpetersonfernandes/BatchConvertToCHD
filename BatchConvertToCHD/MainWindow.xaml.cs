@@ -15,12 +15,8 @@ namespace BatchConvertToCHD;
 public partial class MainWindow : IDisposable
 {
     private CancellationTokenSource _cts;
-    private readonly BugReportService _bugReportService;
 
-    // Bug Report API configuration
-    private const string BugReportApiUrl = "https://www.purelogiccode.com/bugreport/api/send-bug-report";
-    private const string BugReportApiKey = "hjh7yu6t56tyr540o9u8767676r5674534453235264c75b6t7ggghgg76trf564e";
-    private const string ApplicationName = "BatchConvertToCHD";
+    // Bug Report API configuration and service instance are now managed by the App class.
     private static readonly char[] Separator = [' ', '\t'];
 
     private const string MaxCsoExeName = "maxcso.exe";
@@ -47,8 +43,6 @@ public partial class MainWindow : IDisposable
     {
         InitializeComponent();
         _cts = new CancellationTokenSource();
-
-        _bugReportService = new BugReportService(BugReportApiUrl, BugReportApiKey, ApplicationName);
 
         var appDirectory = AppDomain.CurrentDomain.BaseDirectory;
         var chdmanPath = Path.Combine(appDirectory, "chdman.exe");
@@ -82,7 +76,7 @@ public partial class MainWindow : IDisposable
 
     private void DisplayConversionInstructionsInLog()
     {
-        LogMessage($"Welcome to {ApplicationName}. (Conversion Mode)");
+        LogMessage($"Welcome to {AppConfig.ApplicationName}. (Conversion Mode)");
         LogMessage("");
         LogMessage("This program will convert the following formats to CHD:");
         LogMessage("- CUE+BIN files (CD images)");
@@ -124,7 +118,7 @@ public partial class MainWindow : IDisposable
 
     private void DisplayVerificationInstructionsInLog()
     {
-        LogMessage($"Welcome to {ApplicationName}. (Verification Mode)");
+        LogMessage($"Welcome to {AppConfig.ApplicationName}. (Verification Mode)");
         LogMessage("");
         LogMessage("This program will verify the integrity of all CHD files in the selected folder.");
         LogMessage("It will check each file's structure and validate its data against internal checksums.");
@@ -1391,25 +1385,6 @@ public partial class MainWindow : IDisposable
         }
     }
 
-    private static async Task<long> GetDirectorySizeAsync(string directoryPath, CancellationToken token)
-    {
-        return await Task.Run(() =>
-        {
-            token.ThrowIfCancellationRequested();
-            long size = 0;
-            var directoryInfo = new DirectoryInfo(directoryPath);
-            if (!directoryInfo.Exists) return 0;
-
-            foreach (var fileInfo in directoryInfo.GetFiles("*.*", SearchOption.AllDirectories))
-            {
-                token.ThrowIfCancellationRequested();
-                size += fileInfo.Length;
-            }
-
-            return size;
-        }, token);
-    }
-
     private async Task DeleteOriginalGameFilesAsync(string inputFile, CancellationToken token)
     {
         try
@@ -1531,7 +1506,7 @@ public partial class MainWindow : IDisposable
         {
             var fullReport = new StringBuilder();
             fullReport.AppendLine("=== Bug Report ===");
-            fullReport.AppendLine($"Application: {ApplicationName}");
+            fullReport.AppendLine($"Application: {AppConfig.ApplicationName}");
             fullReport.AppendLine(CultureInfo.InvariantCulture, $"Version: {GetType().Assembly.GetName().Version}");
             fullReport.AppendLine(CultureInfo.InvariantCulture, $"OS: {Environment.OSVersion}");
             fullReport.AppendLine(CultureInfo.InvariantCulture, $".NET Version: {Environment.Version}");
@@ -1540,7 +1515,7 @@ public partial class MainWindow : IDisposable
             if (exception != null)
             {
                 fullReport.AppendLine("=== Exception Details ===");
-                AppendExceptionDetailsToReport(fullReport, exception);
+                App.AppendExceptionDetails(fullReport, exception);
             }
 
             if (LogViewer != null)
@@ -1549,28 +1524,14 @@ public partial class MainWindow : IDisposable
                 if (!string.IsNullOrEmpty(logContent)) fullReport.AppendLine().AppendLine("=== Application Log ===").Append(logContent);
             }
 
-            await _bugReportService.SendBugReportAsync(fullReport.ToString());
+            if (App.SharedBugReportService != null)
+            {
+                await App.SharedBugReportService.SendBugReportAsync(fullReport.ToString());
+            }
         }
         catch
         {
             /* Silently fail reporting */
-        }
-    }
-
-    private static void AppendExceptionDetailsToReport(StringBuilder sb, Exception? ex, int level = 0)
-    {
-        while (ex != null)
-        {
-            var indent = new string(' ', level * 2);
-            sb.AppendLine(CultureInfo.InvariantCulture, $"{indent}Type: {ex.GetType().FullName}");
-            sb.AppendLine(CultureInfo.InvariantCulture, $"{indent}Message: {ex.Message}");
-            sb.AppendLine(CultureInfo.InvariantCulture, $"{indent}Source: {ex.Source}");
-            sb.AppendLine(CultureInfo.InvariantCulture, $"{indent}StackTrace:").AppendLine(CultureInfo.InvariantCulture, $"{indent}{ex.StackTrace}");
-            if (ex.InnerException == null) break;
-
-            sb.AppendLine(CultureInfo.InvariantCulture, $"{indent}Inner Exception:");
-            ex = ex.InnerException;
-            level++;
         }
     }
 
@@ -1610,7 +1571,6 @@ public partial class MainWindow : IDisposable
     {
         _cts?.Cancel();
         _cts?.Dispose();
-        _bugReportService?.Dispose();
         _operationTimer?.Stop();
         GC.SuppressFinalize(this);
     }
