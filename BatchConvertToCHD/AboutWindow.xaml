@@ -22,7 +22,6 @@
             <TextBlock x:Name="DescriptionTextBlock" TextWrapping="Wrap" Text="A utility for batch converting various disc image formats to CHD and for verifying the integrity of CHD files." Margin="0,5,0,0" />
             <TextBlock Name="AppVersionTextBlock" Margin="0,10,0,0" Text="" />
             <TextBlock Margin="0,20,0,0" Text="Uses CHDMAN from the MAME project for conversions and verifications." />
-            <TextBlock Margin="0,5,0,0" Text="Uses 7-Zip (7z.exe) for .7z and .rar archive extraction during conversion." />
             <TextBlock Margin="0,5,0,0" Text="Uses maxcso.exe for .cso decompression during conversion." />
             <TextBlock Margin="0,10,0,0">
                 <Hyperlink NavigateUri="https://www.purelogiccode.com" RequestNavigate="Hyperlink_RequestNavigate">https://www.purelogiccode.com</Hyperlink>
