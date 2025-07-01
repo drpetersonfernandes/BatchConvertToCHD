@@ -8,6 +8,7 @@ using System.Text.RegularExpressions; // Added for filename sanitization
 using System.Windows;
 using System.Windows.Controls; // Required for TabControl
 using Microsoft.Win32;
+using SevenZipExtractor;
 
 namespace BatchConvertToCHD;
 
@@ -22,11 +23,8 @@ public partial class MainWindow : IDisposable
     private const string ApplicationName = "BatchConvertToCHD";
     private static readonly char[] Separator = [' ', '\t'];
 
-    private const string SevenZipExeName = "7z.exe";
     private const string MaxCsoExeName = "maxcso.exe";
-    private readonly string _sevenZipPath;
     private readonly string _maxCsoPath;
-    private readonly bool _isSevenZipAvailable;
     private readonly bool _isMaxCsoAvailable;
     private readonly bool _isChdmanAvailable;
 
@@ -45,7 +43,6 @@ public partial class MainWindow : IDisposable
     // For Write Speed Calculation
     private const int WriteSpeedUpdateIntervalMs = 1000;
 
-
     public MainWindow()
     {
         InitializeComponent();
@@ -56,9 +53,6 @@ public partial class MainWindow : IDisposable
         var appDirectory = AppDomain.CurrentDomain.BaseDirectory;
         var chdmanPath = Path.Combine(appDirectory, "chdman.exe");
         _isChdmanAvailable = File.Exists(chdmanPath);
-
-        _sevenZipPath = Path.Combine(appDirectory, SevenZipExeName);
-        _isSevenZipAvailable = File.Exists(_sevenZipPath);
 
         _maxCsoPath = Path.Combine(appDirectory, MaxCsoExeName);
         _isMaxCsoAvailable = File.Exists(_maxCsoPath);
@@ -120,8 +114,7 @@ public partial class MainWindow : IDisposable
             Task.Run(async () => await ReportBugAsync("chdman.exe not found on startup. This will prevent the application from functioning correctly."));
         }
 
-        if (_isSevenZipAvailable) LogMessage("7z.exe found. .7z and .rar extraction enabled for conversion.");
-        else LogMessage("WARNING: 7z.exe not found. .7z and .rar extraction will be disabled for conversion.");
+        LogMessage("Using SevenZipExtractor library for .7z and .rar extraction.");
 
         if (_isMaxCsoAvailable) LogMessage("maxcso.exe found. .cso decompression enabled for conversion.");
         else LogMessage("WARNING: maxcso.exe not found. .cso decompression will be disabled for conversion.");
@@ -621,9 +614,17 @@ public partial class MainWindow : IDisposable
 
                     fileToProcessForChdman = GetSafeTempFileName(extractedFileOriginalName, extractedFileOriginalExt, tempDir);
 
-                    await Task.Run(() => File.Copy(extractResult.FilePath, fileToProcessForChdman, true), token);
-                    LogMessage($"Copied extracted file to sanitized temp path: {fileToProcessForChdman}");
+                    try
+                    {
+                        await Task.Run(() => File.Copy(extractResult.FilePath, fileToProcessForChdman, true), token);
+                    }
+                    catch (Exception ex)
+                    {
+                        LogMessage($"Error copying extracted file {extractedFileOriginalName} to temp path {fileToProcessForChdman}: {ex.Message}");
+                        return false; // We should still process the file, but we can't copy it to chdman.
+                    }
 
+                    LogMessage($"Copied extracted file to sanitized temp path: {fileToProcessForChdman}");
                     LogMessage($"Using extracted file: {Path.GetFileName(fileToProcessForChdman)} (original in archive: {extractedFileOriginalName}) from archive {originalInputFileName}");
                 }
                 else
@@ -642,7 +643,16 @@ public partial class MainWindow : IDisposable
                 var directFileExt = originalFileExtension.TrimStart('.');
                 fileToProcessForChdman = GetSafeTempFileName(originalInputFileName, directFileExt, tempDir);
 
-                await Task.Run(() => File.Copy(inputFile, fileToProcessForChdman, true), token);
+                try
+                {
+                    await Task.Run(() => File.Copy(inputFile, fileToProcessForChdman, true), token);
+                }
+                catch (Exception ex)
+                {
+                    LogMessage($"Error copying direct input file {inputFile} to temp path {fileToProcessForChdman}: {ex.Message}");
+                    return false; // We should still process the file, but we can't copy it to chdman.
+                }
+
                 LogMessage($"Copied direct input file {originalInputFileName} to sanitized temp path: {fileToProcessForChdman}");
                 // isArchiveOrCsoFile remains false, but tempDir is used for this temporary copy.
             }
@@ -834,23 +844,23 @@ public partial class MainWindow : IDisposable
 
             if (await Task.Run(() => File.Exists(destinationFile), token))
             {
-                LogMessage($"  Cannot move {fileName}: Destination file already exists at {destinationFile}. Skipping move.");
+                LogMessage($"Cannot move {fileName}: Destination file already exists at {destinationFile}. Skipping move.");
                 return;
             }
 
             token.ThrowIfCancellationRequested();
 
             await Task.Run(() => File.Move(sourceFile, destinationFile), token);
-            LogMessage($"  Moved {fileName} ({moveReason}) to {destinationFile}");
+            LogMessage($"Moved {fileName} ({moveReason}) to {destinationFile}");
         }
         catch (OperationCanceledException)
         {
-            LogMessage($"  Move operation for {fileName} cancelled.");
+            LogMessage($"Move operation for {fileName} cancelled.");
             throw;
         }
         catch (Exception ex)
         {
-            LogMessage($"  Error moving {fileName} to {destinationParentFolder}: {ex.Message}");
+            LogMessage($"Error moving {fileName} to {destinationParentFolder}: {ex.Message}");
             await ReportBugAsync($"Error moving verified file {fileName}", ex);
         }
     }
@@ -971,13 +981,14 @@ public partial class MainWindow : IDisposable
         }
         catch (OperationCanceledException)
         {
+            LogMessage("Conversion operation was canceled by user.");
             try
             {
                 if (!process.HasExited) process.Kill(true);
             }
             catch
             {
-                /* ignore */
+                // ignore
             }
 
             throw;
@@ -990,7 +1001,7 @@ public partial class MainWindow : IDisposable
 
     private async Task<bool> VerifyChdAsync(string chdmanPath, string chdFile, CancellationToken token)
     {
-        var process = new Process();
+        using var process = new Process();
         try
         {
             token.ThrowIfCancellationRequested();
@@ -1032,7 +1043,7 @@ public partial class MainWindow : IDisposable
             }
             catch
             {
-                /* ignore */
+                // ignore
             }
 
             throw;
@@ -1042,10 +1053,6 @@ public partial class MainWindow : IDisposable
             LogMessage($"Error verifying file {Path.GetFileName(chdFile)}: {ex.Message}");
             await ReportBugAsync($"Error verifying file: {Path.GetFileName(chdFile)} with chdman", ex);
             return false;
-        }
-        finally
-        {
-            process?.Dispose();
         }
     }
 
@@ -1142,7 +1149,7 @@ public partial class MainWindow : IDisposable
         var cueDir = Path.GetDirectoryName(cuePath) ?? string.Empty;
         try
         {
-            var lines = await File.ReadAllLinesAsync(cuePath, token);
+            var lines = await File.ReadAllLinesAsync(cuePath, Encoding.UTF8, token);
             token.ThrowIfCancellationRequested();
             foreach (var line in lines)
             {
@@ -1158,6 +1165,7 @@ public partial class MainWindow : IDisposable
         }
         catch (OperationCanceledException)
         {
+            LogMessage("Process was canceled by user.");
             throw;
         }
         catch (Exception ex)
@@ -1175,7 +1183,7 @@ public partial class MainWindow : IDisposable
         var gdiDir = Path.GetDirectoryName(gdiPath) ?? string.Empty;
         try
         {
-            var lines = await File.ReadAllLinesAsync(gdiPath, token);
+            var lines = await File.ReadAllLinesAsync(gdiPath, Encoding.UTF8, token);
             token.ThrowIfCancellationRequested();
             for (var i = 1; i < lines.Length; i++)
             {
@@ -1190,6 +1198,7 @@ public partial class MainWindow : IDisposable
         }
         catch (OperationCanceledException)
         {
+            LogMessage("Process was canceled by user.");
             throw;
         }
         catch (Exception ex)
@@ -1307,6 +1316,7 @@ public partial class MainWindow : IDisposable
         }
         catch (OperationCanceledException)
         {
+            LogMessage("CSO extraction was canceled by user.");
             try
             {
                 if (!process.HasExited) process.Kill(true);
@@ -1324,98 +1334,37 @@ public partial class MainWindow : IDisposable
         }
     }
 
-    private async Task<(bool Success, string FilePath, string TempDir, string ErrorMessage)> ExtractArchiveAsync(string originalArchivePath, string tempDirectoryRoot, CancellationToken token)
+    private async Task<(bool Success, string FilePath, string TempDir, string ErrorMessage)> ExtractArchiveAsync(
+        string originalArchivePath, string tempDirectoryRoot, CancellationToken token)
     {
-        // tempDirectoryRoot is the parent temp folder (e.g., C:\Users\...\Temp\randomname\)
-        // The actual extracted files will be inside this root.
         var extension = Path.GetExtension(originalArchivePath).ToLowerInvariant();
         var archiveFileNameForLog = Path.GetFileName(originalArchivePath);
-        var process = new Process();
 
         try
         {
             token.ThrowIfCancellationRequested();
-            // tempDirectoryRoot is already created by the caller (ProcessSingleFileForConversionAsync)
             LogMessage($"Extracting {archiveFileNameForLog} to temporary directory: {tempDirectoryRoot}");
-
-            var lastSpeedCheckTime = DateTime.UtcNow;
-            long lastTotalTempDirSize = 0;
 
             switch (extension)
             {
                 case ".zip":
-                    LogMessage($"Extracting ZIP {archiveFileNameForLog} (write speed not shown for this step).");
-                    await Task.Run(() => ZipFile.ExtractToDirectory(originalArchivePath, tempDirectoryRoot, true), token);
+                    LogMessage($"Extracting ZIP {archiveFileNameForLog}");
+                    await Task.Run(() =>
+                        ZipFile.ExtractToDirectory(originalArchivePath, tempDirectoryRoot, true), token);
                     break;
-                case ".7z" or ".rar":
-                    if (!_isSevenZipAvailable) return (false, string.Empty, tempDirectoryRoot, $"{SevenZipExeName} not found. Cannot extract {extension} files.");
 
-                    process.StartInfo = new ProcessStartInfo { FileName = _sevenZipPath, Arguments = $"x \"{originalArchivePath}\" -o\"{tempDirectoryRoot}\" -y", RedirectStandardOutput = true, RedirectStandardError = true, UseShellExecute = false, CreateNoWindow = true };
-                    var outputBuilder = new StringBuilder();
-                    process.OutputDataReceived += (_, args) =>
+                case ".7z":
+                case ".rar":
+                    LogMessage($"Extracting {extension.ToUpperInvariant()} {archiveFileNameForLog} using SevenZipExtractor");
+                    await Task.Run(() =>
                     {
-                        if (args.Data != null) outputBuilder.AppendLine(args.Data);
-                    };
-                    process.ErrorDataReceived += (_, args) =>
-                    {
-                        if (args.Data != null) outputBuilder.AppendLine(args.Data);
-                    };
-                    process.Start();
-                    process.BeginOutputReadLine();
-                    process.BeginErrorReadLine();
-                    while (!process.HasExited)
-                    {
-                        if (token.IsCancellationRequested)
-                        {
-                            try
-                            {
-                                if (!process.HasExited) process.Kill(true);
-                            }
-                            catch
-                            {
-                                /* ignore */
-                            }
-
-                            token.ThrowIfCancellationRequested();
-                        }
-
-                        await Task.Delay(WriteSpeedUpdateIntervalMs, token);
-                        if (process.HasExited || token.IsCancellationRequested) break;
-
-                        try
-                        {
-                            var currentTotalTempDirSize = await GetDirectorySizeAsync(tempDirectoryRoot, token);
-                            var currentTime = DateTime.UtcNow;
-                            var timeDelta = currentTime - lastSpeedCheckTime;
-                            if (timeDelta.TotalSeconds > 0)
-                            {
-                                var bytesDelta = currentTotalTempDirSize - lastTotalTempDirSize;
-                                var speed = (bytesDelta / timeDelta.TotalSeconds) / (1024.0 * 1024.0);
-                                UpdateWriteSpeedDisplay(speed);
-                            }
-
-                            lastTotalTempDirSize = currentTotalTempDirSize;
-                            lastSpeedCheckTime = currentTime;
-                        }
-                        catch (OperationCanceledException)
-                        {
-                            throw;
-                        }
-                        catch (Exception ex)
-                        {
-                            LogMessage($"Archive extraction write speed monitoring error: {ex.Message}");
-                        }
-                    }
-
-                    await process.WaitForExitAsync(token);
-                    if (process.ExitCode != 0)
-                    {
-                        LogMessage($"Error extracting {archiveFileNameForLog} with {SevenZipExeName}. Exit code: {process.ExitCode}. Output: {outputBuilder}");
-                        return (false, string.Empty, tempDirectoryRoot, $"7z.exe failed. Output: {outputBuilder.ToString().Trim()}");
-                    }
-
+                        using var archiveFile = new ArchiveFile(originalArchivePath);
+                        archiveFile.Extract(tempDirectoryRoot);
+                    }, token);
                     break;
-                default: return (false, string.Empty, tempDirectoryRoot, $"Unsupported archive type: {extension}");
+
+                default:
+                    return (false, string.Empty, tempDirectoryRoot, $"Unsupported archive type: {extension}");
             }
 
             token.ThrowIfCancellationRequested();
@@ -1423,26 +1372,22 @@ public partial class MainWindow : IDisposable
             // Search for the primary target file within the tempDirectoryRoot
             var foundPrimaryFilePathInTemp = await Task.Run(() =>
                 Directory.GetFiles(tempDirectoryRoot, "*.*", SearchOption.AllDirectories)
-                    .FirstOrDefault(static f => PrimaryTargetExtensionsInsideArchive.Contains(Path.GetExtension(f).ToLowerInvariant())), token);
+                    .FirstOrDefault(static f => PrimaryTargetExtensionsInsideArchive.Contains(
+                        Path.GetExtension(f).ToLowerInvariant())), token);
 
-            return foundPrimaryFilePathInTemp != null ? (true, foundPrimaryFilePathInTemp, tempDirectoryRoot, string.Empty) : (false, string.Empty, tempDirectoryRoot, "No supported primary files found in archive.");
+            return foundPrimaryFilePathInTemp != null
+                ? (true, foundPrimaryFilePathInTemp, tempDirectoryRoot, string.Empty)
+                : (false, string.Empty, tempDirectoryRoot, "No supported primary files found in archive.");
         }
         catch (OperationCanceledException)
         {
-            try
-            {
-                if (process.HasExited == false) process.Kill(true);
-            }
-            catch
-            {
-                /*ignore*/
-            }
-
+            LogMessage("Extraction operation was canceled by user.");
             throw;
         }
-        finally
+        catch (Exception ex)
         {
-            process?.Dispose();
+            return (false, string.Empty, tempDirectoryRoot,
+                $"Error extracting archive: {ex.Message}");
         }
     }
 
@@ -1485,6 +1430,7 @@ public partial class MainWindow : IDisposable
         }
         catch (OperationCanceledException)
         {
+            LogMessage("Process was canceled by user.");
             throw;
         }
         catch (Exception ex)
@@ -1509,6 +1455,7 @@ public partial class MainWindow : IDisposable
         }
         catch (OperationCanceledException) when (token != CancellationToken.None)
         {
+            LogMessage("Process was canceled by user.");
             throw;
         } // Only rethrow if it's not from our short timeout token
         catch (Exception ex)
@@ -1530,6 +1477,7 @@ public partial class MainWindow : IDisposable
         }
         catch (OperationCanceledException) when (token != CancellationToken.None)
         {
+            LogMessage("Process was canceled by user.");
             throw;
         }
         catch (Exception ex)
@@ -1650,7 +1598,14 @@ public partial class MainWindow : IDisposable
     [GeneratedRegex(@"ratio=(\d+[\.,]\d+)%")]
     private static partial Regex ChdmanCompressionRatioRegex();
 
-
+    /// <inheritdoc />
+    /// <summary>
+    /// Releases all resources used by the current instance of the MainWindow class.
+    /// </summary>
+    /// <remarks>
+    /// This method disposes of the System.Threading.CancellationTokenSource and any other disposable dependencies.
+    /// It also stops the operation timer and suppresses finalization for this instance.
+    /// </remarks>
     public void Dispose()
     {
         _cts?.Cancel();

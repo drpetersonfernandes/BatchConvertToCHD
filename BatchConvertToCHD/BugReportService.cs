@@ -46,6 +46,10 @@ public class BugReportService(string apiUrl, string apiKey, string applicationNa
         }
     }
 
+    /// <inheritdoc />
+    /// <summary>
+    /// Releases all resources used by the current instance of the class.
+    /// </summary>
     public void Dispose()
     {
         // Dispose the HttpClient to release resources

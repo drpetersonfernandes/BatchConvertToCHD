@@ -26,15 +26,13 @@
     <None Update="chdman.exe">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
-    <None Update="7z.exe"> 
-      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
-    </None>
-    <None Update="7z.dll"> 
-      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
-    </None>
     <None Update="maxcso.exe">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="SevenZipExtractor" Version="1.0.19" />
   </ItemGroup>
 
 </Project>
