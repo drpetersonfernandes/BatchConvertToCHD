@@ -6,8 +6,6 @@ namespace BatchConvertToCHD;
 
 public partial class App : IDisposable
 {
-    // Bug Report API configuration is now in AppConfig
-
     private readonly BugReportService? _bugReportService;
 
     /// <summary>

@@ -31,10 +31,13 @@
     <None Update="maxcso.exe">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
+    <None Update="7z.dll">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="SevenZipExtractor" Version="1.0.19" />
+    <PackageReference Include="Squid-Box.SevenZipSharp" Version="1.6.2.24" />
   </ItemGroup>
 
 </Project>

@@ -12,7 +12,6 @@ public partial class AboutWindow
         InitializeComponent();
 
         AppVersionTextBlock.Text = $"Version: {GetApplicationVersion()}";
-        // Update description to reflect both functionalities
         DescriptionTextBlock.Text = "A utility for batch converting various disc image formats to CHD and for verifying the integrity of CHD files.";
     }
 
@@ -33,7 +32,7 @@ public partial class AboutWindow
         }
         catch (Exception ex)
         {
-            // Notify developer using the shared BugReportService
+            // Notify developer
             if (App.SharedBugReportService != null)
             {
                 _ = App.SharedBugReportService.SendBugReportAsync($"Error opening URL: {e.Uri.AbsoluteUri}. Exception: {ex.Message}");

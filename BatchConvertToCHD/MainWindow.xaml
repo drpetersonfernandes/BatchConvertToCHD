@@ -66,7 +66,7 @@
 
             <TabItem Header="Verify CHD Files" x:Name="VerifyTab">
                 <StackPanel Margin="10">
-                     <Grid Margin="0,0,0,5">
+                    <Grid Margin="0,0,0,5">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="120"/>
                             <ColumnDefinition Width="*"/>
@@ -78,31 +78,10 @@
                     </Grid>
 
                     <CheckBox x:Name="VerificationIncludeSubfoldersCheckBox" Content="Include subfolders in CHD search" Margin="0,10,0,5" HorizontalAlignment="Left" IsChecked="True"/>
-                    
-                    <CheckBox x:Name="MoveSuccessFilesCheckBox" Content="Move successfully tested CHD files to Success Folder" Margin="0,10,0,0" HorizontalAlignment="Left" Checked="MoveSuccessFilesCheckBox_CheckedUnchecked" Unchecked="MoveSuccessFilesCheckBox_CheckedUnchecked"/>
-                    <Grid x:Name="SuccessFolderPanel" Margin="20,0,0,5" Visibility="Collapsed">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="100"/>
-                            <ColumnDefinition Width="*"/>
-                            <ColumnDefinition Width="Auto"/>
-                        </Grid.ColumnDefinitions>
-                        <Label Grid.Column="0" Content="Success Folder:" VerticalAlignment="Center"/>
-                        <TextBox x:Name="SuccessFolderTextBox" Grid.Column="1" Margin="5,0,5,0" Padding="5" IsReadOnly="True"/>
-                        <Button x:Name="BrowseSuccessFolderButton" Grid.Column="2" Content="Browse" Click="BrowseSuccessFolderButton_Click" Padding="10,5"/>
-                    </Grid>
-
-                    <CheckBox x:Name="MoveFailedFilesCheckBox" Content="Move failed tested CHD files to Failed Folder" Margin="0,10,0,0" HorizontalAlignment="Left" Checked="MoveFailedFilesCheckBox_CheckedUnchecked" Unchecked="MoveFailedFilesCheckBox_CheckedUnchecked"/>
-                    <Grid x:Name="FailedFolderPanel" Margin="20,0,0,10" Visibility="Collapsed">
-                         <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="100"/>
-                            <ColumnDefinition Width="*"/>
-                            <ColumnDefinition Width="Auto"/>
-                        </Grid.ColumnDefinitions>
-                        <Label Grid.Column="0" Content="Failed Folder:" VerticalAlignment="Center"/>
-                        <TextBox x:Name="FailedFolderTextBox" Grid.Column="1" Margin="5,0,5,0" Padding="5" IsReadOnly="True"/>
-                        <Button x:Name="BrowseFailedFolderButton" Grid.Column="2" Content="Browse" Click="BrowseFailedFolderButton_Click" Padding="10,5"/>
-                    </Grid>
-                    
+        
+                    <CheckBox x:Name="MoveSuccessFilesCheckBox" Content="Move successfully tested CHD files to 'Success' folder" Margin="0,10,0,0" HorizontalAlignment="Left" />
+                    <CheckBox x:Name="MoveFailedFilesCheckBox" Content="Move failed tested CHD files to 'Failed' folder" Margin="0,10,0,0" HorizontalAlignment="Left" />
+        
                     <Button x:Name="StartVerificationButton" Content="Start Verification" Click="StartVerificationButton_Click" Margin="0,10,0,0" Padding="15,8" HorizontalAlignment="Center" FontWeight="Bold"/>
                 </StackPanel>
             </TabItem>
@@ -122,7 +101,7 @@
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="*" />
-                <ColumnDefinition Width="*" /> <!-- Added for Write Speed -->
+                <ColumnDefinition Width="*" />
             </Grid.ColumnDefinitions>
 
             <Border Grid.Column="0" BorderBrush="LightGray" BorderThickness="1" Margin="2" Padding="5">
@@ -134,8 +113,8 @@
 
             <Border Grid.Column="1" BorderBrush="LightGray" BorderThickness="1" Margin="2" Padding="5">
                 <StackPanel Orientation="Vertical" HorizontalAlignment="Center">
-                    <TextBlock Text="Success:" FontWeight="Bold" Foreground="Green" HorizontalAlignment="Center"/> <!-- Changed Label -->
-                    <TextBlock x:Name="SuccessValue" Text="0" HorizontalAlignment="Center"/> <!-- Changed Name -->
+                    <TextBlock Text="Success:" FontWeight="Bold" Foreground="Green" HorizontalAlignment="Center"/>
+                    <TextBlock x:Name="SuccessValue" Text="0" HorizontalAlignment="Center"/>
                 </StackPanel>
             </Border>
 
@@ -153,7 +132,7 @@
                 </StackPanel>
             </Border>
             
-            <Border Grid.Column="4" BorderBrush="LightGray" BorderThickness="1" Margin="2" Padding="5"> <!-- New Write Speed Border -->
+            <Border Grid.Column="4" BorderBrush="LightGray" BorderThickness="1" Margin="2" Padding="5">
                 <StackPanel Orientation="Vertical" HorizontalAlignment="Center">
                     <TextBlock Text="Write Speed:" FontWeight="Bold" HorizontalAlignment="Center"/>
                     <TextBlock x:Name="WriteSpeedValue" Text="0.0 MB/s" HorizontalAlignment="Center"/>

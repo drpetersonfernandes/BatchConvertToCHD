@@ -15,7 +15,6 @@ It also supports extracting disk images from archives and allows parallel conver
 - **Batch Processing**: Convert multiple files in a single operation.
 - **Multiple Format Support**: Handles a wide range of disk image formats including CD, DVD, GD-ROM, and HDD image formats.
 - **Archive Support**: Automatically extracts and processes supported files from `.zip`, `.7z`, and `.rar` archives.
-- **7-Zip Integration**: Uses `7z.exe` for `.7z` and `.rar` extraction, included with the application.
 - **Parallel Processing**: Optionally process multiple files in parallel to speed up batch conversion.
 - **Progress Tracking**: Detailed progress indication and real-time logging during the conversion process.
 - **Delete Original Option**: Option to remove source files (including archives and referenced files) after successful conversion.
@@ -38,7 +37,6 @@ It also supports extracting disk images from archives and allows parallel conver
 - Windows 7 or later
 - [.NET 9.0 Runtime](https://dotnet.microsoft.com/download/dotnet/9.0)
 - `chdman.exe` (included with the application)
-- `7z.exe` and optionally `7z.dll` for archive extraction (included with the application)
 
 ## Installation
 
@@ -74,16 +72,14 @@ CHD (Compressed Hunks of Data) is a compressed disk image format developed for t
 
 ## Troubleshooting
 
-- Ensure `chdman.exe` and `7z.exe` are present in the same directory as the application.
+- Ensure `chdman.exe` is present in the same directory as the application.
 - Make sure you have appropriate permissions to read from the input and write to the output directories.
-- If `.7z` or `.rar` extraction is failing, verify that `7z.exe` is not missing.
 - Review the application log window for detailed error messages during conversion.
 - Automatic error reports will be sent to the developer if unexpected issues occur.
 
 ## Acknowledgements
 
 - Use **CHDMAN** from the [MAME project](https://www.mamedev.org/) for CHD file conversions.
-- Uses **7-Zip** (`7z.exe`) for extracting `.7z` and `.rar` archives.
 - Developed by [Pure Logic Code](https://www.purelogiccode.com).
 
 ---

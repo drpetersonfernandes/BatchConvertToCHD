@@ -3,12 +3,15 @@ using System.Diagnostics;
 using System.Globalization;
 using System.IO;
 using System.IO.Compression;
+using System.Net.Http;
+using System.Reflection;
 using System.Text;
-using System.Text.RegularExpressions; // Added for filename sanitization
+using System.Text.Json;
+using System.Text.RegularExpressions;
 using System.Windows;
-using System.Windows.Controls; // Required for TabControl
+using System.Windows.Controls; // Keep this for TabControl, etc.
 using Microsoft.Win32;
-using SevenZipExtractor;
+using SevenZip;
 
 namespace BatchConvertToCHD;
 
@@ -38,6 +41,16 @@ public partial class MainWindow : IDisposable
     // For Write Speed Calculation
     private const int WriteSpeedUpdateIntervalMs = 1000;
 
+    // GitHub API for version check
+    private const string GitHubApiLatestReleaseUrl = "https://api.github.com/repos/drpetersonfernandes/BatchConvertToCHD/releases/latest";
+    private const string GitHubRepoReleasesUrl = "https://github.com/drpetersonfernandes/BatchConvertToCHD/releases";
+
+    // Cached JsonSerializerOptions for performance
+    private static readonly JsonSerializerOptions JsonSerializerOptions = new()
+    {
+        PropertyNameCaseInsensitive = true
+    };
+
     public MainWindow()
     {
         InitializeComponent();
@@ -50,8 +63,25 @@ public partial class MainWindow : IDisposable
         _maxCsoPath = Path.Combine(appDirectory, MaxCsoExeName);
         _isMaxCsoAvailable = File.Exists(_maxCsoPath);
 
+        try
+        {
+            SevenZipBase.SetLibraryPath(Path.Combine(appDirectory, "7z.dll"));
+            LogMessage("Successfully loaded 7z.dll.");
+        }
+        catch (SevenZipLibraryException ex)
+        {
+            LogMessage($"Error loading 7z.dll: {ex.Message}");
+            _ = ReportBugAsync("Failed to load 7z.dll for SevenZipSharp", ex);
+
+            // Notify user
+            MessageBox.Show("7z.dll is missing. Archive extraction (.7z, .rar) will be disabled.", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+
         DisplayConversionInstructionsInLog();
         ResetOperationStats();
+
+        // Start version check asynchronously on application startup
+        _ = Task.Run(CheckForNewVersionAsync);
     }
 
     private static string SanitizeFileName(string name)
@@ -107,12 +137,12 @@ public partial class MainWindow : IDisposable
             Task.Run(async () => await ReportBugAsync("chdman.exe not found on startup. This will prevent the application from functioning correctly."));
         }
 
-        LogMessage("Using SevenZipExtractor library for .7z and .rar extraction.");
-
         if (_isMaxCsoAvailable) LogMessage("maxcso.exe found. .cso decompression enabled for conversion.");
         else LogMessage("WARNING: maxcso.exe not found. .cso decompression will be disabled for conversion.");
 
+        LogMessage("");
         LogMessage("--- Ready for Conversion ---");
+        LogMessage("");
     }
 
     private void DisplayVerificationInstructionsInLog()
@@ -167,37 +197,6 @@ public partial class MainWindow : IDisposable
 
         UpdateWriteSpeedDisplay(0);
     }
-
-    private void MoveSuccessFilesCheckBox_CheckedUnchecked(object sender, RoutedEventArgs e)
-    {
-        SuccessFolderPanel.Visibility = MoveSuccessFilesCheckBox.IsChecked == true ? Visibility.Visible : Visibility.Collapsed;
-        SetControlsState(StartConversionButton.IsEnabled);
-    }
-
-    private void MoveFailedFilesCheckBox_CheckedUnchecked(object sender, RoutedEventArgs e)
-    {
-        FailedFolderPanel.Visibility = MoveFailedFilesCheckBox.IsChecked == true ? Visibility.Visible : Visibility.Collapsed;
-        SetControlsState(StartConversionButton.IsEnabled);
-    }
-
-    private void BrowseSuccessFolderButton_Click(object sender, RoutedEventArgs e)
-    {
-        var folder = SelectFolder("Select folder for successfully verified CHD files");
-        if (!string.IsNullOrEmpty(folder))
-        {
-            SuccessFolderTextBox.Text = folder;
-        }
-    }
-
-    private void BrowseFailedFolderButton_Click(object sender, RoutedEventArgs e)
-    {
-        var folder = SelectFolder("Select folder for failed CHD files");
-        if (!string.IsNullOrEmpty(folder))
-        {
-            FailedFolderTextBox.Text = folder;
-        }
-    }
-
 
     private void Window_Closing(object sender, CancelEventArgs e)
     {
@@ -269,7 +268,6 @@ public partial class MainWindow : IDisposable
                 return;
             }
 
-            // --- FIX START ---
             string normalizedInputFolder;
             string normalizedOutputFolder;
             try
@@ -290,7 +288,6 @@ public partial class MainWindow : IDisposable
                 ShowError("Input and output folders must be different for conversion.");
                 return;
             }
-            // --- FIX END ---
 
             if (_cts.IsCancellationRequested)
             {
@@ -353,10 +350,8 @@ public partial class MainWindow : IDisposable
 
             var inputFolder = VerificationInputFolderTextBox.Text;
             var includeSubfolders = VerificationIncludeSubfoldersCheckBox.IsChecked ?? false;
-            var moveSuccess = MoveSuccessFilesCheckBox.IsChecked == true;
-            var successFolder = SuccessFolderTextBox.Text;
-            var moveFailed = MoveFailedFilesCheckBox.IsChecked == true;
-            var failedFolder = FailedFolderTextBox.Text;
+            var moveSuccess = MoveSuccessFilesCheckBox.IsChecked ?? false;
+            var moveFailed = MoveFailedFilesCheckBox.IsChecked ?? false;
 
             if (string.IsNullOrEmpty(inputFolder))
             {
@@ -365,34 +360,8 @@ public partial class MainWindow : IDisposable
                 return;
             }
 
-            if (moveSuccess && string.IsNullOrEmpty(successFolder))
-            {
-                LogMessage("Error: 'Move successfully tested files' is checked, but no Success Folder is selected.");
-                ShowError("Please select a Success Folder or uncheck the option to move successful files.");
-                return;
-            }
-
-            if (moveFailed && string.IsNullOrEmpty(failedFolder))
-            {
-                LogMessage("Error: 'Move failed tested files' is checked, but no Failed Folder is selected.");
-                ShowError("Please select a Failed Folder or uncheck the option to move failed files.");
-                return;
-            }
-
-            if (moveSuccess && moveFailed && !string.IsNullOrEmpty(successFolder) && successFolder.Equals(failedFolder, StringComparison.OrdinalIgnoreCase))
-            {
-                LogMessage("Error: Success Folder and Failed Folder cannot be the same.");
-                ShowError("Please select different folders for successful and failed files.");
-                return;
-            }
-
-            if ((moveSuccess && !string.IsNullOrEmpty(successFolder) && successFolder.Equals(inputFolder, StringComparison.OrdinalIgnoreCase)) ||
-                (moveFailed && !string.IsNullOrEmpty(failedFolder) && failedFolder.Equals(inputFolder, StringComparison.OrdinalIgnoreCase)))
-            {
-                LogMessage("Error: Success/Failed folder cannot be the same as the Input folder for verification.");
-                ShowError("Please select Success/Failed folders that are different from the Input folder.");
-                return;
-            }
+            var successFolder = moveSuccess ? Path.Combine(inputFolder, "Success") : string.Empty;
+            var failedFolder = moveFailed ? Path.Combine(inputFolder, "Failed") : string.Empty;
 
             if (_cts.IsCancellationRequested)
             {
@@ -401,16 +370,15 @@ public partial class MainWindow : IDisposable
 
             _cts = new CancellationTokenSource();
 
-
             ResetOperationStats();
             SetControlsState(false);
             _operationTimer.Restart();
 
             LogMessage("--- Starting batch verification process... ---");
             LogMessage($"Input folder: {inputFolder}");
-            LogMessage($"Include subfolders: {includeSubfolders}");
             if (moveSuccess) LogMessage($"Moving successful files to: {successFolder}");
             if (moveFailed) LogMessage($"Moving failed files to: {failedFolder}");
+            LogMessage($"Include subfolders: {includeSubfolders}");
 
             try
             {
@@ -430,7 +398,7 @@ public partial class MainWindow : IDisposable
                 _operationTimer.Stop();
                 UpdateProcessingTimeDisplay();
                 UpdateWriteSpeedDisplay(0);
-                SetControlsState(true); // Log will persist here now
+                SetControlsState(true);
                 LogOperationSummary("Verification");
             }
         }
@@ -439,6 +407,7 @@ public partial class MainWindow : IDisposable
             _ = ReportBugAsync("Error in StartVerificationButton_Click", ex);
         }
     }
+
 
     private void CancelButton_Click(object sender, RoutedEventArgs e)
     {
@@ -461,14 +430,7 @@ public partial class MainWindow : IDisposable
         VerificationIncludeSubfoldersCheckBox.IsEnabled = enabled;
         StartVerificationButton.IsEnabled = enabled;
         MoveSuccessFilesCheckBox.IsEnabled = enabled;
-        SuccessFolderTextBox.IsEnabled = enabled && (MoveSuccessFilesCheckBox.IsChecked == true);
-        BrowseSuccessFolderButton.IsEnabled = enabled && (MoveSuccessFilesCheckBox.IsChecked == true);
         MoveFailedFilesCheckBox.IsEnabled = enabled;
-        FailedFolderTextBox.IsEnabled = enabled && (MoveFailedFilesCheckBox.IsChecked == true);
-        BrowseFailedFolderButton.IsEnabled = enabled && (MoveFailedFilesCheckBox.IsChecked == true);
-
-        SuccessFolderPanel.IsEnabled = enabled;
-        FailedFolderPanel.IsEnabled = enabled;
 
         MainTabControl.IsEnabled = enabled;
 
@@ -478,16 +440,7 @@ public partial class MainWindow : IDisposable
 
         if (!enabled) return; // If the operation is starting (controls disabled), do nothing further here.
 
-        // --- MODIFICATION: Removed log clearing and instruction display from here ---
-        // This block runs when 'enabled' is true (operation finished and controls re-enabled).
-        // The log should persist.
         ClearProgressDisplay();
-        // if (MainTabControl.SelectedItem is TabItem selectedTab)
-        // {
-        //     Application.Current.Dispatcher.InvokeAsync(() => LogViewer.Clear()); // REMOVED
-        //     if (selectedTab.Name == "ConvertTab") DisplayConversionInstructionsInLog(); // REMOVED
-        //     else if (selectedTab.Name == "VerifyTab") DisplayVerificationInstructionsInLog(); // REMOVED
-        // }
         UpdateWriteSpeedDisplay(0);
     }
 
@@ -784,6 +737,16 @@ public partial class MainWindow : IDisposable
             return;
         }
 
+        if (moveSuccess)
+        {
+            await Task.Run(() => Directory.CreateDirectory(successFolder), token);
+        }
+
+        if (moveFailed)
+        {
+            await Task.Run(() => Directory.CreateDirectory(failedFolder), token);
+        }
+
         ProgressBar.Maximum = _totalFilesProcessed;
         var filesActuallyProcessedCount = 0;
 
@@ -800,7 +763,7 @@ public partial class MainWindow : IDisposable
             {
                 LogMessage($"✓ Verification successful: {fileName}");
                 _processedOkCount++;
-                if (moveSuccess && !string.IsNullOrEmpty(successFolder))
+                if (moveSuccess)
                 {
                     await MoveVerifiedFileAsync(chdFile, successFolder, inputFolder, includeSubfolders, "successfully verified", token);
                 }
@@ -809,7 +772,7 @@ public partial class MainWindow : IDisposable
             {
                 LogMessage($"✗ Verification failed: {fileName}");
                 _failedCount++;
-                if (moveFailed && !string.IsNullOrEmpty(failedFolder))
+                if (moveFailed)
                 {
                     await MoveVerifiedFileAsync(chdFile, failedFolder, inputFolder, includeSubfolders, "failed verification", token);
                 }
@@ -821,6 +784,7 @@ public partial class MainWindow : IDisposable
             UpdateProcessingTimeDisplay();
         }
     }
+
 
     private async Task MoveVerifiedFileAsync(string sourceFile, string destinationParentFolder, string baseInputFolder,
         bool maintainSubfolders, string moveReason, CancellationToken token)
@@ -896,7 +860,7 @@ public partial class MainWindow : IDisposable
 
             LogMessage($"CHDMAN Convert: Using command '{command}' with {coresForChdman} core(s) for {Path.GetFileName(sanitizedInputFile)} -> {Path.GetFileName(outputChdFile)}.");
             var arguments = $"{command} -i \"{sanitizedInputFile}\" -o \"{outputChdFile}\" -f -np {coresForChdman}";
-            // ... (rest of ConvertToChdAsync remains the same, using sanitizedInputFile for -i) ...
+
             process.StartInfo = new ProcessStartInfo
             {
                 FileName = chdmanPath,
@@ -934,7 +898,6 @@ public partial class MainWindow : IDisposable
             {
                 lastFileSize = await Task.Run(() => new FileInfo(outputChdFile).Length, token);
             }
-
 
             while (!process.HasExited)
             {
@@ -1367,8 +1330,8 @@ public partial class MainWindow : IDisposable
                     LogMessage($"Extracting {extension.ToUpperInvariant()} {archiveFileNameForLog} using SevenZipExtractor");
                     await Task.Run(() =>
                     {
-                        using var archiveFile = new ArchiveFile(originalArchivePath);
-                        archiveFile.Extract(tempDirectoryRoot);
+                        using var extractor = new SevenZipExtractor(originalArchivePath); // Changed from ArchiveFile to SevenZipExtractor
+                        extractor.ExtractArchive(tempDirectoryRoot); // Use ExtractArchive method
                     }, token);
                     break;
 
@@ -1408,8 +1371,16 @@ public partial class MainWindow : IDisposable
             var filesToDelete = new List<string> { inputFile };
             var inputFileExtension = Path.GetExtension(inputFile).ToLowerInvariant();
 
-            if (inputFileExtension == ".cue") filesToDelete.AddRange(await GetReferencedFilesFromCueAsync(inputFile, token));
-            else if (inputFileExtension == ".gdi") filesToDelete.AddRange(await GetReferencedFilesFromGdiAsync(inputFile, token));
+            switch (inputFileExtension)
+            {
+                case ".cue":
+                    filesToDelete.AddRange(await GetReferencedFilesFromCueAsync(inputFile, token));
+                    break;
+                case ".gdi":
+                    filesToDelete.AddRange(await GetReferencedFilesFromGdiAsync(inputFile, token));
+                    break;
+            }
+
             token.ThrowIfCancellationRequested();
 
             foreach (var file in filesToDelete.Distinct(StringComparer.OrdinalIgnoreCase))
@@ -1493,7 +1464,7 @@ public partial class MainWindow : IDisposable
                 _failedCount > 0 ? MessageBoxImage.Warning : MessageBoxImage.Information));
     }
 
-    private string GetPastTense(string verb)
+    private static string GetPastTense(string verb)
     {
         return verb.ToLowerInvariant() switch
         {
@@ -1502,7 +1473,6 @@ public partial class MainWindow : IDisposable
             _ => verb.ToLowerInvariant() + "ed"
         };
     }
-
 
     private void ShowMessageBox(string message, string title, MessageBoxButton buttons, MessageBoxImage icon)
     {
@@ -1567,6 +1537,112 @@ public partial class MainWindow : IDisposable
             _ = ReportBugAsync("Error opening About window", ex);
         }
     }
+
+    /// <summary>
+    /// Checks for a new version of the application on GitHub.
+    /// </summary>
+    private async Task CheckForNewVersionAsync()
+    {
+        try
+        {
+            using var httpClient = new HttpClient();
+            httpClient.DefaultRequestHeaders.Add("User-Agent", AppConfig.ApplicationName); // GitHub requires this
+
+            LogMessage("Fetching latest release from GitHub...");
+            var response = await httpClient.GetStringAsync(GitHubApiLatestReleaseUrl);
+            LogMessage(string.Concat("GitHub API Response: ", response.AsSpan(0, Math.Min(200, response.Length)), "...")); // Log a snippet
+
+            var latestRelease = JsonSerializer.Deserialize<GitHubRelease>(response, JsonSerializerOptions);
+            if (latestRelease == null)
+            {
+                LogMessage("Deserialization failed: Response could not be parsed into GitHubRelease object.");
+                return;
+            }
+
+            LogMessage($"Deserialized TagName: '{latestRelease.TagName}'"); // Log the actual value
+            LogMessage($"Deserialized HtmlUrl: '{latestRelease.HtmlUrl}'"); // Log for verification
+
+            if (string.IsNullOrWhiteSpace(latestRelease.TagName))
+            {
+                LogMessage("TagName is empty or null after deserialization.");
+                return; // Or handle as needed
+            }
+
+            // Get current application version
+            var currentVersion = Assembly.GetExecutingAssembly().GetName().Version;
+            if (currentVersion == null)
+            {
+                LogMessage("Could not determine current application version.");
+                return;
+            }
+
+            // Parse remote version from tag_name, handling potential issues
+            var remoteVersionString = latestRelease.TagName.Trim();
+            if (remoteVersionString.StartsWith("release", StringComparison.OrdinalIgnoreCase))
+            {
+                remoteVersionString = remoteVersionString.Substring("release".Length).Trim(); // e.g., "release1.4.0" -> "1.4.0"
+            }
+
+            if (!Version.TryParse(remoteVersionString, out var remoteVersion))
+            {
+                LogMessage($"Could not parse remote version string: '{latestRelease.TagName}'. Parsed string: '{remoteVersionString}'");
+                return; // Exit gracefully
+            }
+
+            LogMessage($"Current application version: {currentVersion}");
+            LogMessage($"Latest available version on GitHub: {remoteVersion}");
+
+            if (remoteVersion > currentVersion)
+            {
+                Application.Current.Dispatcher.Invoke(() =>
+                {
+                    var result = MessageBox.Show(this,
+                        $"A new version ({remoteVersion}) of {AppConfig.ApplicationName} is available!\n\nWould you like to go to the download page?",
+                        "New Version Available",
+                        MessageBoxButton.YesNo,
+                        MessageBoxImage.Information);
+
+                    if (result != MessageBoxResult.Yes) return;
+
+                    var downloadUrl = latestRelease.HtmlUrl;
+                    if (string.IsNullOrEmpty(downloadUrl))
+                    {
+                        downloadUrl = GitHubRepoReleasesUrl;
+                    }
+
+                    try
+                    {
+                        Process.Start(new ProcessStartInfo(downloadUrl) { UseShellExecute = true });
+                    }
+                    catch (Exception ex)
+                    {
+                        LogMessage($"Error opening download URL: {ex.Message}");
+                        ShowError($"Unable to open download link: {ex.Message}");
+                        _ = ReportBugAsync($"Error opening download URL: {downloadUrl}", ex);
+                    }
+                });
+            }
+            else
+            {
+                LogMessage("Application is up to date.");
+            }
+        }
+        catch (HttpRequestException httpEx)
+        {
+            LogMessage($"Network error checking for updates: {httpEx.Message}");
+        }
+        catch (JsonException jsonEx)
+        {
+            LogMessage($"Error parsing GitHub API response: {jsonEx.Message}");
+            _ = ReportBugAsync("Error parsing GitHub API response during update check", jsonEx);
+        }
+        catch (Exception ex)
+        {
+            LogMessage($"An unexpected error occurred during update check: {ex.Message}");
+            _ = ReportBugAsync("Unexpected error during update check", ex);
+        }
+    }
+
 
     [GeneratedRegex(@"Compressing\s+(?:(?:\d+/\d+)|(?:hunk\s+\d+))\s+\((?<percent>\d+[\.,]?\d*)%\)")]
     private static partial Regex ChdmanCompressionProgressRegex();
