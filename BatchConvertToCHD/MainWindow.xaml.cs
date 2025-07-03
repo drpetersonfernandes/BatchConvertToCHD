@@ -16,7 +16,6 @@ public partial class MainWindow : IDisposable
 {
     private CancellationTokenSource _cts;
 
-    // Bug Report API configuration and service instance are now managed by the App class.
     private static readonly char[] Separator = [' ', '\t'];
 
     private const string MaxCsoExeName = "maxcso.exe";
@@ -270,12 +269,28 @@ public partial class MainWindow : IDisposable
                 return;
             }
 
-            if (inputFolder.Equals(outputFolder, StringComparison.OrdinalIgnoreCase))
+            // --- FIX START ---
+            string normalizedInputFolder;
+            string normalizedOutputFolder;
+            try
+            {
+                normalizedInputFolder = Path.GetFullPath(inputFolder);
+                normalizedOutputFolder = Path.GetFullPath(outputFolder);
+            }
+            catch (Exception ex)
+            {
+                LogMessage($"Error normalizing paths: {ex.Message}");
+                ShowError($"Invalid input or output path: {ex.Message}");
+                return;
+            }
+
+            if (normalizedInputFolder.Equals(normalizedOutputFolder, StringComparison.OrdinalIgnoreCase))
             {
                 LogMessage("Error: Input and output folders cannot be the same for conversion.");
                 ShowError("Input and output folders must be different for conversion.");
                 return;
             }
+            // --- FIX END ---
 
             if (_cts.IsCancellationRequested)
             {
@@ -289,8 +304,8 @@ public partial class MainWindow : IDisposable
             _operationTimer.Restart();
 
             LogMessage("--- Starting batch conversion process... ---");
-            LogMessage($"Input folder: {inputFolder}");
-            LogMessage($"Output folder: {outputFolder}");
+            LogMessage($"Input folder: {inputFolder}"); // Keep original paths for user clarity in log
+            LogMessage($"Output folder: {outputFolder}"); // Keep original paths for user clarity in log
             LogMessage($"Delete original files: {deleteFiles}");
             LogMessage($"Parallel file processing: {useParallelFileProcessing} (Max concurrency: {_currentDegreeOfParallelismForFiles})");
 
@@ -312,7 +327,7 @@ public partial class MainWindow : IDisposable
                 _operationTimer.Stop();
                 UpdateProcessingTimeDisplay();
                 UpdateWriteSpeedDisplay(0);
-                SetControlsState(true); // Log will persist here now
+                SetControlsState(true);
                 LogOperationSummary("Conversion");
             }
         }
