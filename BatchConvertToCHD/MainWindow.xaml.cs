@@ -1595,110 +1595,145 @@ public partial class MainWindow : IDisposable
     }
 
     /// <summary>
-    /// Checks for a new version of the application on GitHub.
-    /// </summary>
-    private async Task CheckForNewVersionAsync()
+/// Checks for a new version of the application on GitHub.
+/// </summary>
+private async Task CheckForNewVersionAsync()
+{
+    try
     {
-        try
+        using var httpClient = new HttpClient();
+        httpClient.DefaultRequestHeaders.Add("User-Agent", AppConfig.ApplicationName);
+
+        LogMessage("Checking for updates on GitHub...");
+        var response = await httpClient.GetStringAsync(GitHubApiLatestReleaseUrl);
+
+        var latestRelease = JsonSerializer.Deserialize<GitHubRelease>(response, JsonSerializerOptions);
+        if (latestRelease == null)
         {
-            using var httpClient = new HttpClient();
-            httpClient.DefaultRequestHeaders.Add("User-Agent", AppConfig.ApplicationName); // GitHub requires this
+            LogMessage("Failed to parse GitHub release information.");
+            return;
+        }
 
-            LogMessage("Fetching latest release from GitHub...");
-            var response = await httpClient.GetStringAsync(GitHubApiLatestReleaseUrl);
-            LogMessage(string.Concat("GitHub API Response: ", response.AsSpan(0, Math.Min(200, response.Length)), "...")); // Log a snippet
+        // Skip draft or prerelease versions
+        if (latestRelease.Draft || latestRelease.Prerelease)
+        {
+            LogMessage("Latest release is a draft or prerelease. Skipping update check.");
+            return;
+        }
 
-            var latestRelease = JsonSerializer.Deserialize<GitHubRelease>(response, JsonSerializerOptions);
-            if (latestRelease == null)
+        if (string.IsNullOrWhiteSpace(latestRelease.TagName))
+        {
+            LogMessage("Release tag name is empty.");
+            return;
+        }
+
+        // Get current application version
+        var currentVersion = Assembly.GetExecutingAssembly().GetName().Version;
+        if (currentVersion == null)
+        {
+            LogMessage("Could not determine current application version.");
+            return;
+        }
+
+        // Parse remote version from tag_name
+        var remoteVersionString = ParseVersionFromTag(latestRelease.TagName);
+        if (!Version.TryParse(remoteVersionString, out var remoteVersion))
+        {
+            LogMessage($"Could not parse remote version string: '{latestRelease.TagName}' -> '{remoteVersionString}'");
+            return;
+        }
+
+        LogMessage($"Current version: {currentVersion}");
+        LogMessage($"Latest version: {remoteVersion}");
+
+        if (remoteVersion > currentVersion)
+        {
+            Application.Current.Dispatcher.Invoke(() =>
             {
-                LogMessage("Deserialization failed: Response could not be parsed into GitHubRelease object.");
-                return;
-            }
+                var releaseNotes = string.IsNullOrWhiteSpace(latestRelease.Body)
+                    ? "No release notes available."
+                    : latestRelease.Body.Replace(@"\r\n", "\n").Replace("\\n", "\n");
 
-            LogMessage($"Deserialized TagName: '{latestRelease.TagName}'"); // Log the actual value
-            LogMessage($"Deserialized HtmlUrl: '{latestRelease.HtmlUrl}'"); // Log for verification
+                var message = $"A new version ({remoteVersion}) of {AppConfig.ApplicationName} is available!\n\n" +
+                              $"Release Notes:\n{releaseNotes}\n\n" +
+                              "Would you like to go to the releases page to download it?";
 
-            if (string.IsNullOrWhiteSpace(latestRelease.TagName))
-            {
-                LogMessage("TagName is empty or null after deserialization.");
-                return; // Or handle as needed
-            }
+                var result = MessageBox.Show(this, message, "New Version Available",
+                    MessageBoxButton.YesNo, MessageBoxImage.Information);
 
-            // Get current application version
-            var currentVersion = Assembly.GetExecutingAssembly().GetName().Version;
-            if (currentVersion == null)
-            {
-                LogMessage("Could not determine current application version.");
-                return;
-            }
+                if (result != MessageBoxResult.Yes) return;
 
-            // Parse remote version from tag_name, handling potential issues
-            var remoteVersionString = latestRelease.TagName.Trim();
-            if (remoteVersionString.StartsWith("release", StringComparison.OrdinalIgnoreCase))
-            {
-                remoteVersionString = remoteVersionString.Substring("release".Length).Trim(); // e.g., "release1.4.0" -> "1.4.0"
-            }
-
-            if (!Version.TryParse(remoteVersionString, out var remoteVersion))
-            {
-                LogMessage($"Could not parse remote version string: '{latestRelease.TagName}'. Parsed string: '{remoteVersionString}'");
-                return; // Exit gracefully
-            }
-
-            LogMessage($"Current application version: {currentVersion}");
-            LogMessage($"Latest available version on GitHub: {remoteVersion}");
-
-            if (remoteVersion > currentVersion)
-            {
-                Application.Current.Dispatcher.Invoke(() =>
+                try
                 {
-                    var result = MessageBox.Show(this,
-                        $"A new version ({remoteVersion}) of {AppConfig.ApplicationName} is available!\n\nWould you like to go to the download page?",
-                        "New Version Available",
-                        MessageBoxButton.YesNo,
-                        MessageBoxImage.Information);
+                    var releasesUrl = latestRelease.HtmlUrl;
+                    Process.Start(new ProcessStartInfo(releasesUrl) { UseShellExecute = true });
+                    LogMessage($"Opened release page: {releasesUrl}");
+                }
+                catch (Exception ex)
+                {
+                    LogMessage($"Error opening release page: {ex.Message}");
+                    ShowError($"Unable to open release page: {ex.Message}");
+                    _ = ReportBugAsync($"Error opening release page: {latestRelease.HtmlUrl}", ex);
+                }
+            });
 
-                    if (result != MessageBoxResult.Yes) return;
-
-                    var downloadUrl = latestRelease.HtmlUrl;
-                    if (string.IsNullOrEmpty(downloadUrl))
-                    {
-                        downloadUrl = GitHubRepoReleasesUrl;
-                    }
-
-                    try
-                    {
-                        Process.Start(new ProcessStartInfo(downloadUrl) { UseShellExecute = true });
-                    }
-                    catch (Exception ex)
-                    {
-                        LogMessage($"Error opening download URL: {ex.Message}");
-                        ShowError($"Unable to open download link: {ex.Message}");
-                        _ = ReportBugAsync($"Error opening download URL: {downloadUrl}", ex);
-                    }
-                });
-            }
-            else
-            {
-                LogMessage("Application is up to date.");
-            }
+            // Update status bar
+            UpdateStatusBarMessage($"Update available: v{remoteVersion}");
         }
-        catch (HttpRequestException httpEx)
+        else
         {
-            LogMessage($"Network error checking for updates: {httpEx.Message}");
-        }
-        catch (JsonException jsonEx)
-        {
-            LogMessage($"Error parsing GitHub API response: {jsonEx.Message}");
-            _ = ReportBugAsync("Error parsing GitHub API response during update check", jsonEx);
-        }
-        catch (Exception ex)
-        {
-            LogMessage($"An unexpected error occurred during update check: {ex.Message}");
-            _ = ReportBugAsync("Unexpected error during update check", ex);
+            LogMessage("Application is up to date.");
+            UpdateStatusBarMessage("Application is up to date");
         }
     }
+    catch (HttpRequestException httpEx)
+    {
+        LogMessage($"Network error checking for updates: {httpEx.Message}");
+        UpdateStatusBarMessage("Update check failed (network error)");
+    }
+    catch (JsonException jsonEx)
+    {
+        LogMessage($"Error parsing GitHub API response: {jsonEx.Message}");
+        _ = ReportBugAsync("Error parsing GitHub API response during update check", jsonEx);
+        UpdateStatusBarMessage("Update check failed (parse error)");
+    }
+    catch (Exception ex)
+    {
+        LogMessage($"Unexpected error during update check: {ex.Message}");
+        _ = ReportBugAsync("Unexpected error during update check", ex);
+        UpdateStatusBarMessage("Update check failed");
+    }
+}
 
+    /// <summary>
+    /// Parses version string from GitHub release tag.
+    /// Handles various tag formats like "release1.4.0", "v1.5.0", "1.6.0", etc.
+    /// </summary>
+    private static string ParseVersionFromTag(string tagName)
+    {
+        if (string.IsNullOrWhiteSpace(tagName))
+            return string.Empty;
+
+        var tag = tagName.Trim();
+
+        // Remove common prefixes
+        var prefixes = new[] { "release", "version", "v" };
+        foreach (var prefix in prefixes)
+        {
+            if (!tag.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)) continue;
+
+            tag = tag.Substring(prefix.Length);
+            break;
+        }
+
+        // Clean up any remaining non-version characters at the start
+        while (tag.Length > 0 && !char.IsDigit(tag[0]))
+        {
+            tag = tag.Substring(1);
+        }
+
+        return tag;
+    }
 
     [GeneratedRegex(@"Compressing\s+(?:(?:\d+/\d+)|(?:hunk\s+\d+))\s+\((?<percent>\d+[\.,]?\d*)%\)")]
     private static partial Regex ChdmanCompressionProgressRegex();
