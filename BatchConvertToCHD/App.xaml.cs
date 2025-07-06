@@ -1,6 +1,8 @@
 ﻿using System.Globalization;
+using System.IO;
 using System.Text;
 using System.Windows.Threading;
+using SevenZip;
 
 namespace BatchConvertToCHD;
 
@@ -23,6 +25,9 @@ public partial class App : IDisposable
         AppDomain.CurrentDomain.UnhandledException += CurrentDomain_UnhandledException;
         DispatcherUnhandledException += App_DispatcherUnhandledException;
         TaskScheduler.UnobservedTaskException += TaskScheduler_UnobservedTaskException;
+
+        // Initialize SevenZipSharp library path
+        InitializeSevenZipSharp();
     }
 
     private void CurrentDomain_UnhandledException(object sender, UnhandledExceptionEventArgs e)
@@ -101,6 +106,40 @@ public partial class App : IDisposable
             }
 
             break;
+        }
+    }
+
+    private void InitializeSevenZipSharp()
+    {
+        try
+        {
+            // Determine the path to the 7z dll based on the process architecture.
+            var dllName = Environment.Is64BitProcess ? "7z_x64.dll" : "7z_x86.dll";
+            var dllPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, dllName);
+
+            if (File.Exists(dllPath))
+            {
+                SevenZipBase.SetLibraryPath(dllPath);
+            }
+            else
+            {
+                // Notify developer
+                // If the specific DLL is not found, log an error. Extraction will likely fail.
+                var errorMessage = $"Could not find the required 7-Zip library: {dllName} in {AppDomain.CurrentDomain.BaseDirectory}";
+
+                if (_bugReportService != null)
+                {
+                    _ = _bugReportService.SendBugReportAsync(errorMessage);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            // Notify developer
+            if (_bugReportService != null)
+            {
+                _ = _bugReportService.SendBugReportAsync(ex.Message);
+            }
         }
     }
 

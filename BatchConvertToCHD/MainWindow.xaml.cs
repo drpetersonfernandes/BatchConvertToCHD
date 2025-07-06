@@ -63,20 +63,6 @@ public partial class MainWindow : IDisposable
         _maxCsoPath = Path.Combine(appDirectory, MaxCsoExeName);
         _isMaxCsoAvailable = File.Exists(_maxCsoPath);
 
-        try
-        {
-            SevenZipBase.SetLibraryPath(Path.Combine(appDirectory, "7z.dll"));
-            LogMessage("Successfully loaded 7z.dll.");
-        }
-        catch (SevenZipLibraryException ex)
-        {
-            LogMessage($"Error loading 7z.dll: {ex.Message}");
-            _ = ReportBugAsync("Failed to load 7z.dll for SevenZipSharp", ex);
-
-            // Notify user
-            MessageBox.Show("7z.dll is missing. Archive extraction (.7z, .rar) will be disabled.", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
-        }
-
         DisplayConversionInstructionsInLog();
         ResetOperationStats();
 
