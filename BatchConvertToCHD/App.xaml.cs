@@ -1,6 +1,7 @@
 ﻿using System.Globalization;
 using System.IO;
 using System.Text;
+using System.Windows;
 using System.Windows.Threading;
 using SevenZip;
 
@@ -28,6 +29,21 @@ public partial class App : IDisposable
 
         // Initialize SevenZipSharp library path
         InitializeSevenZipSharp();
+
+        // Register the Exit event handler
+        Exit += App_Exit;
+    }
+
+    private void App_Exit(object sender, ExitEventArgs e)
+    {
+        // Dispose of the shared BugReportService instance
+        _bugReportService?.Dispose();
+        SharedBugReportService = null;
+
+        // Unregister event handlers to prevent memory leaks
+        AppDomain.CurrentDomain.UnhandledException -= CurrentDomain_UnhandledException;
+        DispatcherUnhandledException -= App_DispatcherUnhandledException;
+        TaskScheduler.UnobservedTaskException -= TaskScheduler_UnobservedTaskException;
     }
 
     private void CurrentDomain_UnhandledException(object sender, UnhandledExceptionEventArgs e)

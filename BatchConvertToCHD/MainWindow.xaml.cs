@@ -9,7 +9,8 @@ using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Windows;
-using System.Windows.Controls; // Keep this for TabControl, etc.
+using System.Windows.Controls;
+using System.Windows.Media;
 using Microsoft.Win32;
 using SevenZip;
 
@@ -63,11 +64,43 @@ public partial class MainWindow : IDisposable
         _maxCsoPath = Path.Combine(appDirectory, MaxCsoExeName);
         _isMaxCsoAvailable = File.Exists(_maxCsoPath);
 
+        // Initialize status bar
+        InitializeStatusBar();
+
         DisplayConversionInstructionsInLog();
         ResetOperationStats();
 
         // Start version check asynchronously on application startup
         _ = Task.Run(CheckForNewVersionAsync);
+    }
+
+    private void InitializeStatusBar()
+    {
+        // Update dependency status
+        UpdateDependencyStatus();
+
+        // Set the initial status message
+        UpdateStatusBarMessage("Ready");
+    }
+
+    private void UpdateDependencyStatus()
+    {
+        Application.Current.Dispatcher.InvokeAsync(() =>
+        {
+            StatusBarChdman.Text = " CHDMAN ";
+            StatusBarChdman.Foreground = _isChdmanAvailable ? new SolidColorBrush(Colors.Green) : new SolidColorBrush(Colors.Red);
+
+            StatusBarMaxcso.Text = " MAXCSO ";
+            StatusBarMaxcso.Foreground = _isMaxCsoAvailable ? new SolidColorBrush(Colors.Green) : new SolidColorBrush(Colors.Orange);
+        });
+    }
+
+    private void UpdateStatusBarMessage(string message)
+    {
+        Application.Current.Dispatcher.InvokeAsync(() =>
+        {
+            StatusBarMessage.Text = message;
+        });
     }
 
     private static string SanitizeFileName(string name)
@@ -174,9 +207,11 @@ public partial class MainWindow : IDisposable
             {
                 case "ConvertTab":
                     DisplayConversionInstructionsInLog();
+                    UpdateStatusBarMessage("Ready for conversion");
                     break;
                 case "VerifyTab":
                     DisplayVerificationInstructionsInLog();
+                    UpdateStatusBarMessage("Ready for verification");
                     break;
             }
         }
@@ -206,6 +241,7 @@ public partial class MainWindow : IDisposable
 
         ConversionInputFolderTextBox.Text = folder;
         LogMessage($"Conversion input folder selected: {folder}");
+        UpdateStatusBarMessage("Input folder selected");
     }
 
     private void BrowseConversionOutputButton_Click(object sender, RoutedEventArgs e)
@@ -215,6 +251,7 @@ public partial class MainWindow : IDisposable
 
         ConversionOutputFolderTextBox.Text = folder;
         LogMessage($"Conversion output folder selected: {folder}");
+        UpdateStatusBarMessage("Output folder selected");
     }
 
     private void BrowseVerificationInputButton_Click(object sender, RoutedEventArgs e)
@@ -224,6 +261,7 @@ public partial class MainWindow : IDisposable
 
         VerificationInputFolderTextBox.Text = folder;
         LogMessage($"Verification input folder selected: {folder}");
+        UpdateStatusBarMessage("CHD folder selected for verification");
     }
 
     private async void StartConversionButton_Click(object sender, RoutedEventArgs e)
@@ -399,6 +437,7 @@ public partial class MainWindow : IDisposable
     {
         _cts.Cancel();
         LogMessage("Cancellation requested. Waiting for current operation(s) to complete...");
+        UpdateStatusBarMessage("Cancelling operation...");
     }
 
     private void SetControlsState(bool enabled)
@@ -424,7 +463,32 @@ public partial class MainWindow : IDisposable
         ProgressBar.Visibility = enabled ? Visibility.Collapsed : Visibility.Visible;
         CancelButton.Visibility = enabled ? Visibility.Collapsed : Visibility.Visible;
 
-        if (!enabled) return; // If the operation is starting (controls disabled), do nothing further here.
+        if (!enabled)
+        {
+            // Operation starting
+            var currentTab = MainTabControl.SelectedItem as TabItem;
+            if (currentTab?.Name == "ConvertTab")
+            {
+                UpdateStatusBarMessage("Converting files...");
+            }
+            else if (currentTab?.Name == "VerifyTab")
+            {
+                UpdateStatusBarMessage("Verifying files...");
+            }
+
+            return;
+        }
+
+        // Operation completed
+        var selectedTab = MainTabControl.SelectedItem as TabItem;
+        if (selectedTab?.Name == "ConvertTab")
+        {
+            UpdateStatusBarMessage("Ready for conversion");
+        }
+        else if (selectedTab?.Name == "VerifyTab")
+        {
+            UpdateStatusBarMessage("Ready for verification");
+        }
 
         ClearProgressDisplay();
         UpdateWriteSpeedDisplay(0);
@@ -569,7 +633,7 @@ public partial class MainWindow : IDisposable
                     catch (Exception ex)
                     {
                         LogMessage($"Error copying extracted file {extractedFileOriginalName} to temp path {fileToProcessForChdman}: {ex.Message}");
-                        return false; // We should still process the file, but we can't copy it to chdman.
+                        return false; // The file cannot be copied to the temporary location, so we must mark it as failed.
                     }
 
                     LogMessage($"Copied extracted file to sanitized temp path: {fileToProcessForChdman}");
@@ -1440,6 +1504,12 @@ public partial class MainWindow : IDisposable
         LogMessage($"Total files processed: {_totalFilesProcessed}");
         LogMessage($"Successfully {GetPastTense(operationType)}: {_processedOkCount} files");
         if (_failedCount > 0) LogMessage($"Failed to {operationType.ToLowerInvariant()}: {_failedCount} files");
+
+        // Update the status bar with the completion message
+        var statusMessage = _failedCount > 0
+            ? $"{operationType} completed with {_failedCount} errors"
+            : $"{operationType} completed successfully";
+        UpdateStatusBarMessage(statusMessage);
 
         Application.Current.Dispatcher.InvokeAsync(() =>
             ShowMessageBox($"Batch {operationType.ToLowerInvariant()} completed.\n\n" +

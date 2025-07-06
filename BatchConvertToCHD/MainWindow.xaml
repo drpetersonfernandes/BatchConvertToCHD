@@ -13,6 +13,7 @@
             <RowDefinition Height="Auto"/> <!-- Stats Panel -->
             <RowDefinition Height="Auto"/> <!-- ProgressText -->
             <RowDefinition Height="Auto"/> <!-- ProgressBar Grid -->
+            <RowDefinition Height="Auto"/> <!-- Status Bar -->
         </Grid.RowDefinitions>
         
         <Menu Grid.Row="0">
@@ -154,5 +155,35 @@
             <ProgressBar x:Name="ProgressBar" Height="25" Grid.Column="0" Visibility="Collapsed"/>
             <Button x:Name="CancelButton" Content="Cancel" Width="100" Height="25" Grid.Column="1" Margin="10,0,0,0" Visibility="Collapsed" Click="CancelButton_Click"/>
         </Grid>
+
+        <!-- Status Bar -->
+        <StatusBar Grid.Row="6" Height="25">
+            <StatusBar.ItemsPanel>
+                <ItemsPanelTemplate>
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                    </Grid>
+                </ItemsPanelTemplate>
+            </StatusBar.ItemsPanel>
+            
+            <StatusBarItem Grid.Column="0">
+                <TextBlock x:Name="StatusBarMessage" Text="Ready" />
+            </StatusBarItem>
+            
+            <Separator Grid.Column="1" />
+            
+            <StatusBarItem Grid.Column="2">
+                <StackPanel Orientation="Horizontal">
+                    <TextBlock Text="Dependencies: " />
+                    <TextBlock x:Name="StatusBarChdman" Text=" CHDMAN " Foreground="Green" />
+                    <TextBlock Text=" | " />
+                    <TextBlock x:Name="StatusBarMaxcso" Text=" MAXCSO " Foreground="Green" />
+                </StackPanel>
+            </StatusBarItem>
+        </StatusBar>
     </Grid>
 </Window>

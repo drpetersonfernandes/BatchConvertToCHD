@@ -3,7 +3,6 @@ using System.Net.Http.Json;
 
 namespace BatchConvertToCHD;
 
-/// <inheritdoc />
 /// <summary>
 /// Service responsible for sending bug reports to the BugReport API
 /// </summary>
@@ -46,16 +45,8 @@ public class BugReportService(string apiUrl, string apiKey, string applicationNa
         }
     }
 
-    /// <inheritdoc />
-    /// <summary>
-    /// Releases all resources used by the current instance of the class.
-    /// </summary>
     public void Dispose()
     {
-        // Dispose the HttpClient to release resources
-        _httpClient?.Dispose();
-
-        // Suppress finalization
         GC.SuppressFinalize(this);
     }
 }
