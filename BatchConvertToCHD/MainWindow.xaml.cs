@@ -282,6 +282,7 @@ public partial class MainWindow : IDisposable
             var outputFolder = ConversionOutputFolderTextBox.Text;
             var deleteFiles = DeleteOriginalsCheckBox.IsChecked ?? false;
             var useParallelFileProcessing = ParallelProcessingCheckBox.IsChecked ?? false;
+            var processSmallestFirst = ProcessSmallestFirstCheckBox.IsChecked ?? false;
 
             _currentDegreeOfParallelismForFiles = useParallelFileProcessing ? 3 : 1;
 
@@ -329,10 +330,18 @@ public partial class MainWindow : IDisposable
             LogMessage($"Output folder: {outputFolder}"); // Keep original paths for user clarity in log
             LogMessage($"Delete original files: {deleteFiles}");
             LogMessage($"Parallel file processing: {useParallelFileProcessing} (Max concurrency: {_currentDegreeOfParallelismForFiles})");
+            LogMessage($"Processing order: {(processSmallestFirst ? "Smallest files first" : "As found in directory")}");
 
             try
             {
-                await PerformBatchConversionAsync(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "chdman.exe"), inputFolder, outputFolder, deleteFiles, useParallelFileProcessing, _currentDegreeOfParallelismForFiles, _cts.Token);
+                await PerformBatchConversionAsync(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "chdman.exe"),
+                    inputFolder,
+                    outputFolder,
+                    deleteFiles,
+                    useParallelFileProcessing,
+                    _currentDegreeOfParallelismForFiles,
+                    processSmallestFirst,
+                    _cts.Token);
             }
             catch (OperationCanceledException)
             {
@@ -500,12 +509,27 @@ public partial class MainWindow : IDisposable
         return dialog.ShowDialog() == true ? dialog.FolderName : null;
     }
 
-    private async Task PerformBatchConversionAsync(string chdmanPath, string inputFolder, string outputFolder, bool deleteFiles, bool useParallelFileProcessing, int maxConcurrency, CancellationToken token)
+    private async Task PerformBatchConversionAsync(string chdmanPath, string inputFolder, string outputFolder, bool deleteFiles, bool useParallelFileProcessing, int maxConcurrency, bool processSmallestFirst, CancellationToken token)
     {
         var filesToConvert = await Task.Run(() =>
-            Directory.GetFiles(inputFolder, "*.*", SearchOption.TopDirectoryOnly)
+        {
+            var files = Directory.GetFiles(inputFolder, "*.*", SearchOption.TopDirectoryOnly)
                 .Where(file => AllSupportedInputExtensionsForConversion.Contains(Path.GetExtension(file).ToLowerInvariant()))
-                .ToArray(), token);
+                .ToList();
+
+            if (processSmallestFirst)
+            {
+                // Sort by file size (smallest first)
+                LogMessage("Sorting files by size (smallest first)...");
+                files = files
+                    .Select(static file => new { File = file, Size = new FileInfo(file).Length })
+                    .OrderBy(static x => x.Size)
+                    .Select(static x => x.File)
+                    .ToList();
+            }
+
+            return files.ToArray();
+        }, token);
         token.ThrowIfCancellationRequested();
 
         _totalFilesProcessed = filesToConvert.Length;
@@ -515,6 +539,17 @@ public partial class MainWindow : IDisposable
         {
             LogMessage("No supported files found in the input folder for conversion.");
             return;
+        }
+
+        // Add this log message to confirm the processing order
+        if (processSmallestFirst && _totalFilesProcessed > 0)
+        {
+            var smallestFile = Path.GetFileName(filesToConvert.First());
+            var largestFile = Path.GetFileName(filesToConvert.Last());
+            var smallestSize = new FileInfo(filesToConvert.First()).Length / (1024.0 * 1024.0);
+            var largestSize = new FileInfo(filesToConvert.Last()).Length / (1024.0 * 1024.0);
+
+            LogMessage($"Processing order: Smallest file '{smallestFile}' ({smallestSize:F2} MB) to largest file '{largestFile}' ({largestSize:F2} MB)");
         }
 
         ProgressBar.Maximum = _totalFilesProcessed;
@@ -1595,115 +1630,115 @@ public partial class MainWindow : IDisposable
     }
 
     /// <summary>
-/// Checks for a new version of the application on GitHub.
-/// </summary>
-private async Task CheckForNewVersionAsync()
-{
-    try
+    /// Checks for a new version of the application on GitHub.
+    /// </summary>
+    private async Task CheckForNewVersionAsync()
     {
-        using var httpClient = new HttpClient();
-        httpClient.DefaultRequestHeaders.Add("User-Agent", AppConfig.ApplicationName);
-
-        LogMessage("Checking for updates on GitHub...");
-        var response = await httpClient.GetStringAsync(GitHubApiLatestReleaseUrl);
-
-        var latestRelease = JsonSerializer.Deserialize<GitHubRelease>(response, JsonSerializerOptions);
-        if (latestRelease == null)
+        try
         {
-            LogMessage("Failed to parse GitHub release information.");
-            return;
-        }
+            using var httpClient = new HttpClient();
+            httpClient.DefaultRequestHeaders.Add("User-Agent", AppConfig.ApplicationName);
 
-        // Skip draft or prerelease versions
-        if (latestRelease.Draft || latestRelease.Prerelease)
-        {
-            LogMessage("Latest release is a draft or prerelease. Skipping update check.");
-            return;
-        }
+            LogMessage("Checking for updates on GitHub...");
+            var response = await httpClient.GetStringAsync(GitHubApiLatestReleaseUrl);
 
-        if (string.IsNullOrWhiteSpace(latestRelease.TagName))
-        {
-            LogMessage("Release tag name is empty.");
-            return;
-        }
-
-        // Get current application version
-        var currentVersion = Assembly.GetExecutingAssembly().GetName().Version;
-        if (currentVersion == null)
-        {
-            LogMessage("Could not determine current application version.");
-            return;
-        }
-
-        // Parse remote version from tag_name
-        var remoteVersionString = ParseVersionFromTag(latestRelease.TagName);
-        if (!Version.TryParse(remoteVersionString, out var remoteVersion))
-        {
-            LogMessage($"Could not parse remote version string: '{latestRelease.TagName}' -> '{remoteVersionString}'");
-            return;
-        }
-
-        LogMessage($"Current version: {currentVersion}");
-        LogMessage($"Latest version: {remoteVersion}");
-
-        if (remoteVersion > currentVersion)
-        {
-            Application.Current.Dispatcher.Invoke(() =>
+            var latestRelease = JsonSerializer.Deserialize<GitHubRelease>(response, JsonSerializerOptions);
+            if (latestRelease == null)
             {
-                var releaseNotes = string.IsNullOrWhiteSpace(latestRelease.Body)
-                    ? "No release notes available."
-                    : latestRelease.Body.Replace(@"\r\n", "\n").Replace("\\n", "\n");
+                LogMessage("Failed to parse GitHub release information.");
+                return;
+            }
 
-                var message = $"A new version ({remoteVersion}) of {AppConfig.ApplicationName} is available!\n\n" +
-                              $"Release Notes:\n{releaseNotes}\n\n" +
-                              "Would you like to go to the releases page to download it?";
+            // Skip draft or prerelease versions
+            if (latestRelease.Draft || latestRelease.Prerelease)
+            {
+                LogMessage("Latest release is a draft or prerelease. Skipping update check.");
+                return;
+            }
 
-                var result = MessageBox.Show(this, message, "New Version Available",
-                    MessageBoxButton.YesNo, MessageBoxImage.Information);
+            if (string.IsNullOrWhiteSpace(latestRelease.TagName))
+            {
+                LogMessage("Release tag name is empty.");
+                return;
+            }
 
-                if (result != MessageBoxResult.Yes) return;
+            // Get current application version
+            var currentVersion = Assembly.GetExecutingAssembly().GetName().Version;
+            if (currentVersion == null)
+            {
+                LogMessage("Could not determine current application version.");
+                return;
+            }
 
-                try
+            // Parse remote version from tag_name
+            var remoteVersionString = ParseVersionFromTag(latestRelease.TagName);
+            if (!Version.TryParse(remoteVersionString, out var remoteVersion))
+            {
+                LogMessage($"Could not parse remote version string: '{latestRelease.TagName}' -> '{remoteVersionString}'");
+                return;
+            }
+
+            LogMessage($"Current version: {currentVersion}");
+            LogMessage($"Latest version: {remoteVersion}");
+
+            if (remoteVersion > currentVersion)
+            {
+                Application.Current.Dispatcher.Invoke(() =>
                 {
-                    var releasesUrl = latestRelease.HtmlUrl;
-                    Process.Start(new ProcessStartInfo(releasesUrl) { UseShellExecute = true });
-                    LogMessage($"Opened release page: {releasesUrl}");
-                }
-                catch (Exception ex)
-                {
-                    LogMessage($"Error opening release page: {ex.Message}");
-                    ShowError($"Unable to open release page: {ex.Message}");
-                    _ = ReportBugAsync($"Error opening release page: {latestRelease.HtmlUrl}", ex);
-                }
-            });
+                    var releaseNotes = string.IsNullOrWhiteSpace(latestRelease.Body)
+                        ? "No release notes available."
+                        : latestRelease.Body.Replace(@"\r\n", "\n").Replace("\\n", "\n");
 
-            // Update status bar
-            UpdateStatusBarMessage($"Update available: v{remoteVersion}");
+                    var message = $"A new version ({remoteVersion}) of {AppConfig.ApplicationName} is available!\n\n" +
+                                  $"Release Notes:\n{releaseNotes}\n\n" +
+                                  "Would you like to go to the releases page to download it?";
+
+                    var result = MessageBox.Show(this, message, "New Version Available",
+                        MessageBoxButton.YesNo, MessageBoxImage.Information);
+
+                    if (result != MessageBoxResult.Yes) return;
+
+                    try
+                    {
+                        var releasesUrl = latestRelease.HtmlUrl;
+                        Process.Start(new ProcessStartInfo(releasesUrl) { UseShellExecute = true });
+                        LogMessage($"Opened release page: {releasesUrl}");
+                    }
+                    catch (Exception ex)
+                    {
+                        LogMessage($"Error opening release page: {ex.Message}");
+                        ShowError($"Unable to open release page: {ex.Message}");
+                        _ = ReportBugAsync($"Error opening release page: {latestRelease.HtmlUrl}", ex);
+                    }
+                });
+
+                // Update status bar
+                UpdateStatusBarMessage($"Update available: v{remoteVersion}");
+            }
+            else
+            {
+                LogMessage("Application is up to date.");
+                UpdateStatusBarMessage("Application is up to date");
+            }
         }
-        else
+        catch (HttpRequestException httpEx)
         {
-            LogMessage("Application is up to date.");
-            UpdateStatusBarMessage("Application is up to date");
+            LogMessage($"Network error checking for updates: {httpEx.Message}");
+            UpdateStatusBarMessage("Update check failed (network error)");
+        }
+        catch (JsonException jsonEx)
+        {
+            LogMessage($"Error parsing GitHub API response: {jsonEx.Message}");
+            _ = ReportBugAsync("Error parsing GitHub API response during update check", jsonEx);
+            UpdateStatusBarMessage("Update check failed (parse error)");
+        }
+        catch (Exception ex)
+        {
+            LogMessage($"Unexpected error during update check: {ex.Message}");
+            _ = ReportBugAsync("Unexpected error during update check", ex);
+            UpdateStatusBarMessage("Update check failed");
         }
     }
-    catch (HttpRequestException httpEx)
-    {
-        LogMessage($"Network error checking for updates: {httpEx.Message}");
-        UpdateStatusBarMessage("Update check failed (network error)");
-    }
-    catch (JsonException jsonEx)
-    {
-        LogMessage($"Error parsing GitHub API response: {jsonEx.Message}");
-        _ = ReportBugAsync("Error parsing GitHub API response during update check", jsonEx);
-        UpdateStatusBarMessage("Update check failed (parse error)");
-    }
-    catch (Exception ex)
-    {
-        LogMessage($"Unexpected error during update check: {ex.Message}");
-        _ = ReportBugAsync("Unexpected error during update check", ex);
-        UpdateStatusBarMessage("Update check failed");
-    }
-}
 
     /// <summary>
     /// Parses version string from GitHub release tag.

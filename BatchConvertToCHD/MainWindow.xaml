@@ -59,7 +59,8 @@
                     </Grid>
                     
                     <CheckBox x:Name="DeleteOriginalsCheckBox" Content="Delete original files after successful conversion" Margin="0,5,0,5" HorizontalAlignment="Left"/>
-                    <CheckBox x:Name="ParallelProcessingCheckBox" Content="Enable parallel processing (multiple files at once)" Margin="0,5,0,10" HorizontalAlignment="Left" IsChecked="False"/>
+                    <CheckBox x:Name="ParallelProcessingCheckBox" Content="Enable parallel processing (multiple files at once)" Margin="0,5,0,5" HorizontalAlignment="Left" IsChecked="False"/>
+                    <CheckBox x:Name="ProcessSmallestFirstCheckBox" Content="Process smaller files first" Margin="0,5,0,10" HorizontalAlignment="Left" IsChecked="False"/>
                     
                     <Button x:Name="StartConversionButton" Content="Start Conversion" Click="StartConversionButton_Click" Margin="0,10,0,0" Padding="15,8" HorizontalAlignment="Center" FontWeight="Bold"/>
                 </StackPanel>
