@@ -18,8 +18,9 @@ Batch Convert to CHD is a Windows application that provides a simple user interf
 - **Archive Support**: Automatically extracts and processes files from `.zip`, `.7z`, and `.rar` archives
 - **CSO Decompression**: Supports `.cso` (Compressed ISO) files with automatic decompression using maxcso
 - **Parallel Processing**: Process multiple files simultaneously for faster batch conversion
-- **Smart File Handling**: Sanitizes file names and handles complex file paths safely
-- **Delete Original Option**: Remove source files (including archives and referenced files) after successful conversion
+- **Smart File Handling**: Sanitizes file names and handles complex file paths safely by using temporary files for processing
+- **Delete Original Option**: Remove source files (including archives and referenced files like .bin for .cue) after successful conversion
+- **Process Smallest First**: Option to prioritize processing smaller files first, which can be useful for quicker feedback on progress or for systems with limited temporary storage.
 
 ### Verification Features
 - **CHD Integrity Verification**: Verify the integrity of existing CHD files using CHDMAN
@@ -31,7 +32,7 @@ Batch Convert to CHD is a Windows application that provides a simple user interf
 ### User Interface & Monitoring
 - **Tabbed Interface**: Separate tabs for conversion and verification operations
 - **Real-time Progress**: Live progress bars, file counts, and processing statistics
-- **Write Speed Monitoring**: Real-time disk write speed display during operations
+- **Write Speed Monitoring**: Real-time disk write speed display during conversion operations
 - **Comprehensive Logging**: Detailed timestamped logs with error reporting
 - **Cancellation Support**: Gracefully cancel operations in progress
 
@@ -60,17 +61,17 @@ Batch Convert to CHD is a Windows application that provides a simple user interf
 ## Requirements
 
 - **Operating System**: Windows 7 or later (64-bit recommended)
-- **Runtime**: [.NET 9.0 Runtime](https://dotnet.microsoft.com/download/dotnet/9.0)
+- **Runtime**: [.NET 10.0 Runtime](https://dotnet.microsoft.com/download/dotnet/10.0)
 - **Dependencies** (included with application):
     - `chdman.exe` - MAME CHD creation and verification tool
     - `maxcso.exe` - CSO decompression utility (optional, for .cso support)
-    - `7z_x64.dll` / `7z_x86.dll` - 7-Zip libraries for archive extraction
+    - `7z_x64.dll` - 7-Zip library for archive extraction
 
 ## Installation
 
 1. Download the latest release from the [GitHub releases page](https://github.com/drpetersonfernandes/BatchConvertToCHD/releases)
 2. Extract the ZIP file to a folder of your choice
-3. Ensure all required executables are in the same folder as `BatchConvertToCHD.exe`
+3. Ensure all required executables (`chdman.exe`, `maxcso.exe`) and the `7z_x64.dll` library are in the same folder as `BatchConvertToCHD.exe`
 4. Run `BatchConvertToCHD.exe`
 
 ## Usage
@@ -83,6 +84,7 @@ Batch Convert to CHD is a Windows application that provides a simple user interf
 4. **Configure Options**:
     - Check "Delete original files after successful conversion" to remove source files after conversion
     - Check "Enable parallel processing" to convert multiple files simultaneously (faster on multicore systems)
+    - Check "Process smaller files first" to sort the conversion queue by file size, processing smaller files before larger ones.
 5. **Start Conversion**: Click "Start Conversion" to begin the process
 6. **Monitor Progress**: View real-time progress, statistics, and detailed logs
 7. **Cancel if Needed**: Click "Cancel" to gracefully stop the operation
@@ -119,7 +121,7 @@ CHD (Compressed Hunks of Data) is a compressed disk image format developed for t
 ## Troubleshooting
 
 ### Common Issues
-- **Missing Dependencies**: Ensure `chdman.exe` is present in the application directory
+- **Missing Dependencies**: Ensure `chdman.exe` and `7z_x64.dll` are present in the application directory. `maxcso.exe` is also required for CSO support.
 - **Permissions**: Verify read/write permissions for input and output directories
 - **Disk Space**: Ensure sufficient free space in output and temporary directories
 - **File Locks**: Close other applications that might be accessing the files
@@ -150,4 +152,4 @@ CHD (Compressed Hunks of Data) is a compressed disk image format developed for t
 ---
 ⭐ **Remember to Star this repository if you find it useful!** ⭐
 
-If you like the software, consider donation on [purelogiccode.com](https://www.purelogiccode.com/donate).
+If you like the software, consider donation on [purelogiccode.com/donate](https://www.purelogiccode.com/donate).
