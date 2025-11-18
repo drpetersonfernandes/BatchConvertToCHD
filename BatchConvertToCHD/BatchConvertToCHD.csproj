@@ -8,8 +8,8 @@
     <UseWPF>true</UseWPF>
     <ApplicationIcon>icon\icon.ico</ApplicationIcon>
     <SupportedOSPlatformVersion>7.0</SupportedOSPlatformVersion>
-    <AssemblyVersion>1.6</AssemblyVersion>
-    <FileVersion>1.6</FileVersion>
+    <AssemblyVersion>1.7</AssemblyVersion>
+    <FileVersion>1.7</FileVersion>
     <IsPackable>false</IsPackable>
     <NeutralLanguage>en</NeutralLanguage>
     <DebugType>embedded</DebugType>
@@ -32,9 +32,6 @@
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
     <None Update="7z_x64.dll">
-      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
-    </None>
-    <None Update="7z_x86.dll">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
   </ItemGroup>

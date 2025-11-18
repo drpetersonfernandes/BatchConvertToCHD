@@ -1,4 +1,4 @@
-﻿using System.Globalization;
+using System.Globalization;
 using System.IO;
 using System.Text;
 using System.Windows;
@@ -129,8 +129,7 @@ public partial class App : IDisposable
     {
         try
         {
-            // Determine the path to the 7z dll based on the process architecture.
-            var dllName = Environment.Is64BitProcess ? "7z_x64.dll" : "7z_x86.dll";
+            const string dllName = "7z_x64.dll";
             var dllPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, dllName);
 
             if (File.Exists(dllPath))
@@ -140,7 +139,6 @@ public partial class App : IDisposable
             else
             {
                 // Notify developer
-                // If the specific DLL is not found, log an error. Extraction will likely fail.
                 var errorMessage = $"Could not find the required 7-Zip library: {dllName} in {AppDomain.CurrentDomain.BaseDirectory}";
 
                 if (_bugReportService != null)
