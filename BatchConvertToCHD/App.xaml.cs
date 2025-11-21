@@ -16,6 +16,11 @@ public partial class App : IDisposable
     /// </summary>
     public static BugReportService? SharedBugReportService { get; private set; }
 
+    /// <summary>
+    /// Indicates whether the 7-Zip library (7z_x64.dll) is available.
+    /// </summary>
+    public static bool IsSevenZipAvailable { get; private set; }
+
     public App()
     {
         // Initialize the bug report service as a shared instance
@@ -135,16 +140,18 @@ public partial class App : IDisposable
             if (File.Exists(dllPath))
             {
                 SevenZipBase.SetLibraryPath(dllPath);
+                IsSevenZipAvailable = true;
             }
             else
             {
                 // Notify developer
                 var errorMessage = $"Could not find the required 7-Zip library: {dllName} in {AppDomain.CurrentDomain.BaseDirectory}";
-
                 if (_bugReportService != null)
                 {
                     _ = _bugReportService.SendBugReportAsync(errorMessage);
                 }
+
+                IsSevenZipAvailable = false;
             }
         }
         catch (Exception ex)
@@ -154,6 +161,8 @@ public partial class App : IDisposable
             {
                 _ = _bugReportService.SendBugReportAsync(ex.Message);
             }
+
+            IsSevenZipAvailable = false;
         }
     }
 

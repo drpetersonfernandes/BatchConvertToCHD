@@ -1,4 +1,4 @@
-﻿using System.ComponentModel;
+using System.ComponentModel;
 using System.Diagnostics;
 using System.Globalization;
 using System.IO;
@@ -158,6 +158,16 @@ public partial class MainWindow : IDisposable
 
         if (_isMaxCsoAvailable) LogMessage("maxcso.exe found. .cso decompression enabled for conversion.");
         else LogMessage("WARNING: maxcso.exe not found. .cso decompression will be disabled for conversion.");
+
+        if (App.IsSevenZipAvailable)
+        {
+            LogMessage("7z_x64.dll found. Archive extraction enabled for conversion.");
+        }
+        else
+        {
+            LogMessage("WARNING: 7z_x64.dll not found in the application directory!");
+            LogMessage("Archive extraction (.zip, .7z, .rar) will be disabled for conversion.");
+        }
 
         LogMessage("");
         LogMessage("--- Ready for Conversion ---");
