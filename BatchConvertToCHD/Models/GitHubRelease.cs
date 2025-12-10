@@ -1,6 +1,6 @@
 ﻿using System.Text.Json.Serialization;
 
-namespace BatchConvertToCHD;
+namespace BatchConvertToCHD.Models;
 
 /// <summary>
 /// Represents the structure of a GitHub release JSON response.
