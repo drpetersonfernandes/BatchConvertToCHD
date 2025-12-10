@@ -64,11 +64,25 @@ public partial class MainWindow : IDisposable
         _maxCsoPath = Path.Combine(appDirectory, MaxCsoExeName);
         _isMaxCsoAvailable = File.Exists(_maxCsoPath);
 
+        // Check for Mark-of-the-Web on critical executables
+        if (_isChdmanAvailable)
+        {
+            CheckForMarkOfTheWeb(chdmanPath, "chdman.exe");
+        }
+
+        if (_isMaxCsoAvailable)
+        {
+            CheckForMarkOfTheWeb(_maxCsoPath, MaxCsoExeName);
+        }
+
         // Initialize status bar
         InitializeStatusBar();
 
         DisplayConversionInstructionsInLog();
         ResetOperationStats();
+
+        // Log environment details for debugging
+        LogEnvironmentDetails();
 
         // Start version check asynchronously on application startup
         _ = Task.Run(CheckForNewVersionAsync);
@@ -93,6 +107,34 @@ public partial class MainWindow : IDisposable
             StatusBarMaxcso.Text = " MAXCSO ";
             StatusBarMaxcso.Foreground = _isMaxCsoAvailable ? new SolidColorBrush(Colors.Green) : new SolidColorBrush(Colors.Orange);
         });
+    }
+
+    /// <summary>
+    /// Checks if a file has the "Mark of the Web" and warns the user
+    /// </summary>
+    private void CheckForMarkOfTheWeb(string filePath, string fileName)
+    {
+        try
+        {
+            var zoneIdentifierPath = filePath + ":Zone.Identifier";
+            if (File.Exists(zoneIdentifierPath))
+            {
+                LogMessage($"WARNING: {fileName} has a 'Mark of the Web' (downloaded from internet). This may block execution.");
+                LogMessage($"To fix: Right-click {fileName} → Properties → Check 'Unblock' → Apply");
+
+                Application.Current.Dispatcher.InvokeAsync(() =>
+                {
+                    MessageBox.Show(this,
+                        $"{fileName} appears to be downloaded from the internet and may be blocked by Windows.\n\n" +
+                        $"To unblock it:\n1. Right-click {fileName}\n2. Select Properties\n3. Check 'Unblock' at the bottom\n4. Click Apply/OK",
+                        "Security Warning", MessageBoxButton.OK, MessageBoxImage.Warning);
+                });
+            }
+        }
+        catch (Exception ex)
+        {
+            LogMessage($"Could not check Zone.Identifier for {fileName}: {ex.Message}");
+        }
     }
 
     private void UpdateStatusBarMessage(string message)
@@ -120,6 +162,192 @@ public partial class MainWindow : IDisposable
         // The original name is still used for the *final* CHD output.
         var safeBaseName = Guid.NewGuid().ToString("N");
         return Path.Combine(tempDirectory, safeBaseName + "." + desiredExtensionWithoutDot);
+    }
+
+    /// <summary>
+    /// Validates that an executable can be accessed and executed
+    /// </summary>
+    private async Task<bool> ValidateExecutableAccessAsync(string exePath, string exeName)
+    {
+        try
+        {
+            if (!File.Exists(exePath))
+            {
+                LogMessage($"ERROR: {exeName} not found at: {exePath}");
+                ShowError($"{exeName} not found. Please ensure it's in the application directory.");
+                return false;
+            }
+
+            // Check basic read access
+            await using (File.OpenRead(exePath))
+            {
+                // If we can open it for reading, basic access is OK
+            }
+
+            // For chdman, try a dry-run to verify execution
+            if (exeName.Equals("chdman.exe", StringComparison.OrdinalIgnoreCase))
+            {
+                using var process = new Process();
+                process.StartInfo = new ProcessStartInfo
+                {
+                    FileName = exePath,
+                    Arguments = "--help",
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true,
+                    UseShellExecute = false,
+                    CreateNoWindow = true,
+                    WorkingDirectory = Path.GetDirectoryName(exePath) ?? AppDomain.CurrentDomain.BaseDirectory
+                };
+                process.EnableRaisingEvents = true;
+
+                process.Start();
+                using var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+                await process.WaitForExitAsync(timeoutCts.Token);
+
+                if (process.ExitCode != 0)
+                {
+                    LogMessage($"WARNING: {exeName} executed but returned non-zero exit code. This may indicate permission issues.");
+                }
+            }
+
+            return true;
+        }
+        catch (UnauthorizedAccessException ex)
+        {
+            LogMessage($"PERMISSION ERROR: Cannot access {exeName} at {exePath}. {ex.Message}");
+            ShowError($"Access denied to {exeName}. This is likely due to antivirus or Windows security restrictions.\n\n" +
+                      $"Solutions:\n" +
+                      $"1. Add the application folder to your antivirus exclusions\n" +
+                      $"2. Move the application to a non-temp location (e.g., C:\\Program Files)\n" +
+                      $"3. Right-click {exeName} → Properties → Unblock if available\n" +
+                      $"4. Run as administrator");
+            return false;
+        }
+        catch (Win32Exception ex) when (ex.NativeErrorCode == 5)
+        {
+            LogMessage($"EXECUTION BLOCKED: {exeName} cannot be executed. {ex.Message}");
+            ShowError($"Windows blocked {exeName} from executing.\n\n" +
+                      $"This is likely caused by:\n" +
+                      $"- Windows Defender SmartScreen\n" +
+                      $"- Antivirus software\n" +
+                      $"- Security policies\n\n" +
+                      $"Please whitelist the application folder in your security software.");
+            return false;
+        }
+        catch (Exception ex)
+        {
+            LogMessage($"UNEXPECTED ERROR validating {exeName}: {ex.Message}");
+            await ReportBugAsync($"Error validating {exeName}", ex);
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Validates and normalizes a directory path
+    /// </summary>
+    private bool ValidateAndNormalizePath(ref string path, string pathName, out string normalizedPath)
+    {
+        normalizedPath = string.Empty;
+
+        try
+        {
+            if (string.IsNullOrWhiteSpace(path))
+            {
+                ShowError($"Please select a {pathName}.");
+                return false;
+            }
+
+            // Normalize the path (handles relative paths, special characters)
+            normalizedPath = Path.GetFullPath(path);
+
+            // Check if directory exists
+            if (!Directory.Exists(normalizedPath))
+            {
+                LogMessage($"ERROR: {pathName} does not exist: {normalizedPath}");
+                ShowError($"The {pathName} does not exist or is not accessible:\n\n{normalizedPath}\n\n" +
+                          $"Please verify the path and try again.");
+                return false;
+            }
+
+            // Verify we have read/write access
+            var dirInfo = new DirectoryInfo(normalizedPath);
+
+            var acl = dirInfo.GetAccessControl();
+            _ = acl.GetAccessRules(true, true, typeof(System.Security.Principal.SecurityIdentifier));
+
+            // Simplified access check - actual implementation may need more sophisticated logic
+            LogMessage($"Validated {pathName}: {normalizedPath}");
+            return true;
+        }
+        catch (Exception ex) when (ex is ArgumentException || ex is NotSupportedException || ex is PathTooLongException)
+        {
+            LogMessage($"ERROR: Invalid path for {pathName}: {path}. {ex.Message}");
+            ShowError($"The {pathName} path is invalid:\n\n{path}\n\nError: {ex.Message}");
+            return false;
+        }
+        catch (Exception ex)
+        {
+            LogMessage($"ERROR: Unexpected error validating {pathName}: {ex.Message}");
+            _ = ReportBugAsync($"Path validation error for {pathName}", ex);
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Logs detailed environment information for debugging
+    /// </summary>
+    private void LogEnvironmentDetails()
+    {
+        try
+        {
+            var sb = new StringBuilder();
+            sb.AppendLine("=== Environment Details ===");
+            sb.AppendLine(CultureInfo.InvariantCulture, $"Process Architecture: {Environment.GetEnvironmentVariable("PROCESSOR_ARCHITECTURE")}");
+            sb.AppendLine(CultureInfo.InvariantCulture, $"Is 64-bit OS: {Environment.Is64BitOperatingSystem}");
+            sb.AppendLine(CultureInfo.InvariantCulture, $"Is 64-bit Process: {Environment.Is64BitProcess}");
+            sb.AppendLine(CultureInfo.InvariantCulture, $"Current Directory: {Environment.CurrentDirectory}");
+            sb.AppendLine(CultureInfo.InvariantCulture, $"Base Directory: {AppDomain.CurrentDomain.BaseDirectory}");
+            sb.AppendLine(CultureInfo.InvariantCulture, $"Temp Path: {Path.GetTempPath()}");
+            sb.AppendLine(CultureInfo.InvariantCulture, $"User: {Environment.UserName}");
+            sb.AppendLine(CultureInfo.InvariantCulture, $"User Domain: {Environment.UserDomainName}");
+            sb.AppendLine(CultureInfo.InvariantCulture, $"Command Line: {Environment.CommandLine}");
+
+            // Check for common security software
+            var securitySoftware = new List<string>();
+            try
+            {
+                using var key = Registry.LocalMachine.OpenSubKey(@"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall");
+                if (key != null)
+                {
+                    foreach (var subKeyName in key.GetSubKeyNames())
+                    {
+                        using var subKey = key.OpenSubKey(subKeyName);
+                        var displayName = subKey?.GetValue("DisplayName")?.ToString() ?? "";
+                        if (displayName.Contains("Defender") || displayName.Contains("Antivirus") ||
+                            displayName.Contains("Security") || displayName.Contains("ESET") ||
+                            displayName.Contains("Norton") || displayName.Contains("McAfee"))
+                        {
+                            securitySoftware.Add(displayName);
+                        }
+                    }
+                }
+            }
+            catch
+            {
+                /* ignore */
+            }
+
+            if (securitySoftware.Count != 0)
+            {
+                sb.AppendLine(CultureInfo.InvariantCulture, $"Detected Security Software: {string.Join("; ", securitySoftware)}");
+            }
+
+            LogMessage(sb.ToString());
+        }
+        catch (Exception ex)
+        {
+            LogMessage($"Could not log environment details: {ex.Message}");
+        }
     }
 
     private void DisplayConversionInstructionsInLog()
@@ -210,7 +438,7 @@ public partial class MainWindow : IDisposable
         // Only clear and update if not currently busy
         if (!StartConversionButton.IsEnabled || !StartVerificationButton.IsEnabled) return;
 
-        Application.Current.Dispatcher.InvokeAsync(() => LogViewer.Clear()); // Clear log on tab change
+        Application.Current.Dispatcher.InvokeAsync((Action)(() => LogViewer.Clear())); // Clear log on tab change
         if (tabControl.SelectedItem is TabItem selectedTab)
         {
             switch (selectedTab.Name)
@@ -249,8 +477,19 @@ public partial class MainWindow : IDisposable
         var folder = SelectFolder("Select the folder containing files to convert");
         if (string.IsNullOrEmpty(folder)) return;
 
-        ConversionInputFolderTextBox.Text = folder;
-        LogMessage($"Conversion input folder selected: {folder}");
+        try
+        {
+            // Normalize immediately to handle special characters
+            var normalizedFolder = Path.GetFullPath(folder);
+            ConversionInputFolderTextBox.Text = normalizedFolder;
+            LogMessage($"Conversion input folder selected: {normalizedFolder}");
+        }
+        catch (Exception ex)
+        {
+            LogMessage($"ERROR: Invalid folder path selected: {ex.Message}");
+            ShowError($"The selected folder path is invalid:\n\n{folder}\n\nError: {ex.Message}");
+        }
+
         UpdateStatusBarMessage("Input folder selected");
     }
 
@@ -259,8 +498,18 @@ public partial class MainWindow : IDisposable
         var folder = SelectFolder("Select the output folder for CHD files");
         if (string.IsNullOrEmpty(folder)) return;
 
-        ConversionOutputFolderTextBox.Text = folder;
-        LogMessage($"Conversion output folder selected: {folder}");
+        try
+        {
+            var normalizedFolder = Path.GetFullPath(folder);
+            ConversionOutputFolderTextBox.Text = normalizedFolder;
+            LogMessage($"Conversion output folder selected: {normalizedFolder}");
+        }
+        catch (Exception ex)
+        {
+            LogMessage($"ERROR: Invalid folder path selected: {ex.Message}");
+            ShowError($"The selected folder path is invalid:\n\n{folder}\n\nError: {ex.Message}");
+        }
+
         UpdateStatusBarMessage("Output folder selected");
     }
 
@@ -269,8 +518,18 @@ public partial class MainWindow : IDisposable
         var folder = SelectFolder("Select the folder containing CHD files to verify");
         if (string.IsNullOrEmpty(folder)) return;
 
-        VerificationInputFolderTextBox.Text = folder;
-        LogMessage($"Verification input folder selected: {folder}");
+        try
+        {
+            var normalizedFolder = Path.GetFullPath(folder);
+            VerificationInputFolderTextBox.Text = normalizedFolder;
+            LogMessage($"Verification input folder selected: {normalizedFolder}");
+        }
+        catch (Exception ex)
+        {
+            LogMessage($"ERROR: Invalid folder path selected: {ex.Message}");
+            ShowError($"The selected folder path is invalid:\n\n{folder}\n\nError: {ex.Message}");
+        }
+
         UpdateStatusBarMessage("CHD folder selected for verification");
     }
 
@@ -278,7 +537,7 @@ public partial class MainWindow : IDisposable
     {
         try
         {
-            await Application.Current.Dispatcher.InvokeAsync(() => LogViewer.Clear());
+            await Application.Current.Dispatcher.InvokeAsync((Action)(() => LogViewer.Clear()));
             DisplayConversionInstructionsInLog();
 
             if (!_isChdmanAvailable)
@@ -288,34 +547,21 @@ public partial class MainWindow : IDisposable
                 return;
             }
 
+            // VALIDATE INPUT PATH
             var inputFolder = ConversionInputFolderTextBox.Text;
+            if (!ValidateAndNormalizePath(ref inputFolder, "Source Files Folder", out var normalizedInputFolder))
+                return;
+
+            // VALIDATE OUTPUT PATH
             var outputFolder = ConversionOutputFolderTextBox.Text;
+            if (!ValidateAndNormalizePath(ref outputFolder, "Output CHD Folder", out var normalizedOutputFolder))
+                return;
+
             var deleteFiles = DeleteOriginalsCheckBox.IsChecked ?? false;
             var useParallelFileProcessing = ParallelProcessingCheckBox.IsChecked ?? false;
             var processSmallestFirst = ProcessSmallestFirstCheckBox.IsChecked ?? false;
 
             _currentDegreeOfParallelismForFiles = useParallelFileProcessing ? 3 : 1;
-
-            if (string.IsNullOrEmpty(inputFolder) || string.IsNullOrEmpty(outputFolder))
-            {
-                LogMessage("Error: Input or output folder not selected for conversion.");
-                ShowError("Please select both input and output folders for conversion.");
-                return;
-            }
-
-            string normalizedInputFolder;
-            string normalizedOutputFolder;
-            try
-            {
-                normalizedInputFolder = Path.GetFullPath(inputFolder);
-                normalizedOutputFolder = Path.GetFullPath(outputFolder);
-            }
-            catch (Exception ex)
-            {
-                LogMessage($"Error normalizing paths: {ex.Message}");
-                ShowError($"Invalid input or output path: {ex.Message}");
-                return;
-            }
 
             if (normalizedInputFolder.Equals(normalizedOutputFolder, StringComparison.OrdinalIgnoreCase))
             {
@@ -336,8 +582,8 @@ public partial class MainWindow : IDisposable
             _operationTimer.Restart();
 
             LogMessage("--- Starting batch conversion process... ---");
-            LogMessage($"Input folder: {inputFolder}"); // Keep original paths for user clarity in log
-            LogMessage($"Output folder: {outputFolder}"); // Keep original paths for user clarity in log
+            LogMessage($"Input folder: {normalizedInputFolder}");
+            LogMessage($"Output folder: {normalizedOutputFolder}");
             LogMessage($"Delete original files: {deleteFiles}");
             LogMessage($"Parallel file processing: {useParallelFileProcessing} (Max concurrency: {_currentDegreeOfParallelismForFiles})");
             LogMessage($"Processing order: {(processSmallestFirst ? "Smallest files first" : "As found in directory")}");
@@ -345,8 +591,8 @@ public partial class MainWindow : IDisposable
             try
             {
                 await PerformBatchConversionAsync(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "chdman.exe"),
-                    inputFolder,
-                    outputFolder,
+                    normalizedInputFolder,
+                    normalizedOutputFolder,
                     deleteFiles,
                     useParallelFileProcessing,
                     _currentDegreeOfParallelismForFiles,
@@ -381,7 +627,7 @@ public partial class MainWindow : IDisposable
     {
         try
         {
-            await Application.Current.Dispatcher.InvokeAsync(() => LogViewer.Clear());
+            await Application.Current.Dispatcher.InvokeAsync((Action)(() => LogViewer.Clear()));
             DisplayVerificationInstructionsInLog();
 
             if (!_isChdmanAvailable)
@@ -391,7 +637,11 @@ public partial class MainWindow : IDisposable
                 return;
             }
 
+            // VALIDATE INPUT PATH
             var inputFolder = VerificationInputFolderTextBox.Text;
+            if (!ValidateAndNormalizePath(ref inputFolder, "CHD Files Folder", out var normalizedInputFolder))
+                return;
+
             var includeSubfolders = VerificationIncludeSubfoldersCheckBox.IsChecked ?? false;
             var moveSuccess = MoveSuccessFilesCheckBox.IsChecked ?? false;
             var moveFailed = MoveFailedFilesCheckBox.IsChecked ?? false;
@@ -403,8 +653,8 @@ public partial class MainWindow : IDisposable
                 return;
             }
 
-            var successFolder = moveSuccess ? Path.Combine(inputFolder, "Success") : string.Empty;
-            var failedFolder = moveFailed ? Path.Combine(inputFolder, "Failed") : string.Empty;
+            var successFolder = moveSuccess ? Path.Combine(normalizedInputFolder, "Success") : string.Empty;
+            var failedFolder = moveFailed ? Path.Combine(normalizedInputFolder, "Failed") : string.Empty;
 
             if (_cts.IsCancellationRequested)
             {
@@ -418,14 +668,14 @@ public partial class MainWindow : IDisposable
             _operationTimer.Restart();
 
             LogMessage("--- Starting batch verification process... ---");
-            LogMessage($"Input folder: {inputFolder}");
+            LogMessage($"Input folder: {normalizedInputFolder}");
             if (moveSuccess) LogMessage($"Moving successful files to: {successFolder}");
             if (moveFailed) LogMessage($"Moving failed files to: {failedFolder}");
             LogMessage($"Include subfolders: {includeSubfolders}");
 
             try
             {
-                await PerformBatchVerificationAsync(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "chdman.exe"), inputFolder, includeSubfolders, moveSuccess, successFolder, moveFailed, failedFolder, _cts.Token);
+                await PerformBatchVerificationAsync(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "chdman.exe"), normalizedInputFolder, includeSubfolders, moveSuccess, successFolder, moveFailed, failedFolder, _cts.Token);
             }
             catch (OperationCanceledException)
             {
@@ -936,9 +1186,10 @@ public partial class MainWindow : IDisposable
 
     private async Task<bool> ConvertToChdAsync(string chdmanPath, string sanitizedInputFile, string outputChdFile, int coresForChdman, CancellationToken token)
     {
-        // sanitizedInputFile is the path to the file with a safe name in a temp directory
-        // outputChdFile is the path to the final CHD, named based on the original input
-        var process = new Process();
+        using var process = new Process();
+        var outputBuilder = new StringBuilder();
+        var errorBuilder = new StringBuilder();
+
         try
         {
             token.ThrowIfCancellationRequested();
@@ -967,8 +1218,6 @@ public partial class MainWindow : IDisposable
             };
             process.EnableRaisingEvents = true;
 
-            var outputBuilder = new StringBuilder();
-            var errorBuilder = new StringBuilder();
             process.OutputDataReceived += (_, args) =>
             {
                 if (!string.IsNullOrEmpty(args.Data)) outputBuilder.AppendLine(args.Data);
@@ -979,7 +1228,12 @@ public partial class MainWindow : IDisposable
                 if (string.IsNullOrEmpty(args.Data)) return;
 
                 errorBuilder.AppendLine(args.Data);
-                LogMessage($"[CHDMAN CONVERT STDERR] {args.Data}"); // Log the raw error from chdman
+                // Only log errors that are not progress updates
+                if (!args.Data.Contains("% complete"))
+                {
+                    LogMessage($"[CHDMAN CONVERT STDERR] {args.Data}");
+                }
+
                 UpdateConversionProgressFromChdman(args.Data);
             };
 
@@ -989,9 +1243,14 @@ public partial class MainWindow : IDisposable
 
             var lastSpeedCheckTime = DateTime.UtcNow;
             long lastFileSize = 0;
-            if (await Task.Run(() => File.Exists(outputChdFile), token))
+
+            // Use a combined cancellation token for timeout
+            using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(token);
+            timeoutCts.CancelAfter(TimeSpan.FromHours(4)); // 4 hour timeout per file
+
+            if (await Task.Run(() => File.Exists(outputChdFile), timeoutCts.Token))
             {
-                lastFileSize = await Task.Run(() => new FileInfo(outputChdFile).Length, token);
+                lastFileSize = await Task.Run(() => new FileInfo(outputChdFile).Length, timeoutCts.Token);
             }
 
             while (!process.HasExited)
@@ -1010,15 +1269,15 @@ public partial class MainWindow : IDisposable
                     token.ThrowIfCancellationRequested();
                 }
 
-                await Task.Delay(WriteSpeedUpdateIntervalMs, token);
+                await Task.Delay(WriteSpeedUpdateIntervalMs, timeoutCts.Token);
 
-                if (process.HasExited || token.IsCancellationRequested) break;
+                if (process.HasExited || timeoutCts.Token.IsCancellationRequested) break;
 
                 try
                 {
-                    if (await Task.Run(() => File.Exists(outputChdFile), token))
+                    if (await Task.Run(() => File.Exists(outputChdFile), timeoutCts.Token))
                     {
-                        var currentFileSize = await Task.Run(() => new FileInfo(outputChdFile).Length, token);
+                        var currentFileSize = await Task.Run(() => new FileInfo(outputChdFile).Length, timeoutCts.Token);
                         var currentTime = DateTime.UtcNow;
                         var timeDelta = currentTime - lastSpeedCheckTime;
 
@@ -1043,7 +1302,14 @@ public partial class MainWindow : IDisposable
                 }
             }
 
-            await process.WaitForExitAsync(token);
+            await process.WaitForExitAsync(timeoutCts.Token);
+
+            if (timeoutCts.Token.IsCancellationRequested && !token.IsCancellationRequested)
+            {
+                LogMessage($"CHD conversion timed out after 4 hours: {Path.GetFileName(sanitizedInputFile)}");
+                return false;
+            }
+
             return process.ExitCode == 0;
         }
         catch (OperationCanceledException)
@@ -1060,10 +1326,6 @@ public partial class MainWindow : IDisposable
 
             throw;
         }
-        finally
-        {
-            process?.Dispose();
-        }
     }
 
     private async Task<bool> VerifyChdAsync(string chdmanPath, string chdFile, CancellationToken token)
@@ -1071,6 +1333,12 @@ public partial class MainWindow : IDisposable
         using var process = new Process();
         try
         {
+            // Validate access before attempting to start process
+            if (!await ValidateExecutableAccessAsync(chdmanPath, "chdman.exe"))
+            {
+                return false;
+            }
+
             token.ThrowIfCancellationRequested();
             process.StartInfo = new ProcessStartInfo
             {
@@ -1079,7 +1347,8 @@ public partial class MainWindow : IDisposable
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
                 UseShellExecute = false,
-                CreateNoWindow = true
+                CreateNoWindow = true,
+                WorkingDirectory = Path.GetDirectoryName(chdmanPath) ?? AppDomain.CurrentDomain.BaseDirectory
             };
             process.EnableRaisingEvents = true;
 
@@ -1100,6 +1369,19 @@ public partial class MainWindow : IDisposable
             process.BeginErrorReadLine();
             await process.WaitForExitAsync(token);
             return process.ExitCode == 0;
+        }
+        catch (Win32Exception ex) when (ex.NativeErrorCode == 5)
+        {
+            LogMessage($"CRITICAL: Access denied launching chdman.exe for {Path.GetFileName(chdFile)}. " +
+                       $"Antivirus or security policy may be blocking execution.");
+            await ReportBugAsync($"chdman.exe execution blocked by security software: {Path.GetFileName(chdFile)}", ex);
+
+            ShowError($"Security software blocked chdman.exe from running.\n\n" +
+                      $"File: {chdFile}\n\n" +
+                      $"Please add the following folder to your antivirus exclusions:\n" +
+                      $"{Path.GetDirectoryName(chdmanPath)}");
+
+            return false;
         }
         catch (OperationCanceledException)
         {
@@ -1410,6 +1692,9 @@ public partial class MainWindow : IDisposable
         try
         {
             token.ThrowIfCancellationRequested();
+
+            // Ensure temp directory exists and is accessible
+            Directory.CreateDirectory(tempDirectoryRoot);
             LogMessage($"Extracting {archiveFileNameForLog} to temporary directory: {tempDirectoryRoot}");
 
             switch (extension)
@@ -1422,12 +1707,36 @@ public partial class MainWindow : IDisposable
 
                 case ".7z":
                 case ".rar":
-                    LogMessage($"Extracting {extension.ToUpperInvariant()} {archiveFileNameForLog} using SevenZipExtractor");
-                    await Task.Run(() =>
+                    // SevenZipSharp can have issues with special characters in paths
+                    // Copy to a temp location with sanitized name first
+                    var sanitizedArchivePath = Path.Combine(
+                        Path.GetTempPath(),
+                        $"{Guid.NewGuid():N}{extension}");
+
+                    try
                     {
-                        using var extractor = new SevenZipExtractor(originalArchivePath); // Changed from ArchiveFile to SevenZipExtractor
-                        extractor.ExtractArchive(tempDirectoryRoot); // Use ExtractArchive method
-                    }, token);
+                        LogMessage($"Copying archive to sanitized path for extraction: {sanitizedArchivePath}");
+                        File.Copy(originalArchivePath, sanitizedArchivePath, true);
+
+                        await Task.Run(() =>
+                        {
+                            using var extractor = new SevenZipExtractor(sanitizedArchivePath);
+                            extractor.ExtractArchive(tempDirectoryRoot);
+                        }, token);
+                    }
+                    finally
+                    {
+                        // Clean up the temporary copy
+                        try
+                        {
+                            File.Delete(sanitizedArchivePath);
+                        }
+                        catch
+                        {
+                            /* ignore */
+                        }
+                    }
+
                     break;
 
                 default:

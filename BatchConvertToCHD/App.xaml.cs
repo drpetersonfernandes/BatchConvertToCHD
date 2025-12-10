@@ -4,6 +4,7 @@ using System.Text;
 using System.Windows;
 using System.Windows.Threading;
 using SevenZip;
+using Microsoft.Win32;
 
 namespace BatchConvertToCHD;
 
@@ -34,6 +35,9 @@ public partial class App : IDisposable
 
         // Initialize SevenZipSharp library path
         InitializeSevenZipSharp();
+
+        // Log environment details for debugging
+        LogEnvironmentDetails();
 
         // Register the Exit event handler
         Exit += App_Exit;
@@ -163,6 +167,65 @@ public partial class App : IDisposable
             }
 
             IsSevenZipAvailable = false;
+        }
+    }
+
+    /// <summary>
+    /// Logs detailed environment information for debugging
+    /// </summary>
+    private void LogEnvironmentDetails()
+    {
+        try
+        {
+            var sb = new StringBuilder();
+            sb.AppendLine("=== Application Environment ===");
+            sb.AppendLine(CultureInfo.InvariantCulture, $"OS Version: {Environment.OSVersion}");
+            sb.AppendLine(CultureInfo.InvariantCulture, $".NET Version: {Environment.Version}");
+            sb.AppendLine(CultureInfo.InvariantCulture, $"Process Architecture: {Environment.GetEnvironmentVariable("PROCESSOR_ARCHITECTURE")}");
+            sb.AppendLine(CultureInfo.InvariantCulture, $"Is 64-bit Process: {Environment.Is64BitProcess}");
+            sb.AppendLine(CultureInfo.InvariantCulture, $"Base Directory: {AppDomain.CurrentDomain.BaseDirectory}");
+            sb.AppendLine(CultureInfo.InvariantCulture, $"Temp Path: {Path.GetTempPath()}");
+            sb.AppendLine(CultureInfo.InvariantCulture, $"User: {Environment.UserName}");
+
+            // Check for common security software
+            var securitySoftware = new List<string>();
+            try
+            {
+                using var key = Registry.LocalMachine.OpenSubKey(@"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall");
+                if (key != null)
+                {
+                    foreach (var subKeyName in key.GetSubKeyNames())
+                    {
+                        using var subKey = key.OpenSubKey(subKeyName);
+                        var displayName = subKey?.GetValue("DisplayName")?.ToString() ?? "";
+                        if (displayName.Contains("Defender") || displayName.Contains("Antivirus") ||
+                            displayName.Contains("Security") || displayName.Contains("ESET") ||
+                            displayName.Contains("Norton") || displayName.Contains("McAfee"))
+                        {
+                            securitySoftware.Add(displayName);
+                        }
+                    }
+                }
+            }
+            catch
+            {
+                /* ignore */
+            }
+
+            if (securitySoftware.Count != 0)
+            {
+                sb.AppendLine(CultureInfo.InvariantCulture, $"Detected Security Software: {string.Join("; ", securitySoftware)}");
+            }
+
+            // Log to the bug report service if available
+            if (_bugReportService != null)
+            {
+                _ = _bugReportService.SendBugReportAsync(sb.ToString());
+            }
+        }
+        catch (Exception)
+        {
+            // Silently ignore logging errors
         }
     }
 
