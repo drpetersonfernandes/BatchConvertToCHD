@@ -23,8 +23,6 @@ public partial class MainWindow : IDisposable
     private static readonly string[] AllSupportedInputExtensionsForConversion = { ".cue", ".iso", ".img", ".cdi", ".gdi", ".toc", ".raw", ".zip", ".7z", ".rar", ".cso" };
     private static readonly string[] ArchiveExtensions = { ".zip", ".7z", ".rar" };
 
-    private int _currentDegreeOfParallelismForFiles = 1;
-
     // Statistics
     private int _totalFilesProcessed;
     private int _processedOkCount;
@@ -273,16 +271,14 @@ public partial class MainWindow : IDisposable
             _operationTimer.Restart();
 
             var deleteFiles = DeleteOriginalsCheckBox.IsChecked ?? false;
-            var parallel = ParallelProcessingCheckBox.IsChecked ?? false;
             var smallestFirst = ProcessSmallestFirstCheckBox.IsChecked ?? false;
-            _currentDegreeOfParallelismForFiles = parallel ? 3 : 1;
 
             LogMessage("--- Starting batch conversion process... ---");
 
             try
             {
                 await PerformBatchConversionAsync(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "chdman.exe"),
-                    inputFolder, outputFolder, deleteFiles, parallel, _currentDegreeOfParallelismForFiles, smallestFirst, _cts.Token);
+                    inputFolder, outputFolder, deleteFiles, smallestFirst, _cts.Token);
             }
             catch (OperationCanceledException)
             {
@@ -383,7 +379,6 @@ public partial class MainWindow : IDisposable
         ConversionOutputFolderTextBox.IsEnabled = enabled;
         BrowseConversionOutputButton.IsEnabled = enabled;
         DeleteOriginalsCheckBox.IsEnabled = enabled;
-        ParallelProcessingCheckBox.IsEnabled = enabled;
         StartConversionButton.IsEnabled = enabled;
         VerificationInputFolderTextBox.IsEnabled = enabled;
         BrowseVerificationInputButton.IsEnabled = enabled;
@@ -414,7 +409,7 @@ public partial class MainWindow : IDisposable
         return dialog.ShowDialog() == true ? dialog.FolderName : null;
     }
 
-    private async Task PerformBatchConversionAsync(string chdmanPath, string inputFolder, string outputFolder, bool deleteFiles, bool useParallel, int maxConcurrency, bool processSmallestFirst, CancellationToken token)
+    private async Task PerformBatchConversionAsync(string chdmanPath, string inputFolder, string outputFolder, bool deleteFiles, bool processSmallestFirst, CancellationToken token)
     {
         var filesToConvert = await Task.Run(() =>
         {
@@ -433,38 +428,23 @@ public partial class MainWindow : IDisposable
 
         ProgressBar.Maximum = _totalFilesProcessed;
         var processedCount = 0;
-        var cores = useParallel ? Math.Max(1, Environment.ProcessorCount / 3) : Environment.ProcessorCount;
+        var cores = Environment.ProcessorCount;
 
-        if (useParallel && _totalFilesProcessed > 1)
+        foreach (var file in filesToConvert)
         {
-            await Parallel.ForEachAsync(filesToConvert, new ParallelOptions { MaxDegreeOfParallelism = maxConcurrency, CancellationToken = token }, async (file, ct) =>
+            var success = await ProcessSingleFileForConversionAsync(chdmanPath, file, outputFolder, deleteFiles, cores, token);
+            if (success)
             {
-                var success = await ProcessSingleFileForConversionAsync(chdmanPath, file, outputFolder, deleteFiles, cores, ct);
-                if (success) Interlocked.Increment(ref _processedOkCount);
-                else Interlocked.Increment(ref _failedCount);
-                UpdateProgressDisplay(Interlocked.Increment(ref processedCount), _totalFilesProcessed, Path.GetFileName(file), "Converting");
-                UpdateStatsDisplay();
-                UpdateProcessingTimeDisplay();
-            });
-        }
-        else
-        {
-            foreach (var file in filesToConvert)
-            {
-                var success = await ProcessSingleFileForConversionAsync(chdmanPath, file, outputFolder, deleteFiles, cores, token);
-                if (success)
-                {
-                    _processedOkCount++;
-                }
-                else
-                {
-                    _failedCount++;
-                }
-
-                UpdateProgressDisplay(++processedCount, _totalFilesProcessed, Path.GetFileName(file), "Converting");
-                UpdateStatsDisplay();
-                UpdateProcessingTimeDisplay();
+                _processedOkCount++;
             }
+            else
+            {
+                _failedCount++;
+            }
+
+            UpdateProgressDisplay(++processedCount, _totalFilesProcessed, Path.GetFileName(file), "Converting");
+            UpdateStatsDisplay();
+            UpdateProcessingTimeDisplay();
         }
     }
 
@@ -507,26 +487,46 @@ public partial class MainWindow : IDisposable
             }
             else
             {
-                tempDir = Path.Combine(Path.GetTempPath(), $"{TempDirPrefix}{Guid.NewGuid():N}");
-                await Task.Run(() => Directory.CreateDirectory(tempDir), token);
-                fileToProcess = PathUtils.GetSafeTempFileName(originalName, ext.TrimStart('.'), tempDir);
-                await Task.Run(() => File.Copy(inputFile, fileToProcess, true), token);
+                // Try processing directly from source first to avoid unnecessary I/O
+                fileToProcess = inputFile;
             }
 
             UpdateWriteSpeedDisplay(0);
             var outputDir = Path.GetDirectoryName(outputChd) ?? outputFolder;
             if (!Directory.Exists(outputDir)) Directory.CreateDirectory(outputDir);
 
-            bool success;
+            var success = false;
             try
             {
                 success = await ConvertToChdAsync(chdmanPath, fileToProcess, outputChd, cores, token);
             }
             catch (Exception ex)
             {
-                LogMessage($"Conversion error for {originalName}: {ex.Message}");
-                await TryDeleteFileAsync(outputChd, "failed CHD", CancellationToken.None);
-                return false;
+                LogMessage($"Direct conversion attempt error for {originalName}: {ex.Message}");
+            }
+
+            // Fallback: If direct conversion failed and we haven't already extracted to temp (i.e. it was a direct file attempt),
+            // try copying to temp and converting there. This handles network path issues or file locking quirks.
+            if (!success && fileToProcess == inputFile && !token.IsCancellationRequested)
+            {
+                LogMessage($"Direct conversion failed for {originalName}. Retrying via temporary directory copy...");
+                await TryDeleteFileAsync(outputChd, "failed partial CHD", CancellationToken.None);
+
+                try
+                {
+                    tempDir = Path.Combine(Path.GetTempPath(), $"{TempDirPrefix}{Guid.NewGuid():N}");
+                    await Task.Run(() => Directory.CreateDirectory(tempDir), token);
+
+                    var tempFile = PathUtils.GetSafeTempFileName(originalName, ext.TrimStart('.'), tempDir);
+                    await Task.Run(() => File.Copy(inputFile, tempFile, true), token);
+
+                    fileToProcess = tempFile;
+                    success = await ConvertToChdAsync(chdmanPath, fileToProcess, outputChd, cores, token);
+                }
+                catch (Exception ex)
+                {
+                    LogMessage($"Retry via temp failed for {originalName}: {ex.Message}");
+                }
             }
 
             if (success)
@@ -534,8 +534,16 @@ public partial class MainWindow : IDisposable
                 LogMessage($"Converted: {originalName}");
                 if (deleteOriginal)
                 {
-                    await TryDeleteFileAsync(inputFile, "original file", token);
-                    if (ext is ".cue" or ".gdi") await DeleteOriginalGameFilesAsync(inputFile, token);
+                    if (ext is ".cue" or ".gdi")
+                    {
+                        // Parse and delete dependencies + input file
+                        await DeleteOriginalGameFilesAsync(inputFile, token);
+                    }
+                    else
+                    {
+                        // Just delete input file
+                        await TryDeleteFileAsync(inputFile, "original file", token);
+                    }
                 }
 
                 return true;
@@ -670,7 +678,10 @@ public partial class MainWindow : IDisposable
             {
                 try
                 {
-                    process.Kill(true);
+                    if (!process.HasExited)
+                    {
+                        process.Kill(true);
+                    }
                 }
                 catch
                 {

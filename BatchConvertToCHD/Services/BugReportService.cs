@@ -1,7 +1,7 @@
 using System.Net.Http;
 using System.Net.Http.Json;
 
-namespace BatchConvertToCHD;
+namespace BatchConvertToCHD.Services;
 
 /// <summary>
 /// Service responsible for sending bug reports to the BugReport API
@@ -47,6 +47,7 @@ public class BugReportService(string apiUrl, string apiKey, string applicationNa
 
     public void Dispose()
     {
+        _httpClient?.Dispose();
         GC.SuppressFinalize(this);
     }
 }

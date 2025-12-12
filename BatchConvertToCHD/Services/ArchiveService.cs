@@ -155,26 +155,44 @@ public class ArchiveService(string maxCsoPath, bool isMaxCsoAvailable)
                     break;
                 case ".7z":
                 case ".rar":
-                    // Sanitize path for 7ZipSharp
-                    var sanitizedArchivePath = Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}{extension}");
+                    var directExtractionSuccess = false;
                     try
                     {
-                        File.Copy(originalArchivePath, sanitizedArchivePath, true);
                         await Task.Run(() =>
                         {
-                            using var extractor = new SevenZipExtractor(sanitizedArchivePath);
+                            using var extractor = new SevenZipExtractor(originalArchivePath);
                             extractor.ExtractArchive(tempDirectoryRoot);
                         }, token);
+                        directExtractionSuccess = true;
                     }
-                    finally
+                    catch (Exception ex)
                     {
+                        onLog($"Direct extraction failed ({ex.Message}). Attempting fallback with local copy...");
+                    }
+
+                    if (!directExtractionSuccess)
+                    {
+                        // Sanitize path for 7ZipSharp
+                        var sanitizedArchivePath = Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}{extension}");
                         try
                         {
-                            File.Delete(sanitizedArchivePath);
+                            File.Copy(originalArchivePath, sanitizedArchivePath, true);
+                            await Task.Run(() =>
+                            {
+                                using var extractor = new SevenZipExtractor(sanitizedArchivePath);
+                                extractor.ExtractArchive(tempDirectoryRoot);
+                            }, token);
                         }
-                        catch
+                        finally
                         {
-                            /* ignore */
+                            try
+                            {
+                                File.Delete(sanitizedArchivePath);
+                            }
+                            catch
+                            {
+                                /* ignore */
+                            }
                         }
                     }
 

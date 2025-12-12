@@ -3,6 +3,7 @@ using System.IO;
 using System.Text;
 using System.Windows;
 using System.Windows.Threading;
+using BatchConvertToCHD.Services;
 using SevenZip;
 using Microsoft.Win32;
 

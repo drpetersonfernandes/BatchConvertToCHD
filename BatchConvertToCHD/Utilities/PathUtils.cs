@@ -1,4 +1,4 @@
-﻿using System.Globalization;
+using System.Globalization;
 using System.IO;
 using System.Text.RegularExpressions;
 
@@ -45,10 +45,6 @@ public static class PathUtils
                 onError($"The {pathName} does not exist or is not accessible:\n\n{normalizedPath}\n\nPlease verify the path and try again.");
                 return null;
             }
-
-            // Verify read/write access (basic check)
-            var dirInfo = new DirectoryInfo(normalizedPath);
-            _ = dirInfo.GetAccessControl();
 
             onLog($"Validated {pathName}: {normalizedPath}");
             return normalizedPath;
