@@ -6,7 +6,7 @@ A Windows desktop utility for batch converting various disk image formats to CHD
 
 ## Overview
 
-Batch Convert to CHD is a Windows application that provides a simple user interface for converting multiple disk image files to the CHD format and verifying existing CHD files. It uses **CHDMAN** from the MAME project for the actual conversions and verifications, while providing a user-friendly interface for batch processing. The application supports extracting disk images from archives, parallel conversion for improved performance, and comprehensive CHD file verification.
+Batch Convert to CHD is a Windows application that provides a simple user interface for converting multiple disk image files to the CHD format and verifying existing CHD files. It uses **CHDMAN** from the MAME project for the actual conversions and verifications, while providing a user-friendly interface for batch processing. The application supports extracting disk images from archives, and comprehensive CHD file verification.
 
 ⭐ **If you find this tool useful, please give us a Star on GitHub!** ⭐
 
@@ -17,7 +17,6 @@ Batch Convert to CHD is a Windows application that provides a simple user interf
 - **Multiple Format Support**: Handles CD, DVD, GD-ROM, and HDD image formats
 - **Archive Support**: Automatically extracts and processes files from `.zip`, `.7z`, and `.rar` archives
 - **CSO Decompression**: Supports `.cso` (Compressed ISO) files with automatic decompression using maxcso
-- **Parallel Processing**: Process multiple files simultaneously for faster batch conversion
 - **Smart File Handling**: Sanitizes file names and handles complex file paths safely by using temporary files for processing
 - **Delete Original Option**: Remove source files (including archives and referenced files like .bin for .cue) after successful conversion
 - **Process Smallest First**: Option to prioritize processing smaller files first, which can be useful for quicker feedback on progress or for systems with limited temporary storage.
@@ -83,7 +82,6 @@ Batch Convert to CHD is a Windows application that provides a simple user interf
 3. **Choose Output Folder**: Click "Browse" next to "Output CHD Folder" to select where CHD files will be saved
 4. **Configure Options**:
     - Check "Delete original files after successful conversion" to remove source files after conversion
-    - Check "Enable parallel processing" to convert multiple files simultaneously (faster on multicore systems)
     - Check "Process smaller files first" to sort the conversion queue by file size, processing smaller files before larger ones.
 5. **Start Conversion**: Click "Start Conversion" to begin the process
 6. **Monitor Progress**: View real-time progress, statistics, and detailed logs
@@ -113,9 +111,7 @@ CHD (Compressed Hunks of Data) is a compressed disk image format developed for t
 
 ## Performance Tips
 
-- **Enable Parallel Processing**: Use this option when converting multiple files on systems with multiple CPU cores
 - **SSD Storage**: Store temporary files and output on SSD drives for better performance
-- **Available RAM**: Ensure sufficient free RAM when processing large files or using parallel processing
 - **File Organization**: Organize input files in a single folder for efficient batch processing
 
 ## Troubleshooting
