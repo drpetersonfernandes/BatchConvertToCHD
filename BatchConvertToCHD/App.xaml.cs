@@ -1,11 +1,8 @@
-using System.Globalization;
 using System.IO;
-using System.Text;
 using System.Windows;
 using System.Windows.Threading;
 using BatchConvertToCHD.Services;
 using SevenZip;
-using Microsoft.Win32;
 
 namespace BatchConvertToCHD;
 
@@ -25,20 +22,17 @@ public partial class App : IDisposable
 
     public App()
     {
+        // Initialize SevenZipSharp library path first to determine its availability
+        InitializeSevenZipSharp();
+
         // Initialize the bug report service as a shared instance
-        SharedBugReportService = new BugReportService(AppConfig.BugReportApiUrl, AppConfig.BugReportApiKey, AppConfig.ApplicationName);
+        SharedBugReportService = new BugReportService(AppConfig.BugReportApiUrl, AppConfig.BugReportApiKey, AppConfig.ApplicationName, IsSevenZipAvailable);
         _bugReportService = SharedBugReportService;
 
         // Set up global exception handling
         AppDomain.CurrentDomain.UnhandledException += CurrentDomain_UnhandledException;
         DispatcherUnhandledException += App_DispatcherUnhandledException;
         TaskScheduler.UnobservedTaskException += TaskScheduler_UnobservedTaskException;
-
-        // Initialize SevenZipSharp library path
-        InitializeSevenZipSharp();
-
-        // Log environment details for debugging
-        LogEnvironmentDetails();
 
         // Register the Exit event handler
         Exit += App_Exit;
@@ -80,58 +74,15 @@ public partial class App : IDisposable
     {
         try
         {
-            var message = BuildExceptionReport(exception, source);
-
             // Notify the developer using the shared service instance
             if (_bugReportService != null)
             {
-                await _bugReportService.SendBugReportAsync(message);
+                await _bugReportService.SendBugReportAsync($"Unhandled Exception from {source}", exception);
             }
         }
         catch
         {
             // Silently ignore any errors in the reporting process
-        }
-    }
-
-    internal static string BuildExceptionReport(Exception exception, string source)
-    {
-        var sb = new StringBuilder();
-        sb.AppendLine(CultureInfo.InvariantCulture, $"Error Source: {source}");
-        sb.AppendLine(CultureInfo.InvariantCulture, $"Date and Time: {DateTime.Now}");
-        sb.AppendLine(CultureInfo.InvariantCulture, $"OS Version: {Environment.OSVersion}");
-        sb.AppendLine(CultureInfo.InvariantCulture, $".NET Version: {Environment.Version}");
-        sb.AppendLine();
-
-        // Add exception details
-        sb.AppendLine("Exception Details:");
-        AppendExceptionDetails(sb, exception);
-
-        return sb.ToString();
-    }
-
-    internal static void AppendExceptionDetails(StringBuilder sb, Exception exception, int level = 0)
-    {
-        while (true)
-        {
-            var indent = new string(' ', level * 2);
-
-            sb.AppendLine(CultureInfo.InvariantCulture, $"{indent}Type: {exception.GetType().FullName}");
-            sb.AppendLine(CultureInfo.InvariantCulture, $"{indent}Message: {exception.Message}");
-            sb.AppendLine(CultureInfo.InvariantCulture, $"{indent}Source: {exception.Source}");
-            sb.AppendLine(CultureInfo.InvariantCulture, $"{indent}StackTrace:");
-            sb.AppendLine(CultureInfo.InvariantCulture, $"{indent}{exception.StackTrace}");
-
-            // If there's an inner exception, include it too
-            if (exception.InnerException != null)
-            {
-                sb.AppendLine(CultureInfo.InvariantCulture, $"{indent}Inner Exception:");
-                exception = exception.InnerException;
-                level += 1;
-                continue;
-            }
-
-            break;
         }
     }
 
@@ -153,7 +104,7 @@ public partial class App : IDisposable
                 var errorMessage = $"Could not find the required 7-Zip library: {dllName} in {AppDomain.CurrentDomain.BaseDirectory}";
                 if (_bugReportService != null)
                 {
-                    _ = _bugReportService.SendBugReportAsync(errorMessage);
+                    _ = _bugReportService.SendBugReportAsync(errorMessage, null);
                 }
 
                 IsSevenZipAvailable = false;
@@ -164,69 +115,10 @@ public partial class App : IDisposable
             // Notify developer
             if (_bugReportService != null)
             {
-                _ = _bugReportService.SendBugReportAsync(ex.Message);
+                _ = _bugReportService.SendBugReportAsync("Error initializing 7-Zip library", ex);
             }
 
             IsSevenZipAvailable = false;
-        }
-    }
-
-    /// <summary>
-    /// Logs detailed environment information for debugging
-    /// </summary>
-    private void LogEnvironmentDetails()
-    {
-        try
-        {
-            var sb = new StringBuilder();
-            sb.AppendLine("=== Application Environment ===");
-            sb.AppendLine(CultureInfo.InvariantCulture, $"OS Version: {Environment.OSVersion}");
-            sb.AppendLine(CultureInfo.InvariantCulture, $".NET Version: {Environment.Version}");
-            sb.AppendLine(CultureInfo.InvariantCulture, $"Process Architecture: {Environment.GetEnvironmentVariable("PROCESSOR_ARCHITECTURE")}");
-            sb.AppendLine(CultureInfo.InvariantCulture, $"Is 64-bit Process: {Environment.Is64BitProcess}");
-            sb.AppendLine(CultureInfo.InvariantCulture, $"Base Directory: {AppDomain.CurrentDomain.BaseDirectory}");
-            sb.AppendLine(CultureInfo.InvariantCulture, $"Temp Path: {Path.GetTempPath()}");
-            sb.AppendLine(CultureInfo.InvariantCulture, $"User: {Environment.UserName}");
-
-            // Check for common security software
-            var securitySoftware = new List<string>();
-            try
-            {
-                using var key = Registry.LocalMachine.OpenSubKey(@"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall");
-                if (key != null)
-                {
-                    foreach (var subKeyName in key.GetSubKeyNames())
-                    {
-                        using var subKey = key.OpenSubKey(subKeyName);
-                        var displayName = subKey?.GetValue("DisplayName")?.ToString() ?? "";
-                        if (displayName.Contains("Defender") || displayName.Contains("Antivirus") ||
-                            displayName.Contains("Security") || displayName.Contains("ESET") ||
-                            displayName.Contains("Norton") || displayName.Contains("McAfee"))
-                        {
-                            securitySoftware.Add(displayName);
-                        }
-                    }
-                }
-            }
-            catch
-            {
-                /* ignore */
-            }
-
-            if (securitySoftware.Count != 0)
-            {
-                sb.AppendLine(CultureInfo.InvariantCulture, $"Detected Security Software: {string.Join("; ", securitySoftware)}");
-            }
-
-            // Log to the bug report service if available
-            if (_bugReportService != null)
-            {
-                _ = _bugReportService.SendBugReportAsync(sb.ToString());
-            }
-        }
-        catch (Exception)
-        {
-            // Silently ignore logging errors
         }
     }
 

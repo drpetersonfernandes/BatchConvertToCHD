@@ -2,7 +2,6 @@ using System.ComponentModel;
 using System.Diagnostics;
 using System.Globalization;
 using System.IO;
-using System.Text;
 using System.Text.RegularExpressions;
 using System.Windows;
 using System.Windows.Controls;
@@ -144,7 +143,7 @@ public partial class MainWindow : IDisposable
     {
         try
         {
-            var sb = new StringBuilder();
+            var sb = new System.Text.StringBuilder();
             sb.AppendLine("=== Environment Details ===");
             sb.AppendLine(CultureInfo.InvariantCulture, $"OS: {Environment.OSVersion}");
             sb.AppendLine(CultureInfo.InvariantCulture, $"User: {Environment.UserName}");
@@ -870,10 +869,7 @@ public partial class MainWindow : IDisposable
     {
         try
         {
-            var sb = new StringBuilder();
-            sb.AppendLine(CultureInfo.InvariantCulture, $"Error: {msg}");
-            if (ex != null) App.AppendExceptionDetails(sb, ex);
-            if (App.SharedBugReportService != null) await App.SharedBugReportService.SendBugReportAsync(sb.ToString());
+            if (App.SharedBugReportService != null) await App.SharedBugReportService.SendBugReportAsync(msg, ex);
         }
         catch
         {
