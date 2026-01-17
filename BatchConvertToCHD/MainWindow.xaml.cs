@@ -34,6 +34,10 @@ public partial class MainWindow : IDisposable
 
     // Temp Directory Prefix
     private const string TempDirPrefix = "BatchConvertToCHD_Temp_";
+
+    // Performance counter for write speed monitoring
+    private PerformanceCounter? _writeBytesCounter;
+    private PerformanceCounter? _readBytesCounter;
     private const int WriteSpeedUpdateIntervalMs = 1000;
 
     public MainWindow()
@@ -62,6 +66,9 @@ public partial class MainWindow : IDisposable
         ResetOperationStats();
         LogEnvironmentDetails();
 
+        InitializePerformanceCounter();
+        InitializeReadPerformanceCounter();
+
         // Start version check
         _ = _updateService.CheckForNewVersionAsync(LogMessage, UpdateStatusBarMessage, ReportBugAsync);
     }
@@ -69,6 +76,39 @@ public partial class MainWindow : IDisposable
     private void ShowAlert(string message, string title)
     {
         Application.Current.Dispatcher.InvokeAsync(() => MessageBox.Show(this, message, title, MessageBoxButton.OK, MessageBoxImage.Warning));
+    }
+
+    private void InitializePerformanceCounter()
+    {
+        try
+        {
+            // Create a performance counter for disk write operations
+            _writeBytesCounter = new PerformanceCounter("PhysicalDisk", "Disk Write Bytes/sec", "_Total");
+        }
+        catch (Exception ex)
+        {
+            LogMessage($"WARNING: Could not initialize performance counter for write speed monitoring: {ex.Message}");
+            _writeBytesCounter = null;
+
+            if (App.SharedBugReportService != null)
+            {
+                _ = App.SharedBugReportService.SendBugReportAsync("Performance counter initialization failed", ex);
+            }
+        }
+    }
+
+    private void InitializeReadPerformanceCounter()
+    {
+        try
+        {
+            // Create a performance counter for disk read operations
+            _readBytesCounter = new PerformanceCounter("PhysicalDisk", "Disk Read Bytes/sec", "_Total");
+        }
+        catch (Exception ex)
+        {
+            LogMessage($"WARNING: Could not initialize read performance counter: {ex.Message}");
+            _readBytesCounter = null;
+        }
     }
 
     private void InitializeStatusBar()
@@ -80,6 +120,7 @@ public partial class MainWindow : IDisposable
             StatusBarMaxcso.Text = " MAXCSO ";
             StatusBarMaxcso.Foreground = _isMaxCsoAvailable ? new SolidColorBrush(Colors.Green) : new SolidColorBrush(Colors.Orange);
             StatusBarMessage.Text = "Ready";
+            SpeedValue.Text = "0.0 MB/s";
         });
     }
 
@@ -184,6 +225,7 @@ public partial class MainWindow : IDisposable
                 case "ConvertTab":
                     DisplayConversionInstructionsInLog();
                     UpdateStatusBarMessage("Ready for conversion");
+                    SpeedValue.Text = "0.0 MB/s (write)";
                     break;
                 case "VerifyTab":
                     DisplayVerificationInstructionsInLog();
@@ -198,6 +240,7 @@ public partial class MainWindow : IDisposable
         }
 
         UpdateWriteSpeedDisplay(0);
+        UpdateReadSpeedDisplay(0);
     }
 
     private void Window_Closing(object sender, CancelEventArgs e)
@@ -348,6 +391,7 @@ public partial class MainWindow : IDisposable
         SetControlsState(false);
         _cts = new CancellationTokenSource();
         _operationTimer.Restart();
+        ResetSpeedCounters();
 
         try
         {
@@ -438,6 +482,7 @@ public partial class MainWindow : IDisposable
             ResetOperationStats();
             SetControlsState(false);
             _operationTimer.Restart();
+            ResetSpeedCounters();
 
             var deleteFiles = DeleteOriginalsCheckBox.IsChecked ?? false;
             var smallestFirst = ProcessSmallestFirstCheckBox.IsChecked ?? false;
@@ -493,6 +538,7 @@ public partial class MainWindow : IDisposable
             ResetOperationStats();
             SetControlsState(false);
             _operationTimer.Restart();
+            ResetSpeedCounters();
 
             var includeSub = VerificationIncludeSubfoldersCheckBox.IsChecked ?? false;
             var moveSuccess = MoveSuccessFilesCheckBox.IsChecked ?? false;
@@ -532,6 +578,7 @@ public partial class MainWindow : IDisposable
         _operationTimer.Stop();
         UpdateProcessingTimeDisplay();
         UpdateWriteSpeedDisplay(0);
+        UpdateReadSpeedDisplay(0);
         SetControlsState(true);
         LogOperationSummary(opName);
     }
@@ -575,6 +622,7 @@ public partial class MainWindow : IDisposable
         {
             ClearProgressDisplay();
             UpdateWriteSpeedDisplay(0);
+            UpdateReadSpeedDisplay(0);
         }
     }
 
@@ -604,6 +652,7 @@ public partial class MainWindow : IDisposable
         ProgressBar.Maximum = _totalFilesProcessed;
         var processedCount = 0;
         var cores = Environment.ProcessorCount;
+        ResetSpeedCounters();
 
         foreach (var file in filesToConvert)
         {
@@ -620,6 +669,7 @@ public partial class MainWindow : IDisposable
             UpdateProgressDisplay(++processedCount, _totalFilesProcessed, Path.GetFileName(file), "Converting");
             UpdateStatsDisplay();
             UpdateProcessingTimeDisplay();
+            UpdateWriteSpeedFromPerformanceCounter();
         }
     }
 
@@ -755,6 +805,7 @@ public partial class MainWindow : IDisposable
 
         ProgressBar.Maximum = _totalFilesProcessed;
         var processed = 0;
+        ResetSpeedCounters();
 
         foreach (var file in files)
         {
@@ -777,6 +828,7 @@ public partial class MainWindow : IDisposable
             processed++;
             UpdateStatsDisplay();
             UpdateProcessingTimeDisplay();
+            UpdateReadSpeedFromPerformanceCounter();
         }
     }
 
@@ -861,10 +913,6 @@ public partial class MainWindow : IDisposable
         using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(token);
         timeoutCts.CancelAfter(TimeSpan.FromHours(4));
 
-        var lastSize = 0L;
-        var lastTime = DateTime.UtcNow;
-
-        while (!process.HasExited)
         {
             if (token.IsCancellationRequested)
             {
@@ -883,29 +931,54 @@ public partial class MainWindow : IDisposable
                 throw new OperationCanceledException();
             }
 
-            await Task.Delay(WriteSpeedUpdateIntervalMs, timeoutCts.Token);
-            if (process.HasExited) break;
+            // Monitor write speed using performance counter
+            while (!process.HasExited)
+            {
+                await Task.Delay(WriteSpeedUpdateIntervalMs, timeoutCts.Token);
+                if (process.HasExited) break;
 
-            try
-            {
-                if (File.Exists(outputFile))
-                {
-                    var size = new FileInfo(outputFile).Length;
-                    var now = DateTime.UtcNow;
-                    var delta = (now - lastTime).TotalSeconds;
-                    if (delta > 0) UpdateWriteSpeedDisplay((size - lastSize) / delta / 1048576.0);
-                    lastSize = size;
-                    lastTime = now;
-                }
-            }
-            catch
-            {
-                // ignored
+                UpdateWriteSpeedFromPerformanceCounter();
             }
         }
 
+        // Final speed update
+        UpdateWriteSpeedFromPerformanceCounter();
+
         await process.WaitForExitAsync(timeoutCts.Token);
         return process.ExitCode == 0;
+        // Note: Write speed monitoring happens in the while loop above
+    }
+
+    private void UpdateWriteSpeedFromPerformanceCounter()
+    {
+        try
+        {
+            if (_writeBytesCounter != null)
+            {
+                var writeBytesPerSec = _writeBytesCounter.NextValue();
+                UpdateWriteSpeedDisplay(writeBytesPerSec / 1048576.0); // Convert to MB/s
+            }
+        }
+        catch
+        {
+            // Ignore performance counter errors
+        }
+    }
+
+    private void UpdateReadSpeedFromPerformanceCounter()
+    {
+        try
+        {
+            if (_readBytesCounter != null)
+            {
+                var readBytesPerSec = _readBytesCounter.NextValue();
+                UpdateReadSpeedDisplay(readBytesPerSec / 1048576.0); // Convert to MB/s
+            }
+        }
+        catch
+        {
+            // ignored
+        }
     }
 
     private async Task<bool> VerifyChdAsync(string chdmanPath, string chdFile, CancellationToken token)
@@ -915,14 +988,34 @@ public partial class MainWindow : IDisposable
 
         process.StartInfo = new ProcessStartInfo { FileName = chdmanPath, Arguments = $"verify -i \"{chdFile}\"", RedirectStandardOutput = true, RedirectStandardError = true, UseShellExecute = false, CreateNoWindow = true, WorkingDirectory = Path.GetDirectoryName(chdmanPath) };
 
+        process.OutputDataReceived += (_, a) =>
+        {
+            if (!string.IsNullOrEmpty(a.Data) && a.Data.Contains("% complete"))
+            {
+                // Update read speed periodically during verification
+                UpdateReadSpeedFromPerformanceCounter();
+            }
+        };
         process.ErrorDataReceived += (_, a) =>
         {
             if (!string.IsNullOrEmpty(a.Data) && !a.Data.Contains("% complete")) LogMessage($"[CHDMAN ERR] {a.Data}");
         };
+
         process.Start();
         process.BeginOutputReadLine();
+
+        // Start read speed monitoring during verification
+        var readSpeedTask = Task.Run(async () =>
+        {
+            while (!process.HasExited && !token.IsCancellationRequested)
+            {
+                await Task.Delay(WriteSpeedUpdateIntervalMs, token);
+                UpdateReadSpeedFromPerformanceCounter();
+            }
+        }, token);
         process.BeginErrorReadLine();
         await process.WaitForExitAsync(token);
+        await readSpeedTask;
         return process.ExitCode == 0;
     }
 
@@ -934,7 +1027,7 @@ public partial class MainWindow : IDisposable
         _operationTimer.Reset();
         UpdateStatsDisplay();
         UpdateProcessingTimeDisplay();
-        UpdateWriteSpeedDisplay(0);
+        ResetSpeedCounters();
         ClearProgressDisplay();
     }
 
@@ -955,7 +1048,12 @@ public partial class MainWindow : IDisposable
 
     private void UpdateWriteSpeedDisplay(double speed)
     {
-        Application.Current.Dispatcher.InvokeAsync(() => WriteSpeedValue.Text = $"{speed:F1} MB/s");
+        Application.Current.Dispatcher.InvokeAsync(() => SpeedValue.Text = $"{speed:F1} MB/s (write)");
+    }
+
+    private void UpdateReadSpeedDisplay(double speed)
+    {
+        Application.Current.Dispatcher.InvokeAsync(() => SpeedValue.Text = $"{speed:F1} MB/s (read)");
     }
 
     private void UpdateProgressDisplay(int cur, int tot, string name, string verb)
@@ -1086,6 +1184,13 @@ public partial class MainWindow : IDisposable
         }
     }
 
+    private void ResetSpeedCounters()
+    {
+        // Reset performance counters to get fresh readings
+        _writeBytesCounter?.NextValue();
+        _readBytesCounter?.NextValue();
+    }
+
     private void ExitMenuItem_Click(object sender, RoutedEventArgs e)
     {
         Close();
@@ -1100,6 +1205,8 @@ public partial class MainWindow : IDisposable
     {
         _cts?.Cancel();
         _cts?.Dispose();
+        _writeBytesCounter?.Dispose();
+        _readBytesCounter?.Dispose();
         _operationTimer?.Stop();
         GC.SuppressFinalize(this);
     }

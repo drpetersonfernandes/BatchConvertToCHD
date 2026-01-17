@@ -1,16 +1,55 @@
-﻿using System.Diagnostics;
+using System.Diagnostics;
 using System.IO;
 using System.Text;
 using SevenZip;
 
 namespace BatchConvertToCHD.Services;
 
-public class ArchiveService(string maxCsoPath, bool isMaxCsoAvailable)
+public class ArchiveService : IDisposable
 {
-    private readonly string _maxCsoPath = maxCsoPath;
-    private readonly bool _isMaxCsoAvailable = isMaxCsoAvailable;
+    private readonly string _maxCsoPath;
+    private readonly bool _isMaxCsoAvailable;
     private static readonly string[] PrimaryTargetExtensions = { ".cue", ".iso", ".img", ".cdi", ".gdi", ".toc", ".raw" };
+
+    // Performance counter for write speed monitoring
+    private PerformanceCounter? _writeBytesCounter;
+    private PerformanceCounter? _readBytesCounter;
     private const int WriteSpeedUpdateIntervalMs = 1000;
+
+    public ArchiveService(string maxCsoPath, bool isMaxCsoAvailable)
+    {
+        _maxCsoPath = maxCsoPath;
+        _isMaxCsoAvailable = isMaxCsoAvailable;
+        InitializePerformanceCounter();
+        InitializeReadPerformanceCounter();
+    }
+
+    private void InitializePerformanceCounter()
+    {
+        try
+        {
+            // Create a performance counter for disk write operations
+            _writeBytesCounter = new PerformanceCounter("PhysicalDisk", "Disk Write Bytes/sec", "_Total");
+        }
+        catch (Exception)
+        {
+            // Silently fail - write speed monitoring is optional
+            _writeBytesCounter = null;
+        }
+    }
+
+    private void InitializeReadPerformanceCounter()
+    {
+        try
+        {
+            // Create a performance counter for disk read operations
+            _readBytesCounter = new PerformanceCounter("PhysicalDisk", "Disk Read Bytes/sec", "_Total");
+        }
+        catch (Exception)
+        {
+            _readBytesCounter = null;
+        }
+    }
 
     public async Task<(bool Success, string FilePath, string TempDir, string ErrorMessage)> ExtractCsoAsync(
         string originalCsoPath,
@@ -57,10 +96,6 @@ public class ArchiveService(string maxCsoPath, bool isMaxCsoAvailable)
             process.BeginOutputReadLine();
             process.BeginErrorReadLine();
 
-            // Monitor speed
-            var lastSpeedCheckTime = DateTime.UtcNow;
-            long lastFileSize = 0;
-
             while (!process.HasExited)
             {
                 if (token.IsCancellationRequested)
@@ -80,27 +115,14 @@ public class ArchiveService(string maxCsoPath, bool isMaxCsoAvailable)
                 await Task.Delay(WriteSpeedUpdateIntervalMs, token);
                 if (process.HasExited || token.IsCancellationRequested) break;
 
-                try
+                if (_writeBytesCounter != null)
                 {
-                    if (await Task.Run(() => File.Exists(tempOutputIsoPath), token))
-                    {
-                        var currentFileSize = await Task.Run(() => new FileInfo(tempOutputIsoPath).Length, token);
-                        var currentTime = DateTime.UtcNow;
-                        var timeDelta = currentTime - lastSpeedCheckTime;
-                        if (timeDelta.TotalSeconds > 0)
-                        {
-                            var bytesDelta = currentFileSize - lastFileSize;
-                            var speed = (bytesDelta / timeDelta.TotalSeconds) / (1024.0 * 1024.0);
-                            onSpeedUpdate(speed);
-                        }
+                    var writeBytesPerSec = _writeBytesCounter.NextValue();
+                    onSpeedUpdate(writeBytesPerSec / 1048576.0); // Convert to MB/s
 
-                        lastFileSize = currentFileSize;
-                        lastSpeedCheckTime = currentTime;
-                    }
-                }
-                catch
-                {
-                    /* ignore monitoring errors */
+                    // Also monitor read speed during CSO decompression
+                    // Note: We call NextValue() to keep the counter updated, but don't need the value here
+                    _readBytesCounter?.NextValue();
                 }
             }
 
@@ -130,6 +152,8 @@ public class ArchiveService(string maxCsoPath, bool isMaxCsoAvailable)
         finally
         {
             process?.Dispose();
+            _readBytesCounter?.Dispose();
+            _writeBytesCounter?.Dispose();
         }
     }
 
@@ -215,5 +239,12 @@ public class ArchiveService(string maxCsoPath, bool isMaxCsoAvailable)
         {
             return (false, string.Empty, tempDirectoryRoot, $"Error extracting archive: {ex.Message}");
         }
+    }
+
+    public void Dispose()
+    {
+        _readBytesCounter?.Dispose();
+        _writeBytesCounter?.Dispose();
+        GC.SuppressFinalize(this);
     }
 }

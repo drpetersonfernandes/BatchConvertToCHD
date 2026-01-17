@@ -187,8 +187,8 @@
             
             <Border Grid.Column="4" Style="{StaticResource StatCard}">
                 <StackPanel Orientation="Vertical" HorizontalAlignment="Center">
-                    <TextBlock Text="WRITE SPEED" FontSize="10" Foreground="#7F8C8D" FontWeight="Bold" HorizontalAlignment="Center"/>
-                    <TextBlock x:Name="WriteSpeedValue" Text="0.0 MB/s" FontSize="18" FontWeight="Bold" HorizontalAlignment="Center"/>
+                    <TextBlock Text="SPEED" FontSize="10" Foreground="#7F8C8D" FontWeight="Bold" HorizontalAlignment="Center"/>
+                    <TextBlock x:Name="SpeedValue" Text="0.0 MB/s" FontSize="18" FontWeight="Bold" HorizontalAlignment="Center"/>
                 </StackPanel>
             </Border>
         </Grid>
