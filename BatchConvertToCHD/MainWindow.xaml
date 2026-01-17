@@ -92,44 +92,6 @@
                     <Button x:Name="StartVerificationButton" Content="Start Verification" Click="StartVerificationButton_Click" Margin="0,10,0,0" Padding="15,8" HorizontalAlignment="Center" FontWeight="Bold"/>
                 </StackPanel>
             </TabItem>
-
-            <TabItem Header="CHD Rewrite" x:Name="RewriteTab">
-                <Grid Margin="10">
-                    <Grid.RowDefinitions>
-                        <RowDefinition Height="Auto"/>
-                        <RowDefinition Height="*"/>
-                    </Grid.RowDefinitions>
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="300"/>
-                        <ColumnDefinition Width="*"/>
-                    </Grid.ColumnDefinitions>
-
-                    <Grid Grid.Row="0" Grid.ColumnSpan="2" Margin="0,0,0,10">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="Auto"/>
-                            <ColumnDefinition Width="*"/>
-                            <ColumnDefinition Width="Auto"/>
-                        </Grid.ColumnDefinitions>
-                        <Label Content="CHD Folder:" VerticalAlignment="Center"/>
-                        <TextBox x:Name="RewriteFolderTextBox" Grid.Column="1" Margin="5,0,5,0" Padding="5" IsReadOnly="True"/>
-                        <Button x:Name="BrowseRewriteFolderButton" Grid.Column="2" Content="Browse" Click="BrowseRewriteFolderButton_Click" Padding="10,5"/>
-                    </Grid>
-
-                    <ListBox x:Name="RewriteListBox" Grid.Row="1" Grid.Column="0" Margin="0,0,5,0" SelectionChanged="RewriteListBox_SelectionChanged" />
-
-                    <Grid Grid.Row="1" Grid.Column="1" Margin="5,0,0,0">
-                        <Grid.RowDefinitions>
-                            <RowDefinition Height="*"/>
-                            <RowDefinition Height="Auto"/>
-                        </Grid.RowDefinitions>
-                        <TextBox x:Name="ChdInfoTextBox" IsReadOnly="True" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto" FontFamily="Consolas" Background="#F0F0F0" Padding="10"/>
-                        <StackPanel Grid.Row="1" Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,10,0,0">
-                            <Button x:Name="RewriteAsCdButton" Content="Rewrite as CD (createcd)" Click="RewriteAsCdButton_Click" Margin="5" Padding="15,8" IsEnabled="False"/>
-                            <Button x:Name="RewriteAsDvdButton" Content="Rewrite as DVD (createdvd)" Click="RewriteAsDvdButton_Click" Margin="5" Padding="15,8" IsEnabled="False"/>
-                        </StackPanel>
-                    </Grid>
-                </Grid>
-            </TabItem>
         </TabControl>
         
         <TextBox x:Name="LogViewer"

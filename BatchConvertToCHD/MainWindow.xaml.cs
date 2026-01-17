@@ -270,21 +270,6 @@ public partial class MainWindow : IDisposable
         HandleFolderBrowse(VerificationInputFolderTextBox, "Verification input");
     }
 
-    private void BrowseRewriteFolderButton_Click(object sender, RoutedEventArgs e)
-    {
-        HandleFolderBrowse(RewriteFolderTextBox, "Rewrite folder");
-
-        // Refresh the file list after folder selection
-        Application.Current.Dispatcher.InvokeAsync(() =>
-        {
-            RefreshRewriteFileList();
-            // Clear info text when folder changes
-            ChdInfoTextBox.Text = string.Empty;
-            RewriteAsCdButton.IsEnabled = false;
-            RewriteAsDvdButton.IsEnabled = false;
-        });
-    }
-
     private void HandleFolderBrowse(TextBox targetBox, string logName)
     {
         var folder = SelectFolder($"Select {logName} folder");
@@ -297,49 +282,6 @@ public partial class MainWindow : IDisposable
         }
 
         UpdateStatusBarMessage($"{logName} folder selected");
-    }
-
-    private void RefreshRewriteFileList()
-    {
-        RewriteListBox.Items.Clear();
-        var path = RewriteFolderTextBox.Text;
-        if (!Directory.Exists(path)) return;
-
-        var files = Directory.GetFiles(path, "*.chd", SearchOption.TopDirectoryOnly);
-        foreach (var file in files)
-        {
-            RewriteListBox.Items.Add(Path.GetFileName(file));
-        }
-
-        // Update status
-        LogMessage($"Found {files.Length} CHD files for rewrite.");
-    }
-
-    private async void RewriteListBox_SelectionChanged(object? sender, SelectionChangedEventArgs? e)
-    {
-        try
-        {
-            if (RewriteListBox.SelectedItem is not string fileName)
-            {
-                ChdInfoTextBox.Text = string.Empty;
-                RewriteAsCdButton.IsEnabled = false;
-                RewriteAsDvdButton.IsEnabled = false;
-                return;
-            }
-
-            var fullPath = Path.Combine(RewriteFolderTextBox.Text, fileName);
-            ChdInfoTextBox.Text = "Loading CHD info...";
-
-            var info = await GetChdInfoAsync(fullPath);
-            ChdInfoTextBox.Text = info;
-
-            RewriteAsCdButton.IsEnabled = true;
-            RewriteAsDvdButton.IsEnabled = true;
-        }
-        catch (Exception ex)
-        {
-            _ = ReportBugAsync("RewriteListBox_SelectionChanged error", ex);
-        }
     }
 
     private async Task<string> GetChdInfoAsync(string chdPath)
@@ -378,83 +320,6 @@ public partial class MainWindow : IDisposable
         catch (Exception ex)
         {
             return $"Error reading CHD info: {ex.Message}";
-        }
-    }
-
-
-    private async void RewriteAsCdButton_Click(object sender, RoutedEventArgs e)
-    {
-        try
-        {
-            await PerformRewriteAsync("createcd");
-        }
-        catch (Exception ex)
-        {
-            _ = ReportBugAsync("RewriteAsCdButton_Click error", ex);
-        }
-    }
-
-    private async void RewriteAsDvdButton_Click(object sender, RoutedEventArgs e)
-    {
-        try
-        {
-            await PerformRewriteAsync("createdvd");
-        }
-        catch (Exception ex)
-        {
-            _ = ReportBugAsync("RewriteAsDvdButton_Click error", ex);
-        }
-    }
-
-    private async Task PerformRewriteAsync(string command)
-    {
-        if (RewriteListBox.SelectedItem is not string fileName) return;
-
-        var sourceChd = Path.Combine(RewriteFolderTextBox.Text, fileName);
-
-        if (MessageBox.Show($"This will extract and re-compress {fileName} using '{command}'. The original file will be replaced. Continue?",
-                "Confirm Rewrite", MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes) return;
-
-        SetControlsState(false);
-        _cts = new CancellationTokenSource();
-        _operationTimer.Restart();
-        ResetSpeedCounters();
-
-        try
-        {
-            var tempDir = Path.Combine(Path.GetTempPath(), $"{TempDirPrefix}{Guid.NewGuid():N}");
-            Directory.CreateDirectory(tempDir);
-            var tempRaw = Path.Combine(tempDir, "temp.bin");
-            var newChd = Path.Combine(tempDir, "output.chd");
-
-            LogMessage($"Step 1/2: Extracting {fileName} to temporary raw file...");
-            var extractArgs = $"extractraw -i \"{sourceChd}\" -o \"{tempRaw}\" -f";
-            var extractSuccess = await RunChdmanGenericAsync(extractArgs, _cts.Token);
-
-            if (extractSuccess)
-            {
-                LogMessage($"Step 2/2: Re-compressing as {command}...");
-                var compressArgs = $"{command} -i \"{tempRaw}\" -o \"{newChd}\" -f -np {Environment.ProcessorCount}";
-                var compressSuccess = await RunChdmanGenericAsync(compressArgs, _cts.Token);
-
-                if (compressSuccess)
-                {
-                    File.Copy(newChd, sourceChd, true);
-                    LogMessage($"SUCCESS: {fileName} has been rewritten.");
-                }
-            }
-
-            if (Directory.Exists(tempDir)) Directory.Delete(tempDir, true);
-        }
-        catch (Exception ex)
-        {
-            LogMessage($"Rewrite failed: {ex.Message}");
-        }
-        finally
-        {
-            FinishOperation("Rewrite");
-            // Refresh info
-            RewriteListBox_SelectionChanged(null, null);
         }
     }
 
@@ -660,16 +525,9 @@ public partial class MainWindow : IDisposable
         MoveSuccessFilesCheckBox.IsEnabled = enabled;
         MoveFailedFilesCheckBox.IsEnabled = enabled;
         MainTabControl.IsEnabled = enabled;
-        RewriteAsCdButton.IsEnabled = enabled && RewriteListBox.SelectedItem != null;
-        RewriteAsDvdButton.IsEnabled = enabled && RewriteListBox.SelectedItem != null;
         ProgressText.Visibility = enabled ? Visibility.Collapsed : Visibility.Visible;
         ProgressBar.Visibility = enabled ? Visibility.Collapsed : Visibility.Visible;
         CancelButton.Visibility = enabled ? Visibility.Collapsed : Visibility.Visible;
-        RewriteAsCdButton.IsEnabled = enabled && RewriteListBox.SelectedItem != null;
-        RewriteAsDvdButton.IsEnabled = enabled && RewriteListBox.SelectedItem != null;
-        BrowseRewriteFolderButton.IsEnabled = enabled;
-        RewriteFolderTextBox.IsEnabled = enabled;
-        RewriteListBox.IsEnabled = enabled;
 
         if (!enabled)
         {
