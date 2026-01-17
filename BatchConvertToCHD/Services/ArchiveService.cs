@@ -152,8 +152,6 @@ public class ArchiveService : IDisposable
         finally
         {
             process?.Dispose();
-            _readBytesCounter?.Dispose();
-            _writeBytesCounter?.Dispose();
         }
     }
 

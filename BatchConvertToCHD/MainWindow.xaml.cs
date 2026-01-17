@@ -284,45 +284,6 @@ public partial class MainWindow : IDisposable
         UpdateStatusBarMessage($"{logName} folder selected");
     }
 
-    private async Task<string> GetChdInfoAsync(string chdPath)
-    {
-        try
-        {
-            using var process = new Process();
-            process.StartInfo = new ProcessStartInfo
-            {
-                FileName = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "chdman.exe"),
-                Arguments = $"info -i \"{chdPath}\"",
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                UseShellExecute = false,
-                CreateNoWindow = true
-            };
-
-            var output = new StringBuilder();
-            process.OutputDataReceived += (_, a) =>
-            {
-                if (a.Data != null) output.AppendLine(a.Data);
-            };
-
-            process.ErrorDataReceived += (_, a) =>
-            {
-                if (a.Data != null) output.AppendLine(CultureInfo.InvariantCulture, $"[ERROR] {a.Data}");
-            };
-
-            process.Start();
-            process.BeginOutputReadLine();
-            process.BeginErrorReadLine();
-            await process.WaitForExitAsync();
-
-            return output.ToString();
-        }
-        catch (Exception ex)
-        {
-            return $"Error reading CHD info: {ex.Message}";
-        }
-    }
-
     private async Task<bool> RunChdmanGenericAsync(string args, CancellationToken token)
     {
         using var process = new Process();
@@ -391,8 +352,10 @@ public partial class MainWindow : IDisposable
                 return;
             }
 
-            if (_cts.IsCancellationRequested) _cts.Dispose();
+            // Safely dispose old CTS before creating a new one to avoid ObjectDisposedException
+            var oldCts = _cts;
             _cts = new CancellationTokenSource();
+            oldCts?.Dispose();
 
             ResetOperationStats();
             SetControlsState(false);
@@ -447,8 +410,10 @@ public partial class MainWindow : IDisposable
             var inputFolder = PathUtils.ValidateAndNormalizePath(VerificationInputFolderTextBox.Text, "CHD Files Folder", ShowError, LogMessage);
             if (inputFolder == null) return;
 
-            if (_cts.IsCancellationRequested) _cts.Dispose();
+            // Safely dispose old CTS before creating a new one to avoid ObjectDisposedException
+            var oldCts = _cts;
             _cts = new CancellationTokenSource();
+            oldCts?.Dispose();
 
             ResetOperationStats();
             SetControlsState(false);

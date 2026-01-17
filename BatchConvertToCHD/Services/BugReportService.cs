@@ -10,13 +10,12 @@ namespace BatchConvertToCHD.Services;
 /// <summary>
 /// Service responsible for sending bug reports to the BugReport API
 /// </summary>
-public class BugReportService(string apiUrl, string apiKey, string applicationName, bool isSevenZipAvailable) : IDisposable
+public class BugReportService(string apiUrl, string apiKey, string applicationName) : IDisposable
 {
     private readonly HttpClient _httpClient = new();
     private readonly string _apiUrl = apiUrl;
     private readonly string _apiKey = apiKey;
     private readonly string _applicationName = applicationName;
-    private readonly bool _isSevenZipAvailable = isSevenZipAvailable;
 
     /// <summary>
     /// Sends a bug report to the API
@@ -115,7 +114,7 @@ public class BugReportService(string apiUrl, string apiKey, string applicationNa
             sb.AppendLine(CultureInfo.InvariantCulture, $"User: {Environment.UserName}");
             sb.AppendLine(CultureInfo.InvariantCulture, $"CHDMAN Available: {File.Exists(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "chdman.exe"))}");
             sb.AppendLine(CultureInfo.InvariantCulture, $"MAXCSO Available: {File.Exists(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "maxcso.exe"))}");
-            sb.AppendLine(CultureInfo.InvariantCulture, $"7-Zip Available: {_isSevenZipAvailable}");
+            sb.AppendLine(CultureInfo.InvariantCulture, $"7-Zip Available: {App.IsSevenZipAvailable}");
             return sb.ToString();
         }
         catch (Exception ex)

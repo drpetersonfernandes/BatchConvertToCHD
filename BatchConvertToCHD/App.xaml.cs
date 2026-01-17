@@ -8,7 +8,7 @@ namespace BatchConvertToCHD;
 
 public partial class App : IDisposable
 {
-    private readonly BugReportService? _bugReportService;
+    private BugReportService? _bugReportService;
 
     /// <summary>
     /// Provides a shared, static instance of the BugReportService for the entire application.
@@ -22,12 +22,12 @@ public partial class App : IDisposable
 
     public App()
     {
+        // Initialize the bug report service first to ensure it's available for reporting initialization errors
+        SharedBugReportService = new BugReportService(AppConfig.BugReportApiUrl, AppConfig.BugReportApiKey, AppConfig.ApplicationName);
+        _bugReportService = SharedBugReportService;
+
         // Initialize SevenZipSharp library path first to determine its availability
         InitializeSevenZipSharp();
-
-        // Initialize the bug report service as a shared instance
-        SharedBugReportService = new BugReportService(AppConfig.BugReportApiUrl, AppConfig.BugReportApiKey, AppConfig.ApplicationName, IsSevenZipAvailable);
-        _bugReportService = SharedBugReportService;
 
         // Set up global exception handling
         AppDomain.CurrentDomain.UnhandledException += CurrentDomain_UnhandledException;
@@ -40,8 +40,13 @@ public partial class App : IDisposable
 
     private void App_Exit(object sender, ExitEventArgs e)
     {
+        // Dispose the bug report service and clear references to prevent double disposal
+        // if Dispose() is called explicitly later
         _bugReportService?.Dispose();
+        _bugReportService = null;
+        SharedBugReportService = null;
 
+        // Unregister static event handlers to prevent memory leaks
         AppDomain.CurrentDomain.UnhandledException -= CurrentDomain_UnhandledException;
         DispatcherUnhandledException -= App_DispatcherUnhandledException;
         TaskScheduler.UnobservedTaskException -= TaskScheduler_UnobservedTaskException;
@@ -125,14 +130,14 @@ public partial class App : IDisposable
     /// </summary>
     public void Dispose()
     {
-        // Dispose of the shared BugReportService instance
-        _bugReportService?.Dispose();
-        SharedBugReportService = null;
-
-        // Unregister event handlers to prevent memory leaks
-        AppDomain.CurrentDomain.UnhandledException -= CurrentDomain_UnhandledException;
-        DispatcherUnhandledException -= App_DispatcherUnhandledException;
-        TaskScheduler.UnobservedTaskException -= TaskScheduler_UnobservedTaskException;
+        // Cleanup is primarily handled in App_Exit. This method provides a safety net
+        // for explicit disposal scenarios and prevents double disposal.
+        if (_bugReportService != null)
+        {
+            _bugReportService.Dispose();
+            _bugReportService = null;
+            SharedBugReportService = null;
+        }
 
         // Suppress finalization
         GC.SuppressFinalize(this);
