@@ -56,26 +56,4 @@ public static class PathUtils
             return null;
         }
     }
-
-    public static void CheckForMarkOfTheWeb(string filePath, string fileName, Action<string> onLog, Action<string, string> onAlert)
-    {
-        try
-        {
-            var zoneIdentifierPath = filePath + ":Zone.Identifier";
-            if (File.Exists(zoneIdentifierPath))
-            {
-                onLog($"WARNING: {fileName} has a 'Mark of the Web' (downloaded from internet). This may block execution.");
-                onLog($"To fix: Right-click {fileName} → Properties → Check 'Unblock' → Apply");
-
-                onAlert(
-                    $"{fileName} appears to be downloaded from the internet and may be blocked by Windows.\n\n" +
-                    $"To unblock it:\n1. Right-click {fileName}\n2. Select Properties\n3. Check 'Unblock' at the bottom\n4. Click Apply/OK",
-                    "Security Warning");
-            }
-        }
-        catch (Exception ex)
-        {
-            onLog($"Could not check Zone.Identifier for {fileName}: {ex.Message}");
-        }
-    }
 }

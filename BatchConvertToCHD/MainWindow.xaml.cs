@@ -2,6 +2,7 @@ using System.ComponentModel;
 using System.Diagnostics;
 using System.Globalization;
 using System.IO;
+using System.Text;
 using System.Text.RegularExpressions;
 using System.Windows;
 using System.Windows.Controls;
@@ -55,10 +56,6 @@ public partial class MainWindow : IDisposable
         // Initialize Services
         _updateService = new UpdateService(AppConfig.ApplicationName);
         _archiveService = new ArchiveService(_maxCsoPath, _isMaxCsoAvailable);
-
-        // Check for Mark-of-the-Web
-        if (_isChdmanAvailable) PathUtils.CheckForMarkOfTheWeb(chdmanPath, "chdman.exe", LogMessage, ShowAlert);
-        if (_isMaxCsoAvailable) PathUtils.CheckForMarkOfTheWeb(_maxCsoPath, "maxcso.exe", LogMessage, ShowAlert);
 
         InitializeStatusBar();
         CleanupLeftoverTempDirectories();
@@ -184,7 +181,7 @@ public partial class MainWindow : IDisposable
     {
         try
         {
-            var sb = new System.Text.StringBuilder();
+            var sb = new StringBuilder();
             sb.AppendLine("=== Environment Details ===");
             sb.AppendLine(CultureInfo.InvariantCulture, $"OS: {Environment.OSVersion}");
             sb.AppendLine(CultureInfo.InvariantCulture, $"User: {Environment.UserName}");
@@ -276,7 +273,16 @@ public partial class MainWindow : IDisposable
     private void BrowseRewriteFolderButton_Click(object sender, RoutedEventArgs e)
     {
         HandleFolderBrowse(RewriteFolderTextBox, "Rewrite folder");
-        RefreshRewriteFileList();
+
+        // Refresh the file list after folder selection
+        Application.Current.Dispatcher.InvokeAsync(() =>
+        {
+            RefreshRewriteFileList();
+            // Clear info text when folder changes
+            ChdInfoTextBox.Text = string.Empty;
+            RewriteAsCdButton.IsEnabled = false;
+            RewriteAsDvdButton.IsEnabled = false;
+        });
     }
 
     private void HandleFolderBrowse(TextBox targetBox, string logName)
@@ -304,6 +310,9 @@ public partial class MainWindow : IDisposable
         {
             RewriteListBox.Items.Add(Path.GetFileName(file));
         }
+
+        // Update status
+        LogMessage($"Found {files.Length} CHD files for rewrite.");
     }
 
     private async void RewriteListBox_SelectionChanged(object? sender, SelectionChangedEventArgs? e)
@@ -343,17 +352,35 @@ public partial class MainWindow : IDisposable
                 FileName = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "chdman.exe"),
                 Arguments = $"info -i \"{chdPath}\"",
                 RedirectStandardOutput = true,
+                RedirectStandardError = true,
                 UseShellExecute = false,
                 CreateNoWindow = true
             };
+
+            var output = new StringBuilder();
+            process.OutputDataReceived += (_, a) =>
+            {
+                if (a.Data != null) output.AppendLine(a.Data);
+            };
+
+            process.ErrorDataReceived += (_, a) =>
+            {
+                if (a.Data != null) output.AppendLine(CultureInfo.InvariantCulture, $"[ERROR] {a.Data}");
+            };
+
             process.Start();
-            return await process.StandardOutput.ReadToEndAsync();
+            process.BeginOutputReadLine();
+            process.BeginErrorReadLine();
+            await process.WaitForExitAsync();
+
+            return output.ToString();
         }
         catch (Exception ex)
         {
             return $"Error reading CHD info: {ex.Message}";
         }
     }
+
 
     private async void RewriteAsCdButton_Click(object sender, RoutedEventArgs e)
     {
@@ -443,15 +470,38 @@ public partial class MainWindow : IDisposable
             UseShellExecute = false,
             CreateNoWindow = true
         };
+
         process.OutputDataReceived += (_, a) =>
         {
-            if (a.Data != null && a.Data.Contains('%')) UpdateStatusBarMessage(a.Data);
+            if (a.Data != null && a.Data.Contains('%'))
+            {
+                UpdateStatusBarMessage(a.Data);
+                // Update speed during rewrite operations
+                UpdateWriteSpeedFromPerformanceCounter();
+                UpdateReadSpeedFromPerformanceCounter();
+            }
         };
+
         process.Start();
         process.BeginOutputReadLine();
+
+        // Start speed monitoring task
+        var speedTask = Task.Run(async () =>
+        {
+            while (!token.IsCancellationRequested)
+            {
+                await Task.Delay(WriteSpeedUpdateIntervalMs, token);
+                UpdateWriteSpeedFromPerformanceCounter();
+                UpdateReadSpeedFromPerformanceCounter();
+            }
+        }, token);
+
         await process.WaitForExitAsync(token);
+        await speedTask;
+
         return process.ExitCode == 0;
     }
+
 
     private async void StartConversionButton_Click(object sender, RoutedEventArgs e)
     {
@@ -581,6 +631,9 @@ public partial class MainWindow : IDisposable
         UpdateReadSpeedDisplay(0);
         SetControlsState(true);
         LogOperationSummary(opName);
+
+        // Clear progress display
+        ClearProgressDisplay();
     }
 
     private void CancelButton_Click(object sender, RoutedEventArgs e)
@@ -612,6 +665,11 @@ public partial class MainWindow : IDisposable
         ProgressText.Visibility = enabled ? Visibility.Collapsed : Visibility.Visible;
         ProgressBar.Visibility = enabled ? Visibility.Collapsed : Visibility.Visible;
         CancelButton.Visibility = enabled ? Visibility.Collapsed : Visibility.Visible;
+        RewriteAsCdButton.IsEnabled = enabled && RewriteListBox.SelectedItem != null;
+        RewriteAsDvdButton.IsEnabled = enabled && RewriteListBox.SelectedItem != null;
+        BrowseRewriteFolderButton.IsEnabled = enabled;
+        RewriteFolderTextBox.IsEnabled = enabled;
+        RewriteListBox.IsEnabled = enabled;
 
         if (!enabled)
         {
@@ -913,39 +971,49 @@ public partial class MainWindow : IDisposable
         using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(token);
         timeoutCts.CancelAfter(TimeSpan.FromHours(4));
 
+        // Monitor write speed and handle cancellation
+        try
         {
-            if (token.IsCancellationRequested)
-            {
-                try
-                {
-                    if (!process.HasExited)
-                    {
-                        process.Kill(true);
-                    }
-                }
-                catch
-                {
-                    // ignored
-                }
-
-                throw new OperationCanceledException();
-            }
-
-            // Monitor write speed using performance counter
             while (!process.HasExited)
             {
-                await Task.Delay(WriteSpeedUpdateIntervalMs, timeoutCts.Token);
-                if (process.HasExited) break;
+                // Check for cancellation
+                if (token.IsCancellationRequested)
+                {
+                    LogMessage("Cancellation requested. Terminating CHDMAN process...");
+                    break;
+                }
 
+                await Task.Delay(WriteSpeedUpdateIntervalMs, timeoutCts.Token);
                 UpdateWriteSpeedFromPerformanceCounter();
             }
+        }
+        catch (OperationCanceledException)
+        {
+            // Timeout or external cancellation - break to kill process
+            LogMessage("Operation timed out or was cancelled. Terminating CHDMAN process...");
         }
 
         // Final speed update
         UpdateWriteSpeedFromPerformanceCounter();
 
+        // If cancellation was requested, kill the process
+        if (token.IsCancellationRequested && !process.HasExited)
+        {
+            try
+            {
+                process.Kill(true);
+            }
+            catch (Exception killEx)
+            {
+                LogMessage($"Warning: Error killing process: {killEx.Message}");
+            }
+        }
+
+        // Always wait for the process to exit to ensure proper cleanup
         await process.WaitForExitAsync(timeoutCts.Token);
-        return process.ExitCode == 0;
+
+        // Return success only if process exited cleanly and wasn't cancelled
+        return process.ExitCode == 0 && !token.IsCancellationRequested;
         // Note: Write speed monitoring happens in the while loop above
     }
 
@@ -1007,7 +1075,7 @@ public partial class MainWindow : IDisposable
         // Start read speed monitoring during verification
         var readSpeedTask = Task.Run(async () =>
         {
-            while (!process.HasExited && !token.IsCancellationRequested)
+            while (!token.IsCancellationRequested)
             {
                 await Task.Delay(WriteSpeedUpdateIntervalMs, token);
                 UpdateReadSpeedFromPerformanceCounter();
@@ -1048,12 +1116,28 @@ public partial class MainWindow : IDisposable
 
     private void UpdateWriteSpeedDisplay(double speed)
     {
-        Application.Current.Dispatcher.InvokeAsync(() => SpeedValue.Text = $"{speed:F1} MB/s (write)");
+        Application.Current.Dispatcher.InvokeAsync(() =>
+        {
+            SpeedValue.Text = $"{speed:F1} MB/s (write)";
+            // Also update status bar during operations
+            if (speed > 0 && !StartConversionButton.IsEnabled)
+            {
+                StatusBarMessage.Text = $"Processing... {speed:F1} MB/s write";
+            }
+        });
     }
 
     private void UpdateReadSpeedDisplay(double speed)
     {
-        Application.Current.Dispatcher.InvokeAsync(() => SpeedValue.Text = $"{speed:F1} MB/s (read)");
+        Application.Current.Dispatcher.InvokeAsync(() =>
+        {
+            SpeedValue.Text = $"{speed:F1} MB/s (read)";
+            // Also update status bar during operations
+            if (speed > 0 && !StartVerificationButton.IsEnabled)
+            {
+                StatusBarMessage.Text = $"Processing... {speed:F1} MB/s read";
+            }
+        });
     }
 
     private void UpdateProgressDisplay(int cur, int tot, string name, string verb)
