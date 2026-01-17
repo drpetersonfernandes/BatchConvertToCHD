@@ -14,7 +14,6 @@ public class ArchiveService : IDisposable
     // Performance counter for write speed monitoring
     private PerformanceCounter? _writeBytesCounter;
     private PerformanceCounter? _readBytesCounter;
-    private const int WriteSpeedUpdateIntervalMs = 1000;
 
     public ArchiveService(string maxCsoPath, bool isMaxCsoAvailable)
     {
@@ -112,10 +111,10 @@ public class ArchiveService : IDisposable
                     token.ThrowIfCancellationRequested();
                 }
 
-                await Task.Delay(WriteSpeedUpdateIntervalMs, token);
+                await Task.Delay(AppConfig.WriteSpeedUpdateIntervalMs, token);
                 if (process.HasExited || token.IsCancellationRequested) break;
 
-                if (_writeBytesCounter != null)
+                if (_writeBytesCounter != null && onSpeedUpdate != null)
                 {
                     var writeBytesPerSec = _writeBytesCounter.NextValue();
                     onSpeedUpdate(writeBytesPerSec / 1048576.0); // Convert to MB/s

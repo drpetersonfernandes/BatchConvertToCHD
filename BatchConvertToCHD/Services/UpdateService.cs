@@ -44,7 +44,7 @@ public class UpdateService(string applicationName)
 
             if (remoteVersion > currentVersion)
             {
-                Application.Current.Dispatcher.Invoke(() =>
+                await Application.Current.Dispatcher.InvokeAsync(() =>
                 {
                     var releaseNotes = string.IsNullOrWhiteSpace(latestRelease.Body)
                         ? "No release notes available."

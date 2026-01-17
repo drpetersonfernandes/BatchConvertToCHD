@@ -40,7 +40,6 @@ public partial class MainWindow : IDisposable
     private const int MaxLogLength = 100000; // Maximum characters before log truncation
     private PerformanceCounter? _writeBytesCounter;
     private PerformanceCounter? _readBytesCounter;
-    private const int WriteSpeedUpdateIntervalMs = 1000;
 
     public MainWindow()
     {
@@ -336,7 +335,7 @@ public partial class MainWindow : IDisposable
         {
             while (!token.IsCancellationRequested)
             {
-                await Task.Delay(WriteSpeedUpdateIntervalMs, token);
+                await Task.Delay(AppConfig.WriteSpeedUpdateIntervalMs, token);
                 UpdateWriteSpeedFromPerformanceCounter();
                 UpdateReadSpeedFromPerformanceCounter();
             }
@@ -821,7 +820,7 @@ public partial class MainWindow : IDisposable
         Task? speedMonitoringTask = null;
 
         using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(token);
-        timeoutCts.CancelAfter(TimeSpan.FromHours(4));
+        timeoutCts.CancelAfter(TimeSpan.FromHours(AppConfig.MaxConversionTimeoutHours));
 
         // Monitor write speed and handle cancellation
         try
@@ -831,7 +830,7 @@ public partial class MainWindow : IDisposable
             {
                 while (!token.IsCancellationRequested)
                 {
-                    await Task.Delay(WriteSpeedUpdateIntervalMs, token);
+                    await Task.Delay(AppConfig.WriteSpeedUpdateIntervalMs, token);
                     UpdateWriteSpeedFromPerformanceCounter();
                 }
             }, token);
@@ -958,7 +957,7 @@ public partial class MainWindow : IDisposable
         {
             while (!token.IsCancellationRequested)
             {
-                await Task.Delay(WriteSpeedUpdateIntervalMs, token);
+                await Task.Delay(AppConfig.WriteSpeedUpdateIntervalMs, token);
                 UpdateReadSpeedFromPerformanceCounter();
             }
         }, token);
