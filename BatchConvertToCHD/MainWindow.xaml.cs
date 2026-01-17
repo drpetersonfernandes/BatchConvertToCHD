@@ -37,6 +37,7 @@ public partial class MainWindow : IDisposable
     private const string TempDirPrefix = "BatchConvertToCHD_Temp_";
 
     // Performance counter for write speed monitoring
+    private const int MaxLogLength = 100000; // Maximum characters before log truncation
     private PerformanceCounter? _writeBytesCounter;
     private PerformanceCounter? _readBytesCounter;
     private const int WriteSpeedUpdateIntervalMs = 1000;
@@ -60,11 +61,18 @@ public partial class MainWindow : IDisposable
         InitializeStatusBar();
         CleanupLeftoverTempDirectories();
         DisplayConversionInstructionsInLog();
+        SpeedValue.Text = "0.0 MB/s";
         ResetOperationStats();
         LogEnvironmentDetails();
 
         InitializePerformanceCounter();
         InitializeReadPerformanceCounter();
+
+        // Hide speed display if performance counters are unavailable
+        if (_writeBytesCounter == null && _readBytesCounter == null)
+        {
+            Application.Current.Dispatcher.InvokeAsync(() => SpeedStatCard.Visibility = Visibility.Collapsed);
+        }
 
         // Start version check
         _ = _updateService.CheckForNewVersionAsync(LogMessage, UpdateStatusBarMessage, ReportBugAsync);
@@ -222,7 +230,7 @@ public partial class MainWindow : IDisposable
                 case "ConvertTab":
                     DisplayConversionInstructionsInLog();
                     UpdateStatusBarMessage("Ready for conversion");
-                    SpeedValue.Text = "0.0 MB/s (write)";
+                    SpeedValue.Text = "0.0 MB/s";
                     break;
                 case "VerifyTab":
                     DisplayVerificationInstructionsInLog();
@@ -251,6 +259,18 @@ public partial class MainWindow : IDisposable
         Application.Current.Dispatcher.InvokeAsync(() =>
         {
             LogViewer.AppendText($"{timestampedMessage}{Environment.NewLine}");
+
+            // Truncate log if it gets too large
+            if (LogViewer.Text.Length > MaxLogLength)
+            {
+                var excessLength = LogViewer.Text.Length - MaxLogLength + 1000; // Keep some buffer
+                var firstNewline = LogViewer.Text.IndexOf('\n', excessLength);
+                if (firstNewline > 0)
+                {
+                    LogViewer.Text = string.Concat($"[{DateTime.Now:HH:mm:ss.fff}] --- Log truncated due to size ---{Environment.NewLine}", LogViewer.Text.AsSpan(firstNewline + 1));
+                }
+            }
+
             LogViewer.ScrollToEnd();
         });
     }
@@ -780,7 +800,13 @@ public partial class MainWindow : IDisposable
 
         process.StartInfo = new ProcessStartInfo { FileName = chdmanPath, Arguments = args, RedirectStandardOutput = true, RedirectStandardError = true, UseShellExecute = false, CreateNoWindow = true };
 
-        process.OutputDataReceived += (_, a) => UpdateConversionProgressFromChdman(a.Data);
+        process.OutputDataReceived += (_, a) =>
+        {
+            if (!string.IsNullOrEmpty(a.Data) && a.Data.Contains("% complete"))
+            {
+                /* Optional: Update a specific progress bar if needed */
+            }
+        };
         process.ErrorDataReceived += (_, a) =>
         {
             if (!string.IsNullOrEmpty(a.Data) && !a.Data.Contains("% complete")) LogMessage($"[CHDMAN ERR] {a.Data}");
@@ -791,12 +817,25 @@ public partial class MainWindow : IDisposable
         process.BeginOutputReadLine();
         process.BeginErrorReadLine();
 
+        // Track speed monitoring task for proper cleanup
+        Task? speedMonitoringTask = null;
+
         using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(token);
         timeoutCts.CancelAfter(TimeSpan.FromHours(4));
 
         // Monitor write speed and handle cancellation
         try
         {
+            // Start speed monitoring task
+            speedMonitoringTask = Task.Run(async () =>
+            {
+                while (!token.IsCancellationRequested)
+                {
+                    await Task.Delay(WriteSpeedUpdateIntervalMs, token);
+                    UpdateWriteSpeedFromPerformanceCounter();
+                }
+            }, token);
+
             while (!process.HasExited)
             {
                 // Check for cancellation
@@ -806,8 +845,7 @@ public partial class MainWindow : IDisposable
                     break;
                 }
 
-                await Task.Delay(WriteSpeedUpdateIntervalMs, timeoutCts.Token);
-                UpdateWriteSpeedFromPerformanceCounter();
+                await Task.Delay(100, timeoutCts.Token); // Reduced delay for more responsive cancellation
             }
         }
         catch (OperationCanceledException)
@@ -815,8 +853,15 @@ public partial class MainWindow : IDisposable
             // Timeout or external cancellation - break to kill process
             LogMessage("Operation timed out or was cancelled. Terminating CHDMAN process...");
         }
+        finally
+        {
+            // Ensure speed monitoring task completes
+            if (speedMonitoringTask != null)
+            {
+                await Task.WhenAny(speedMonitoringTask, Task.Delay(2000, token));
+            }
+        }
 
-        // Final speed update
         UpdateWriteSpeedFromPerformanceCounter();
 
         // If cancellation was requested, kill the process
@@ -830,10 +875,23 @@ public partial class MainWindow : IDisposable
             {
                 LogMessage($"Warning: Error killing process: {killEx.Message}");
             }
-        }
 
-        // Always wait for the process to exit to ensure proper cleanup
-        await process.WaitForExitAsync(timeoutCts.Token);
+            // Wait for process to actually terminate
+            try
+            {
+                using var killTimeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(AppConfig.ProcessKillTimeoutSeconds));
+                await process.WaitForExitAsync(killTimeoutCts.Token);
+            }
+            catch
+            {
+                // Ignore timeout on kill wait
+            }
+        }
+        else if (!process.HasExited)
+        {
+            // Normal exit path - wait for completion
+            await process.WaitForExitAsync(timeoutCts.Token);
+        }
 
         // Return success only if process exited cleanly and wasn't cancelled
         return process.ExitCode == 0 && !token.IsCancellationRequested;
@@ -941,7 +999,7 @@ public partial class MainWindow : IDisposable
     {
         Application.Current.Dispatcher.InvokeAsync(() =>
         {
-            SpeedValue.Text = $"{speed:F1} MB/s (write)";
+            SpeedValue.Text = $"{speed:F1} MB/s";
             // Also update status bar during operations
             if (speed > 0 && !StartConversionButton.IsEnabled)
             {
@@ -954,7 +1012,7 @@ public partial class MainWindow : IDisposable
     {
         Application.Current.Dispatcher.InvokeAsync(() =>
         {
-            SpeedValue.Text = $"{speed:F1} MB/s (read)";
+            SpeedValue.Text = $"{speed:F1} MB/s";
             // Also update status bar during operations
             if (speed > 0 && !StartVerificationButton.IsEnabled)
             {
@@ -1025,8 +1083,13 @@ public partial class MainWindow : IDisposable
     {
         try
         {
-            if (File.Exists(path)) await Task.Run(() => File.Delete(path), token);
+            await Task.Run(() => File.Delete(path), token);
             LogMessage($"Deleted {desc}: {Path.GetFileName(path)}");
+        }
+        catch (FileNotFoundException)
+        {
+            // File already deleted - this is acceptable
+            LogMessage($"{desc} already deleted: {Path.GetFileName(path)}");
         }
         catch
         {
@@ -1038,7 +1101,12 @@ public partial class MainWindow : IDisposable
     {
         try
         {
-            if (Directory.Exists(path)) await Task.Run(() => Directory.Delete(path, true), token);
+            await Task.Run(() => Directory.Delete(path, true), token);
+        }
+        catch (DirectoryNotFoundException)
+        {
+            // Directory already deleted - this is acceptable
+            LogMessage($"{desc} already deleted: {Path.GetFileName(path)}");
         }
         catch
         {
