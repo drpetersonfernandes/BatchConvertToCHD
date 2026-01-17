@@ -190,6 +190,7 @@ public partial class MainWindow : IDisposable
                     UpdateStatusBarMessage("Ready for verification");
                     break;
                 case "RewriteTab":
+                    LogMessage($"Welcome to {AppConfig.ApplicationName}. (Rewrite Mode)");
                     LogMessage("--- Ready for CHD Rewrite ---");
                     UpdateStatusBarMessage("Ready for CHD rewrite");
                     break;

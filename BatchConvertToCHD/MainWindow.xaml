@@ -4,8 +4,9 @@
         Title="Batch Convert to CHD" 
         Height="700" Width="900" MinHeight="650" MinWidth="700" 
         Closing="Window_Closing"
-        WindowStartupLocation="CenterScreen">
-    <Grid>
+        WindowStartupLocation="CenterScreen"
+        Background="{StaticResource BgLight}">
+    <Grid Margin="5">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/> <!-- Menu -->
             <RowDefinition Height="Auto"/> <!-- TabControl -->
@@ -16,7 +17,7 @@
             <RowDefinition Height="Auto"/> <!-- Status Bar -->
         </Grid.RowDefinitions>
         
-        <Menu Grid.Row="0">
+        <Menu Grid.Row="0" Background="Transparent" Margin="0,0,0,5">
             <MenuItem Header="File">
                 <MenuItem Header="Exit" Click="ExitMenuItem_Click">
                     <MenuItem.Icon>
@@ -33,7 +34,7 @@
             </MenuItem>
         </Menu>
 
-        <TabControl Grid.Row="1" x:Name="MainTabControl" Margin="10" SelectionChanged="MainTabControl_SelectionChanged">
+        <TabControl Grid.Row="1" x:Name="MainTabControl" Margin="10" SelectionChanged="MainTabControl_SelectionChanged" Background="Transparent" BorderThickness="0">
             <TabItem Header="Convert to CHD" x:Name="ConvertTab">
                 <StackPanel Margin="10">
                     <Grid Margin="0,0,0,5">
@@ -137,7 +138,15 @@
                  VerticalScrollBarVisibility="Visible"
                  IsReadOnly="True"
                  Margin="10,0,10,10"
-                 FontFamily="Consolas"/>
+                 Padding="10"
+                 FontFamily="Consolas"
+                 Background="#2C3E50"
+                 Foreground="#ECF0F1"
+                 BorderThickness="0"
+                 TextAlignment="Left"
+                 TextWrapping="Wrap"
+                 HorizontalContentAlignment="Left"
+                 VerticalContentAlignment="Top"/>
 
         <Grid Grid.Row="3" Margin="10,0,10,5">
             <Grid.ColumnDefinitions>
@@ -148,38 +157,38 @@
                 <ColumnDefinition Width="*" />
             </Grid.ColumnDefinitions>
 
-            <Border Grid.Column="0" BorderBrush="LightGray" BorderThickness="1" Margin="2" Padding="5">
+            <Border Grid.Column="0" Style="{StaticResource StatCard}">
                 <StackPanel Orientation="Vertical" HorizontalAlignment="Center">
-                    <TextBlock Text="Total Files:" FontWeight="Bold" HorizontalAlignment="Center"/>
-                    <TextBlock x:Name="TotalFilesValue" Text="0" HorizontalAlignment="Center"/>
+                    <TextBlock Text="TOTAL FILES" FontSize="10" Foreground="#7F8C8D" FontWeight="Bold" HorizontalAlignment="Center"/>
+                    <TextBlock x:Name="TotalFilesValue" Text="0" FontSize="18" FontWeight="Bold" HorizontalAlignment="Center"/>
                 </StackPanel>
             </Border>
 
-            <Border Grid.Column="1" BorderBrush="LightGray" BorderThickness="1" Margin="2" Padding="5">
+            <Border Grid.Column="1" Style="{StaticResource StatCard}">
                 <StackPanel Orientation="Vertical" HorizontalAlignment="Center">
-                    <TextBlock Text="Success:" FontWeight="Bold" Foreground="Green" HorizontalAlignment="Center"/>
-                    <TextBlock x:Name="SuccessValue" Text="0" HorizontalAlignment="Center"/>
+                    <TextBlock Text="SUCCESS" FontSize="10" Foreground="#27AE60" FontWeight="Bold" HorizontalAlignment="Center"/>
+                    <TextBlock x:Name="SuccessValue" Text="0" FontSize="18" FontWeight="Bold" Foreground="#27AE60" HorizontalAlignment="Center"/>
                 </StackPanel>
             </Border>
 
-            <Border Grid.Column="2" BorderBrush="LightGray" BorderThickness="1" Margin="2" Padding="5">
+            <Border Grid.Column="2" Style="{StaticResource StatCard}">
                 <StackPanel Orientation="Vertical" HorizontalAlignment="Center">
-                    <TextBlock Text="Failed:" FontWeight="Bold" Foreground="Red" HorizontalAlignment="Center"/>
-                    <TextBlock x:Name="FailedValue" Text="0" HorizontalAlignment="Center"/>
+                    <TextBlock Text="FAILED" FontSize="10" Foreground="#E74C3C" FontWeight="Bold" HorizontalAlignment="Center"/>
+                    <TextBlock x:Name="FailedValue" Text="0" FontSize="18" FontWeight="Bold" Foreground="#E74C3C" HorizontalAlignment="Center"/>
                 </StackPanel>
             </Border>
 
-            <Border Grid.Column="3" BorderBrush="LightGray" BorderThickness="1" Margin="2" Padding="5">
+            <Border Grid.Column="3" Style="{StaticResource StatCard}">
                 <StackPanel Orientation="Vertical" HorizontalAlignment="Center">
-                    <TextBlock Text="Processing Time:" FontWeight="Bold" HorizontalAlignment="Center"/>
-                    <TextBlock x:Name="ProcessingTimeValue" Text="00:00:00" HorizontalAlignment="Center"/>
+                    <TextBlock Text="ELAPSED" FontSize="10" Foreground="#7F8C8D" FontWeight="Bold" HorizontalAlignment="Center"/>
+                    <TextBlock x:Name="ProcessingTimeValue" Text="00:00:00" FontSize="18" FontWeight="Bold" HorizontalAlignment="Center"/>
                 </StackPanel>
             </Border>
             
-            <Border Grid.Column="4" BorderBrush="LightGray" BorderThickness="1" Margin="2" Padding="5">
+            <Border Grid.Column="4" Style="{StaticResource StatCard}">
                 <StackPanel Orientation="Vertical" HorizontalAlignment="Center">
-                    <TextBlock Text="Write Speed:" FontWeight="Bold" HorizontalAlignment="Center"/>
-                    <TextBlock x:Name="WriteSpeedValue" Text="0.0 MB/s" HorizontalAlignment="Center"/>
+                    <TextBlock Text="WRITE SPEED" FontSize="10" Foreground="#7F8C8D" FontWeight="Bold" HorizontalAlignment="Center"/>
+                    <TextBlock x:Name="WriteSpeedValue" Text="0.0 MB/s" FontSize="18" FontWeight="Bold" HorizontalAlignment="Center"/>
                 </StackPanel>
             </Border>
         </Grid>
@@ -195,8 +204,8 @@
                 <ColumnDefinition Width="*"/>
                 <ColumnDefinition Width="Auto"/>
             </Grid.ColumnDefinitions>
-            <ProgressBar x:Name="ProgressBar" Height="25" Grid.Column="0" Visibility="Collapsed"/>
-            <Button x:Name="CancelButton" Content="Cancel" Width="100" Height="25" Grid.Column="1" Margin="10,0,0,0" Visibility="Collapsed" Click="CancelButton_Click"/>
+            <ProgressBar x:Name="ProgressBar" Height="30" Grid.Column="0" Visibility="Collapsed"/>
+            <Button x:Name="CancelButton" Content="Cancel" Width="100" Height="30" Grid.Column="1" Margin="10,0,0,0" Visibility="Collapsed" VerticalContentAlignment="Center" HorizontalContentAlignment="Center" Click="CancelButton_Click"/>
         </Grid>
 
         <!-- Status Bar -->
