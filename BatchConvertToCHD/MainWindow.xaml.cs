@@ -271,13 +271,15 @@ public partial class MainWindow : IDisposable
 
             var deleteFiles = DeleteOriginalsCheckBox.IsChecked ?? false;
             var smallestFirst = ProcessSmallestFirstCheckBox.IsChecked ?? false;
+            var forceCd = ForceCreateCdCheckBox.IsChecked ?? false;
+            var forceDvd = ForceCreateDvdCheckBox.IsChecked ?? false;
 
             LogMessage("--- Starting batch conversion process... ---");
 
             try
             {
                 await PerformBatchConversionAsync(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "chdman.exe"),
-                    inputFolder, outputFolder, deleteFiles, smallestFirst, _cts.Token);
+                    inputFolder, outputFolder, deleteFiles, smallestFirst, forceCd, forceDvd, _cts.Token);
             }
             catch (OperationCanceledException)
             {
@@ -379,6 +381,8 @@ public partial class MainWindow : IDisposable
         BrowseConversionOutputButton.IsEnabled = enabled;
         DeleteOriginalsCheckBox.IsEnabled = enabled;
         StartConversionButton.IsEnabled = enabled;
+        ForceCreateCdCheckBox.IsEnabled = enabled;
+        ForceCreateDvdCheckBox.IsEnabled = enabled;
         VerificationInputFolderTextBox.IsEnabled = enabled;
         BrowseVerificationInputButton.IsEnabled = enabled;
         VerificationIncludeSubfoldersCheckBox.IsEnabled = enabled;
@@ -408,7 +412,7 @@ public partial class MainWindow : IDisposable
         return dialog.ShowDialog() == true ? dialog.FolderName : null;
     }
 
-    private async Task PerformBatchConversionAsync(string chdmanPath, string inputFolder, string outputFolder, bool deleteFiles, bool processSmallestFirst, CancellationToken token)
+    private async Task PerformBatchConversionAsync(string chdmanPath, string inputFolder, string outputFolder, bool deleteFiles, bool processSmallestFirst, bool forceCd, bool forceDvd, CancellationToken token)
     {
         var filesToConvert = await Task.Run(() =>
         {
@@ -431,7 +435,7 @@ public partial class MainWindow : IDisposable
 
         foreach (var file in filesToConvert)
         {
-            var success = await ProcessSingleFileForConversionAsync(chdmanPath, file, outputFolder, deleteFiles, cores, token);
+            var success = await ProcessSingleFileForConversionAsync(chdmanPath, file, outputFolder, deleteFiles, cores, forceCd, forceDvd, token);
             if (success)
             {
                 _processedOkCount++;
@@ -447,7 +451,7 @@ public partial class MainWindow : IDisposable
         }
     }
 
-    private async Task<bool> ProcessSingleFileForConversionAsync(string chdmanPath, string inputFile, string outputFolder, bool deleteOriginal, int cores, CancellationToken token)
+    private async Task<bool> ProcessSingleFileForConversionAsync(string chdmanPath, string inputFile, string outputFolder, bool deleteOriginal, int cores, bool forceCd, bool forceDvd, CancellationToken token)
     {
         var originalName = Path.GetFileName(inputFile);
         LogMessage($"Processing: {originalName}");
@@ -497,7 +501,7 @@ public partial class MainWindow : IDisposable
             var success = false;
             try
             {
-                success = await ConvertToChdAsync(chdmanPath, fileToProcess, outputChd, cores, token);
+                success = await ConvertToChdAsync(chdmanPath, fileToProcess, outputChd, cores, forceCd, forceDvd, token);
             }
             catch (Exception ex)
             {
@@ -520,7 +524,7 @@ public partial class MainWindow : IDisposable
                     await Task.Run(() => File.Copy(inputFile, tempFile, true), token);
 
                     fileToProcess = tempFile;
-                    success = await ConvertToChdAsync(chdmanPath, fileToProcess, outputChd, cores, token);
+                    success = await ConvertToChdAsync(chdmanPath, fileToProcess, outputChd, cores, forceCd, forceDvd, token);
                 }
                 catch (Exception ex)
                 {
@@ -636,17 +640,34 @@ public partial class MainWindow : IDisposable
         }
     }
 
-    private async Task<bool> ConvertToChdAsync(string chdmanPath, string inputFile, string outputFile, int cores, CancellationToken token)
+    private async Task<bool> ConvertToChdAsync(string chdmanPath, string inputFile, string outputFile, int cores, bool forceCd, bool forceDvd, CancellationToken token)
     {
         using var process = new Process();
-        var command = "createcd";
-        if (inputFile.EndsWith(".img", StringComparison.OrdinalIgnoreCase))
+        string command;
+
+        if (forceCd)
+        {
+            command = "createcd";
+        }
+        else if (forceDvd)
+        {
+            command = "createdvd";
+        }
+        else if (inputFile.EndsWith(".iso", StringComparison.OrdinalIgnoreCase))
+        {
+            command = "createdvd";
+        }
+        else if (inputFile.EndsWith(".img", StringComparison.OrdinalIgnoreCase))
         {
             command = "createhd";
         }
         else if (inputFile.EndsWith(".raw", StringComparison.OrdinalIgnoreCase))
         {
             command = "createraw";
+        }
+        else
+        {
+            command = "createcd";
         }
 
         var args = $"{command} -i \"{inputFile}\" -o \"{outputFile}\" -f -np {cores}";
@@ -845,6 +866,22 @@ public partial class MainWindow : IDisposable
         catch
         {
             LogMessage($"Failed to delete {desc}: {path}");
+        }
+    }
+
+    private void ForceCreateCdCheckBox_Checked(object sender, RoutedEventArgs e)
+    {
+        if (ForceCreateDvdCheckBox != null)
+        {
+            ForceCreateDvdCheckBox.IsChecked = false;
+        }
+    }
+
+    private void ForceCreateDvdCheckBox_Checked(object sender, RoutedEventArgs e)
+    {
+        if (ForceCreateCdCheckBox != null)
+        {
+            ForceCreateCdCheckBox.IsChecked = false;
         }
     }
 
