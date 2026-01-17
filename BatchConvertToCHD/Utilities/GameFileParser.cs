@@ -13,7 +13,7 @@ public static class GameFileParser
         var cueDir = Path.GetDirectoryName(cuePath) ?? string.Empty;
         try
         {
-            var lines = await File.ReadAllLinesAsync(cuePath, Encoding.UTF8, token);
+            var lines = await File.ReadAllLinesAsync(cuePath, token);
             token.ThrowIfCancellationRequested();
             foreach (var line in lines)
             {
