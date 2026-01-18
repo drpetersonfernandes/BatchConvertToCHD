@@ -901,6 +901,7 @@ public partial class MainWindow : IDisposable
             WorkingDirectory = Path.GetDirectoryName(chdmanPath)
         };
 
+        // chdman often sends progress to Standard Error
         process.OutputDataReceived += (_, a) =>
         {
             if (!string.IsNullOrEmpty(a.Data) && a.Data.Contains("% complete"))
@@ -908,33 +909,42 @@ public partial class MainWindow : IDisposable
                 UpdateReadSpeedFromPerformanceCounter();
             }
         };
+
         process.ErrorDataReceived += (_, a) =>
         {
-            if (!string.IsNullOrEmpty(a.Data) && !a.Data.Contains("% complete")) LogMessage($"[CHDMAN ERR] {a.Data}");
+            if (string.IsNullOrEmpty(a.Data)) return;
+
+            // Trigger speed update when progress is reported in Error stream
+            if (a.Data.Contains("% complete"))
+            {
+                UpdateReadSpeedFromPerformanceCounter();
+            }
+            else
+            {
+                LogMessage($"[CHDMAN] {a.Data}");
+            }
         };
 
-        // Create a local CTS to stop the speed task when the process finishes
         using var ctsSpeed = CancellationTokenSource.CreateLinkedTokenSource(token);
-
         process.Start();
         process.BeginOutputReadLine();
         process.BeginErrorReadLine();
 
         var speedToken = ctsSpeed.Token;
-
         var readSpeedTask = Task.Run(async () =>
         {
             try
             {
+                // Initial delay to let the process start reading
+                await Task.Delay(100, speedToken);
                 while (!speedToken.IsCancellationRequested)
                 {
-                    await Task.Delay(AppConfig.WriteSpeedUpdateIntervalMs, speedToken);
                     UpdateReadSpeedFromPerformanceCounter();
+                    await Task.Delay(AppConfig.WriteSpeedUpdateIntervalMs, speedToken);
                 }
             }
             catch (OperationCanceledException)
             {
-                /* Normal exit */
             }
         }, speedToken);
 
@@ -944,8 +954,8 @@ public partial class MainWindow : IDisposable
         }
         finally
         {
-            ctsSpeed.Cancel(); // Signal the speed task to stop
-            await Task.WhenAny(readSpeedTask, Task.Delay(500, token)); // Wait briefly for cleanup
+            ctsSpeed.Cancel();
+            await Task.WhenAny(readSpeedTask, Task.Delay(500, token));
         }
 
         return process.ExitCode == 0;
