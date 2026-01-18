@@ -17,6 +17,7 @@ Batch Convert to CHD is a Windows application that provides a simple user interf
 - **Multiple Format Support**: Handles CD, DVD, GD-ROM, and HDD image formats
 - **Archive Support**: Automatically extracts and processes files from `.zip`, `.7z`, and `.rar` archives
 - **CSO Decompression**: Supports `.cso` (Compressed ISO) files with automatic decompression using maxcso
+- **Smart Command Selection**: Automatically chooses the correct CHDMAN command (`createcd`, `createdvd`, etc.) based on file type
 - **Smart File Handling**: Sanitizes file names and handles complex file paths safely by using temporary files for processing
 - **Delete Original Option**: Remove source files (including archives and referenced files like .bin for .cue) after successful conversion
 - **Process Smallest First**: Option to prioritize processing smaller files first, which can be useful for quicker feedback on progress or for systems with limited temporary storage.
@@ -35,11 +36,21 @@ Batch Convert to CHD is a Windows application that provides a simple user interf
 - **Comprehensive Logging**: Detailed timestamped logs with error reporting
 - **Cancellation Support**: Gracefully cancel operations in progress
 
-### Advanced Features
-- **Automatic Updates**: Checks for new versions on GitHub at startup
-- **Global Error Reporting**: Automatic bug reporting to the developer with comprehensive error details
-- **Memory Management**: Proper resource disposal and cleanup
-- **Multi-threading**: Optimized for modern multicore processors
+## Conversion Logic (CHDMAN Commands)
+
+The application automatically determines which `chdman` command to execute based on the file extension and user-selected overrides. This ensures the highest compatibility with different disc types.
+
+### Automatic Detection
+By default, the tool follows this priority logic:
+1.  **`.iso` files**: Uses `createdvd`. This is the standard for DVD-based images.
+2.  **`.img` files**: Uses `createhd`. This is intended for hard disk images.
+3.  **`.raw` files**: Uses `createraw`.
+4.  **All other formats (`.cue`, `.cdi`, `.gdi`, `.toc`)**: Uses `createcd`. This is the standard for CD and GD-ROM based images.
+
+### Manual Overrides
+You can manually force a specific mode using the checkboxes in the UI:
+- **Force createcd (CD)**: Overrides the logic to use `createcd` regardless of the file extension (useful for non-standard `.iso` files that are actually CD-based).
+- **Force createdvd (DVD)**: Overrides the logic to use `createdvd` regardless of the file extension.
 
 ## Supported File Formats
 
@@ -82,7 +93,8 @@ Batch Convert to CHD is a Windows application that provides a simple user interf
 3. **Choose Output Folder**: Click "Browse" next to "Output CHD Folder" to select where CHD files will be saved
 4. **Configure Options**:
     - Check "Delete original files after successful conversion" to remove source files after conversion
-    - Check "Process smaller files first" to sort the conversion queue by file size, processing smaller files before larger ones.
+    - Check "Process smaller files first" to sort the conversion queue by file size.
+    - Use "Force" checkboxes if you need to override the automatic command detection.
 5. **Start Conversion**: Click "Start Conversion" to begin the process
 6. **Monitor Progress**: View real-time progress, statistics, and detailed logs
 7. **Cancel if Needed**: Click "Cancel" to gracefully stop the operation
