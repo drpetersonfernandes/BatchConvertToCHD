@@ -321,32 +321,43 @@ public partial class MainWindow : IDisposable
             if (a.Data != null && a.Data.Contains('%'))
             {
                 UpdateStatusBarMessage(a.Data);
-                // Update speed during rewrite operations
-                UpdateWriteSpeedFromPerformanceCounter();
-                UpdateReadSpeedFromPerformanceCounter();
             }
         };
 
+        using var ctsSpeed = CancellationTokenSource.CreateLinkedTokenSource(token);
         process.Start();
         process.BeginOutputReadLine();
 
-        // Start speed monitoring task
+        var speedToken = ctsSpeed.Token;
+
         var speedTask = Task.Run(async () =>
         {
-            while (!token.IsCancellationRequested)
+            try
             {
-                await Task.Delay(AppConfig.WriteSpeedUpdateIntervalMs, token);
-                UpdateWriteSpeedFromPerformanceCounter();
-                UpdateReadSpeedFromPerformanceCounter();
+                while (!speedToken.IsCancellationRequested)
+                {
+                    await Task.Delay(AppConfig.WriteSpeedUpdateIntervalMs, speedToken);
+                    UpdateWriteSpeedFromPerformanceCounter();
+                    UpdateReadSpeedFromPerformanceCounter();
+                }
             }
-        }, token);
+            catch (OperationCanceledException)
+            {
+            }
+        }, speedToken);
 
-        await process.WaitForExitAsync(token);
-        await speedTask;
+        try
+        {
+            await process.WaitForExitAsync(token);
+        }
+        finally
+        {
+            ctsSpeed.Cancel();
+            await Task.WhenAny(speedTask, Task.Delay(500, token));
+        }
 
         return process.ExitCode == 0;
     }
-
 
     private async void StartConversionButton_Click(object sender, RoutedEventArgs e)
     {
@@ -378,6 +389,7 @@ public partial class MainWindow : IDisposable
 
             ResetOperationStats();
             SetControlsState(false);
+            await Task.Yield();
             _operationTimer.Restart();
             ResetSpeedCounters();
 
@@ -436,6 +448,7 @@ public partial class MainWindow : IDisposable
 
             ResetOperationStats();
             SetControlsState(false);
+            await Task.Yield();
             _operationTimer.Restart();
             ResetSpeedCounters();
 
@@ -767,134 +780,69 @@ public partial class MainWindow : IDisposable
     private async Task<bool> ConvertToChdAsync(string chdmanPath, string inputFile, string outputFile, int cores, bool forceCd, bool forceDvd, CancellationToken token)
     {
         using var process = new Process();
-        string command;
-
-        if (forceCd)
-        {
-            command = "createcd";
-        }
-        else if (forceDvd)
-        {
-            command = "createdvd";
-        }
-        else if (inputFile.EndsWith(".iso", StringComparison.OrdinalIgnoreCase))
-        {
-            command = "createdvd";
-        }
-        else if (inputFile.EndsWith(".img", StringComparison.OrdinalIgnoreCase))
-        {
-            command = "createhd";
-        }
-        else if (inputFile.EndsWith(".raw", StringComparison.OrdinalIgnoreCase))
-        {
-            command = "createraw";
-        }
-        else
-        {
-            command = "createcd";
-        }
+        var command = (forceCd || (!forceDvd && !inputFile.EndsWith(".iso", StringComparison.OrdinalIgnoreCase) && !inputFile.EndsWith(".img", StringComparison.OrdinalIgnoreCase) && !inputFile.EndsWith(".raw", StringComparison.OrdinalIgnoreCase)))
+            ? "createcd"
+            : (forceDvd || inputFile.EndsWith(".iso", StringComparison.OrdinalIgnoreCase))
+                ? "createdvd"
+                : inputFile.EndsWith(".img", StringComparison.OrdinalIgnoreCase)
+                    ? "createhd"
+                    : "createraw";
 
         var args = $"{command} -i \"{inputFile}\" -o \"{outputFile}\" -f -np {cores}";
         LogMessage($"CHDMAN: {command} {Path.GetFileName(inputFile)}");
 
         process.StartInfo = new ProcessStartInfo { FileName = chdmanPath, Arguments = args, RedirectStandardOutput = true, RedirectStandardError = true, UseShellExecute = false, CreateNoWindow = true };
 
-        process.OutputDataReceived += (_, a) =>
-        {
-            if (!string.IsNullOrEmpty(a.Data) && a.Data.Contains("% complete"))
-            {
-                /* Optional: Update a specific progress bar if needed */
-            }
-        };
         process.ErrorDataReceived += (_, a) =>
         {
             if (!string.IsNullOrEmpty(a.Data) && !a.Data.Contains("% complete")) LogMessage($"[CHDMAN ERR] {a.Data}");
             UpdateConversionProgressFromChdman(a.Data);
         };
 
+        using var ctsSpeed = CancellationTokenSource.CreateLinkedTokenSource(token);
+        using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(token);
+        timeoutCts.CancelAfter(TimeSpan.FromHours(AppConfig.MaxConversionTimeoutHours));
+
         process.Start();
         process.BeginOutputReadLine();
         process.BeginErrorReadLine();
 
-        // Track speed monitoring task for proper cleanup
-        Task? speedMonitoringTask = null;
+        var speedToken = ctsSpeed.Token;
 
-        using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(token);
-        timeoutCts.CancelAfter(TimeSpan.FromHours(AppConfig.MaxConversionTimeoutHours));
-
-        // Monitor write speed and handle cancellation
-        try
+        var speedMonitoringTask = Task.Run(async () =>
         {
-            // Start speed monitoring task
-            speedMonitoringTask = Task.Run(async () =>
+            try
             {
-                while (!token.IsCancellationRequested)
+                while (!speedToken.IsCancellationRequested)
                 {
-                    await Task.Delay(AppConfig.WriteSpeedUpdateIntervalMs, token);
+                    await Task.Delay(AppConfig.WriteSpeedUpdateIntervalMs, speedToken);
                     UpdateWriteSpeedFromPerformanceCounter();
                 }
-            }, token);
-
-            while (!process.HasExited)
+            }
+            catch (OperationCanceledException)
             {
-                // Check for cancellation
-                if (token.IsCancellationRequested)
-                {
-                    LogMessage("Cancellation requested. Terminating CHDMAN process...");
-                    break;
-                }
+            }
+        }, speedToken);
 
-                await Task.Delay(100, timeoutCts.Token); // Reduced delay for more responsive cancellation
+        try
+        {
+            await process.WaitForExitAsync(timeoutCts.Token);
+            if (token.IsCancellationRequested && !process.HasExited)
+            {
+                process.Kill(true);
             }
         }
         catch (OperationCanceledException)
         {
-            // Timeout or external cancellation - break to kill process
-            LogMessage("Operation timed out or was cancelled. Terminating CHDMAN process...");
+            if (!process.HasExited) process.Kill(true);
         }
         finally
         {
-            // Ensure speed monitoring task completes
-            if (speedMonitoringTask != null)
-            {
-                await Task.WhenAny(speedMonitoringTask, Task.Delay(2000, token));
-            }
+            ctsSpeed.Cancel();
+            await Task.WhenAny(speedMonitoringTask, Task.Delay(500, token));
         }
 
-        UpdateWriteSpeedFromPerformanceCounter();
-
-        // If cancellation was requested, kill the process
-        if (token.IsCancellationRequested && !process.HasExited)
-        {
-            try
-            {
-                process.Kill(true);
-            }
-            catch (Exception killEx)
-            {
-                LogMessage($"Warning: Error killing process: {killEx.Message}");
-            }
-
-            // Wait for process to actually terminate
-            try
-            {
-                using var killTimeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(AppConfig.ProcessKillTimeoutSeconds));
-                await process.WaitForExitAsync(killTimeoutCts.Token);
-            }
-            catch
-            {
-                // Ignore timeout on kill wait
-            }
-        }
-        else if (!process.HasExited)
-        {
-            // Normal exit path - wait for completion
-            await process.WaitForExitAsync(timeoutCts.Token);
-        }
-
-        // Return success only if process exited cleanly and wasn't cancelled
         return process.ExitCode == 0 && !token.IsCancellationRequested;
-        // Note: Write speed monitoring happens in the while loop above
     }
 
     private void UpdateWriteSpeedFromPerformanceCounter()
@@ -934,13 +882,21 @@ public partial class MainWindow : IDisposable
         using var process = new Process();
         if (!await ValidateExecutableAccessAsync(chdmanPath, "chdman.exe")) return false;
 
-        process.StartInfo = new ProcessStartInfo { FileName = chdmanPath, Arguments = $"verify -i \"{chdFile}\"", RedirectStandardOutput = true, RedirectStandardError = true, UseShellExecute = false, CreateNoWindow = true, WorkingDirectory = Path.GetDirectoryName(chdmanPath) };
+        process.StartInfo = new ProcessStartInfo
+        {
+            FileName = chdmanPath,
+            Arguments = $"verify -i \"{chdFile}\"",
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+            CreateNoWindow = true,
+            WorkingDirectory = Path.GetDirectoryName(chdmanPath)
+        };
 
         process.OutputDataReceived += (_, a) =>
         {
             if (!string.IsNullOrEmpty(a.Data) && a.Data.Contains("% complete"))
             {
-                // Update read speed periodically during verification
                 UpdateReadSpeedFromPerformanceCounter();
             }
         };
@@ -949,21 +905,41 @@ public partial class MainWindow : IDisposable
             if (!string.IsNullOrEmpty(a.Data) && !a.Data.Contains("% complete")) LogMessage($"[CHDMAN ERR] {a.Data}");
         };
 
+        // Create a local CTS to stop the speed task when the process finishes
+        using var ctsSpeed = CancellationTokenSource.CreateLinkedTokenSource(token);
+
         process.Start();
         process.BeginOutputReadLine();
+        process.BeginErrorReadLine();
 
-        // Start read speed monitoring during verification
+        var speedToken = ctsSpeed.Token;
+
         var readSpeedTask = Task.Run(async () =>
         {
-            while (!token.IsCancellationRequested)
+            try
             {
-                await Task.Delay(AppConfig.WriteSpeedUpdateIntervalMs, token);
-                UpdateReadSpeedFromPerformanceCounter();
+                while (!speedToken.IsCancellationRequested)
+                {
+                    await Task.Delay(AppConfig.WriteSpeedUpdateIntervalMs, speedToken);
+                    UpdateReadSpeedFromPerformanceCounter();
+                }
             }
-        }, token);
-        process.BeginErrorReadLine();
-        await process.WaitForExitAsync(token);
-        await readSpeedTask;
+            catch (OperationCanceledException)
+            {
+                /* Normal exit */
+            }
+        }, speedToken);
+
+        try
+        {
+            await process.WaitForExitAsync(token);
+        }
+        finally
+        {
+            ctsSpeed.Cancel(); // Signal the speed task to stop
+            await Task.WhenAny(readSpeedTask, Task.Delay(500, token)); // Wait briefly for cleanup
+        }
+
         return process.ExitCode == 0;
     }
 
@@ -998,11 +974,12 @@ public partial class MainWindow : IDisposable
     {
         Application.Current.Dispatcher.InvokeAsync(() =>
         {
+            // Update the actual label
             SpeedValue.Text = $"{speed:F1} MB/s";
-            // Also update status bar during operations
+
             if (speed > 0 && !StartConversionButton.IsEnabled)
             {
-                StatusBarMessage.Text = $"Processing... {speed:F1} MB/s write";
+                StatusBarMessage.Text = "Converting...";
             }
         });
     }
@@ -1012,10 +989,9 @@ public partial class MainWindow : IDisposable
         Application.Current.Dispatcher.InvokeAsync(() =>
         {
             SpeedValue.Text = $"{speed:F1} MB/s";
-            // Also update status bar during operations
             if (speed > 0 && !StartVerificationButton.IsEnabled)
             {
-                StatusBarMessage.Text = $"Processing... {speed:F1} MB/s read";
+                StatusBarMessage.Text = "Verifying...";
             }
         });
     }
