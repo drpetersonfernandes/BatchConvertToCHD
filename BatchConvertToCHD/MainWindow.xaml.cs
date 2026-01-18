@@ -524,6 +524,7 @@ public partial class MainWindow : IDisposable
         MainTabControl.IsEnabled = enabled;
         ProgressText.Visibility = enabled ? Visibility.Collapsed : Visibility.Visible;
         ProgressBar.Visibility = enabled ? Visibility.Collapsed : Visibility.Visible;
+        ProgressBar.IsIndeterminate = !enabled; // Start moving immediately
         CancelButton.Visibility = enabled ? Visibility.Collapsed : Visibility.Visible;
 
         if (!enabled)
@@ -569,6 +570,9 @@ public partial class MainWindow : IDisposable
 
         foreach (var file in filesToConvert)
         {
+            // Update text to show we are starting this file, but bar stays at 'processedCount'
+            UpdateProgressDisplay(processedCount, _totalFilesProcessed, Path.GetFileName(file), "Converting");
+
             var success = await ProcessSingleFileForConversionAsync(chdmanPath, file, outputFolder, deleteFiles, cores, forceCd, forceDvd, token);
             if (success)
             {
@@ -579,7 +583,8 @@ public partial class MainWindow : IDisposable
                 _failedCount++;
             }
 
-            UpdateProgressDisplay(++processedCount, _totalFilesProcessed, Path.GetFileName(file), "Converting");
+            processedCount++;
+            UpdateProgressDisplay(processedCount, _totalFilesProcessed, "Finishing...", "Converting");
             UpdateStatsDisplay();
             UpdateProcessingTimeDisplay();
             UpdateWriteSpeedFromPerformanceCounter();
@@ -722,7 +727,9 @@ public partial class MainWindow : IDisposable
 
         foreach (var file in files)
         {
-            UpdateProgressDisplay(processed + 1, _totalFilesProcessed, Path.GetFileName(file), "Verifying");
+            // Show current file in text, but bar shows 'processed' (completed) count
+            UpdateProgressDisplay(processed, _totalFilesProcessed, Path.GetFileName(file), "Verifying");
+
             var isValid = await VerifyChdAsync(chdmanPath, file, token);
 
             if (isValid)
@@ -739,6 +746,7 @@ public partial class MainWindow : IDisposable
             }
 
             processed++;
+            UpdateProgressDisplay(processed, _totalFilesProcessed, "Finishing...", "Verifying");
             UpdateStatsDisplay();
             UpdateProcessingTimeDisplay();
             UpdateReadSpeedFromPerformanceCounter();
@@ -996,12 +1004,18 @@ public partial class MainWindow : IDisposable
         });
     }
 
-    private void UpdateProgressDisplay(int cur, int tot, string name, string verb)
+    private void UpdateProgressDisplay(int completedCount, int tot, string name, string verb)
     {
         Application.Current.Dispatcher.InvokeAsync(() =>
         {
-            ProgressText.Text = $"{verb} {cur}/{tot}: {name}";
-            ProgressBar.Value = cur;
+            // If we haven't finished all files, show the next one in the text (completed + 1)
+            var displayIndex = Math.Min(completedCount + 1, tot);
+            ProgressText.Text = completedCount < tot
+                ? $"{verb} {displayIndex}/{tot}: {name}"
+                : $"{verb} process complete.";
+
+            ProgressBar.IsIndeterminate = false;
+            ProgressBar.Value = completedCount;
             ProgressBar.Maximum = tot > 0 ? tot : 1;
             ProgressText.Visibility = Visibility.Visible;
             ProgressBar.Visibility = Visibility.Visible;
