@@ -38,6 +38,35 @@ public partial class App : IDisposable
         Exit += App_Exit;
     }
 
+    protected override void OnStartup(StartupEventArgs e)
+    {
+        base.OnStartup(e);
+
+        // Preload assemblies on background thread to improve responsiveness
+        Task.Run(static () =>
+        {
+            try
+            {
+                var assemblies = AppDomain.CurrentDomain.GetAssemblies();
+                foreach (var assembly in assemblies)
+                {
+                    try
+                    {
+                        assembly.GetTypes();
+                    }
+                    catch
+                    {
+                        // ignored
+                    }
+                }
+            }
+            catch
+            {
+                // ignored
+            }
+        });
+    }
+
     private void App_Exit(object sender, ExitEventArgs e)
     {
         // Dispose the bug report service and clear references to prevent double disposal
@@ -90,38 +119,42 @@ public partial class App : IDisposable
 
     private void InitializeSevenZipSharp()
     {
-        try
+        // Run on background thread to avoid blocking startup
+        Task.Run(() =>
         {
-            const string dllName = "7z_x64.dll";
-            var dllPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, dllName);
-
-            if (File.Exists(dllPath))
+            try
             {
-                SevenZipBase.SetLibraryPath(dllPath);
-                IsSevenZipAvailable = true;
+                const string dllName = "7z_x64.dll";
+                var dllPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, dllName);
+
+                if (File.Exists(dllPath))
+                {
+                    SevenZipBase.SetLibraryPath(dllPath);
+                    IsSevenZipAvailable = true;
+                }
+                else
+                {
+                    // Notify developer
+                    var errorMessage = $"Could not find the required 7-Zip library: {dllName} in {AppDomain.CurrentDomain.BaseDirectory}";
+                    if (_bugReportService != null)
+                    {
+                        _ = _bugReportService.SendBugReportAsync(errorMessage);
+                    }
+
+                    IsSevenZipAvailable = false;
+                }
             }
-            else
+            catch (Exception ex)
             {
                 // Notify developer
-                var errorMessage = $"Could not find the required 7-Zip library: {dllName} in {AppDomain.CurrentDomain.BaseDirectory}";
                 if (_bugReportService != null)
                 {
-                    _ = _bugReportService.SendBugReportAsync(errorMessage, null);
+                    _ = _bugReportService.SendBugReportAsync("Error initializing 7-Zip library", ex);
                 }
 
                 IsSevenZipAvailable = false;
             }
-        }
-        catch (Exception ex)
-        {
-            // Notify developer
-            if (_bugReportService != null)
-            {
-                _ = _bugReportService.SendBugReportAsync("Error initializing 7-Zip library", ex);
-            }
-
-            IsSevenZipAvailable = false;
-        }
+        });
     }
 
     /// <inheritdoc />

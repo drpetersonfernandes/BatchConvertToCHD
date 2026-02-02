@@ -20,8 +20,8 @@ public partial class MainWindow : IDisposable
     private readonly bool _isMaxCsoAvailable;
     private readonly bool _isChdmanAvailable;
 
-    private static readonly string[] AllSupportedInputExtensionsForConversion = { ".cue", ".iso", ".img", ".cdi", ".gdi", ".toc", ".raw", ".zip", ".7z", ".rar", ".cso" };
-    private static readonly string[] ArchiveExtensions = { ".zip", ".7z", ".rar" };
+    private static readonly string[] AllSupportedInputExtensionsForConversion = [".cue", ".iso", ".img", ".cdi", ".gdi", ".toc", ".raw", ".zip", ".7z", ".rar", ".cso"];
+    private static readonly string[] ArchiveExtensions = [".zip", ".7z", ".rar"];
 
     // Statistics
     private int _totalFilesProcessed;
@@ -58,46 +58,76 @@ public partial class MainWindow : IDisposable
         _archiveService = new ArchiveService(_maxCsoPath, _isMaxCsoAvailable);
 
         InitializeStatusBar();
-        CleanupLeftoverTempDirectories();
+        Task.Run(static async () =>
+        {
+            await Task.Delay(2000);
+            CleanupLeftoverTempDirectories();
+        });
         DisplayConversionInstructionsInLog();
-        SpeedValue.Text = "0.0 MB/s";
         ResetOperationStats();
         LogEnvironmentDetails();
 
-        InitializePerformanceCounter();
-        InitializeReadPerformanceCounter();
+        // Defer heavy initialization until after window is shown
+        Loaded += MainWindow_Loaded;
 
-        // Hide speed display if performance counters are unavailable
-        if (_writeBytesCounter == null && _readBytesCounter == null)
-        {
-            Application.Current.Dispatcher.InvokeAsync(() => SpeedStatCard.Visibility = Visibility.Collapsed);
-        }
-
-        // Start version check
-        _ = _updateService.CheckForNewVersionAsync(LogMessage, UpdateStatusBarMessage, ReportBugAsync);
+        // Hide speed display initially until we know counters are available
+        SpeedStatCard.Visibility = Visibility.Collapsed;
     }
 
-    private void ShowAlert(string message, string title)
+    private async void MainWindow_Loaded(object sender, RoutedEventArgs e)
     {
-        Application.Current.Dispatcher.InvokeAsync(() => MessageBox.Show(this, message, title, MessageBoxButton.OK, MessageBoxImage.Warning));
+        try
+        {
+            // Initialize performance counters asynchronously
+            await Task.Run(() =>
+            {
+                InitializePerformanceCounter();
+                InitializeReadPerformanceCounter();
+            });
+
+            // Show speed display if counters are available
+            if (_writeBytesCounter != null || _readBytesCounter != null)
+            {
+                SpeedStatCard.Visibility = Visibility.Visible;
+            }
+
+            // Defer update check until window is responsive
+            await Task.Delay(100); // Allow UI to render first
+            _ = _updateService.CheckForNewVersionAsync(LogMessage, UpdateStatusBarMessage, ReportBugAsync);
+        }
+        catch (Exception ex)
+        {
+            _ = ReportBugAsync("MainWindow_Loaded error", ex);
+        }
     }
 
     private void InitializePerformanceCounter()
     {
         try
         {
+            // Check if category exists first to avoid registry errors
+            if (!PerformanceCounterCategory.Exists("PhysicalDisk"))
+            {
+                LogMessage("WARNING: PhysicalDisk performance counter category not available");
+                _writeBytesCounter = null;
+                return;
+            }
+
             // Create a performance counter for disk write operations
             _writeBytesCounter = new PerformanceCounter("PhysicalDisk", "Disk Write Bytes/sec", "_Total");
+        }
+        catch (InvalidOperationException ex) when (ex.Message.Contains("invalid index") ||
+                                                   ex.Message.Contains("registry") ||
+                                                   ex.Message.Contains("Cannot load Counter Name"))
+        {
+            // System configuration issue - don't report as bug
+            LogMessage("WARNING: Performance counters unavailable due to system registry issue");
+            _writeBytesCounter = null;
         }
         catch (Exception ex)
         {
             LogMessage($"WARNING: Could not initialize performance counter for write speed monitoring: {ex.Message}");
             _writeBytesCounter = null;
-
-            if (App.SharedBugReportService != null)
-            {
-                _ = App.SharedBugReportService.SendBugReportAsync("Performance counter initialization failed", ex);
-            }
         }
     }
 
@@ -105,8 +135,22 @@ public partial class MainWindow : IDisposable
     {
         try
         {
+            // Check if category exists first to avoid registry errors
+            if (!PerformanceCounterCategory.Exists("PhysicalDisk"))
+            {
+                _readBytesCounter = null;
+                return;
+            }
+
             // Create a performance counter for disk read operations
             _readBytesCounter = new PerformanceCounter("PhysicalDisk", "Disk Read Bytes/sec", "_Total");
+        }
+        catch (InvalidOperationException ex) when (ex.Message.Contains("invalid index") ||
+                                                   ex.Message.Contains("registry") ||
+                                                   ex.Message.Contains("Cannot load Counter Name"))
+        {
+            // System configuration issue - don't report as bug
+            _readBytesCounter = null;
         }
         catch (Exception ex)
         {
@@ -128,9 +172,9 @@ public partial class MainWindow : IDisposable
         });
     }
 
-    private void CleanupLeftoverTempDirectories()
+    private static void CleanupLeftoverTempDirectories()
     {
-        Task.Run(() =>
+        Task.Run(static () =>
         {
             try
             {
@@ -303,62 +347,6 @@ public partial class MainWindow : IDisposable
         UpdateStatusBarMessage($"{logName} folder selected");
     }
 
-    private async Task<bool> RunChdmanGenericAsync(string args, CancellationToken token)
-    {
-        using var process = new Process();
-        process.StartInfo = new ProcessStartInfo
-        {
-            FileName = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "chdman.exe"),
-            Arguments = args,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            UseShellExecute = false,
-            CreateNoWindow = true
-        };
-
-        process.OutputDataReceived += (_, a) =>
-        {
-            if (a.Data != null && a.Data.Contains('%'))
-            {
-                UpdateStatusBarMessage(a.Data);
-            }
-        };
-
-        using var ctsSpeed = CancellationTokenSource.CreateLinkedTokenSource(token);
-        process.Start();
-        process.BeginOutputReadLine();
-
-        var speedToken = ctsSpeed.Token;
-
-        var speedTask = Task.Run(async () =>
-        {
-            try
-            {
-                while (!speedToken.IsCancellationRequested)
-                {
-                    await Task.Delay(AppConfig.WriteSpeedUpdateIntervalMs, speedToken);
-                    UpdateWriteSpeedFromPerformanceCounter();
-                    UpdateReadSpeedFromPerformanceCounter();
-                }
-            }
-            catch (OperationCanceledException)
-            {
-            }
-        }, speedToken);
-
-        try
-        {
-            await process.WaitForExitAsync(token);
-        }
-        finally
-        {
-            ctsSpeed.Cancel();
-            await Task.WhenAny(speedTask, Task.Delay(500, token));
-        }
-
-        return process.ExitCode == 0;
-    }
-
     private async void StartConversionButton_Click(object sender, RoutedEventArgs e)
     {
         try
@@ -385,7 +373,7 @@ public partial class MainWindow : IDisposable
             // Safely dispose old CTS before creating a new one to avoid ObjectDisposedException
             var oldCts = _cts;
             _cts = new CancellationTokenSource();
-            oldCts?.Dispose();
+            oldCts.Dispose();
 
             ResetOperationStats();
             SetControlsState(false);
@@ -444,7 +432,7 @@ public partial class MainWindow : IDisposable
             // Safely dispose old CTS before creating a new one to avoid ObjectDisposedException
             var oldCts = _cts;
             _cts = new CancellationTokenSource();
-            oldCts?.Dispose();
+            oldCts.Dispose();
 
             ResetOperationStats();
             SetControlsState(false);
@@ -788,9 +776,9 @@ public partial class MainWindow : IDisposable
     private async Task<bool> ConvertToChdAsync(string chdmanPath, string inputFile, string outputFile, int cores, bool forceCd, bool forceDvd, CancellationToken token)
     {
         using var process = new Process();
-        var command = (forceCd || (!forceDvd && !inputFile.EndsWith(".iso", StringComparison.OrdinalIgnoreCase) && !inputFile.EndsWith(".img", StringComparison.OrdinalIgnoreCase) && !inputFile.EndsWith(".raw", StringComparison.OrdinalIgnoreCase)))
+        var command = forceCd || (!forceDvd && !inputFile.EndsWith(".iso", StringComparison.OrdinalIgnoreCase) && !inputFile.EndsWith(".img", StringComparison.OrdinalIgnoreCase) && !inputFile.EndsWith(".raw", StringComparison.OrdinalIgnoreCase))
             ? "createcd"
-            : (forceDvd || inputFile.EndsWith(".iso", StringComparison.OrdinalIgnoreCase))
+            : forceDvd || inputFile.EndsWith(".iso", StringComparison.OrdinalIgnoreCase)
                 ? "createdvd"
                 : inputFile.EndsWith(".img", StringComparison.OrdinalIgnoreCase)
                     ? "createhd"
@@ -1043,11 +1031,11 @@ public partial class MainWindow : IDisposable
         });
     }
 
-    private void UpdateConversionProgressFromChdman(string? line)
+    private static void UpdateConversionProgressFromChdman(string? line)
     {
         if (string.IsNullOrEmpty(line)) return;
 
-        var match = Regex.Match(line, @"Compressing\s+(?:(?:\d+/\d+)|(?:hunk\s+\d+))\s+\((?<percent>\d+[\.,]?\d*)%\)");
+        var match = MyRegex().Match(line);
         if (match.Success)
         {
             /* Optional: Update a specific progress bar if needed */
@@ -1115,18 +1103,12 @@ public partial class MainWindow : IDisposable
 
     private void ForceCreateCdCheckBox_Checked(object sender, RoutedEventArgs e)
     {
-        if (ForceCreateDvdCheckBox != null)
-        {
-            ForceCreateDvdCheckBox.IsChecked = false;
-        }
+        ForceCreateDvdCheckBox?.IsChecked = false;
     }
 
     private void ForceCreateDvdCheckBox_Checked(object sender, RoutedEventArgs e)
     {
-        if (ForceCreateCdCheckBox != null)
-        {
-            ForceCreateCdCheckBox.IsChecked = false;
-        }
+        ForceCreateCdCheckBox?.IsChecked = false;
     }
 
     private void LogOperationSummary(string op)
@@ -1146,7 +1128,7 @@ public partial class MainWindow : IDisposable
         Application.Current.Dispatcher.InvokeAsync(() => ShowMessageBox(msg, "Error", MessageBoxButton.OK, MessageBoxImage.Error));
     }
 
-    private async Task ReportBugAsync(string msg, Exception? ex = null)
+    private static async Task ReportBugAsync(string msg, Exception? ex = null)
     {
         try
         {
@@ -1177,11 +1159,14 @@ public partial class MainWindow : IDisposable
 
     public void Dispose()
     {
-        _cts?.Cancel();
-        _cts?.Dispose();
+        _cts.Cancel();
+        _cts.Dispose();
         _writeBytesCounter?.Dispose();
         _readBytesCounter?.Dispose();
-        _operationTimer?.Stop();
+        _operationTimer.Stop();
         GC.SuppressFinalize(this);
     }
+
+    [GeneratedRegex(@"Compressing\s+(?:(?:\d+/\d+)|(?:hunk\s+\d+))\s+\((?<percent>\d+[\.,]?\d*)%\)")]
+    private static partial Regex MyRegex();
 }

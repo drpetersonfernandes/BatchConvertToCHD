@@ -53,7 +53,7 @@ public class BugReportService(string apiUrl, string apiKey, string applicationNa
         }
     }
 
-    private string BuildExceptionReport(string message, Exception? exception)
+    private static string BuildExceptionReport(string message, Exception? exception)
     {
         var sb = new StringBuilder();
         sb.AppendLine(GetEnvironmentDetailsReport());
@@ -97,7 +97,7 @@ public class BugReportService(string apiUrl, string apiKey, string applicationNa
         }
     }
 
-    private string GetEnvironmentDetailsReport()
+    private static string GetEnvironmentDetailsReport()
     {
         try
         {
@@ -125,7 +125,7 @@ public class BugReportService(string apiUrl, string apiKey, string applicationNa
 
     public void Dispose()
     {
-        _httpClient?.Dispose();
+        _httpClient.Dispose();
         GC.SuppressFinalize(this);
     }
 }
