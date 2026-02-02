@@ -3,6 +3,7 @@ using System.IO;
 using System.Net.Http;
 using System.Net.Http.Json;
 using System.Reflection;
+using System.Runtime.InteropServices;
 using System.Text;
 
 namespace BatchConvertToCHD.Services;
@@ -106,7 +107,7 @@ public class BugReportService(string apiUrl, string apiKey, string applicationNa
             sb.AppendLine(CultureInfo.InvariantCulture, $"OS Version: {Environment.OSVersion}");
             sb.AppendLine(CultureInfo.InvariantCulture, $"Windows Version: {Environment.OSVersion.Version}");
             sb.AppendLine(CultureInfo.InvariantCulture, $".NET Version: {Environment.Version}");
-            sb.AppendLine(CultureInfo.InvariantCulture, $"Process Architecture: {(Environment.Is64BitProcess ? "x64" : "x86")}");
+            sb.AppendLine(CultureInfo.InvariantCulture, $"Process Architecture: {RuntimeInformation.ProcessArchitecture}");
             sb.AppendLine(CultureInfo.InvariantCulture, $"Processor Count: {Environment.ProcessorCount}");
             sb.AppendLine(CultureInfo.InvariantCulture, $"Application Version: {Assembly.GetExecutingAssembly().GetName().Version}");
             sb.AppendLine(CultureInfo.InvariantCulture, $"Base Directory: {AppDomain.CurrentDomain.BaseDirectory}");

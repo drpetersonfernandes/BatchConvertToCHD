@@ -124,7 +124,7 @@ public partial class App : IDisposable
         {
             try
             {
-                const string dllName = "7z_x64.dll";
+                var dllName = AppConfig.SevenZipDllName;
                 var dllPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, dllName);
 
                 if (File.Exists(dllPath))

@@ -47,11 +47,11 @@ public partial class MainWindow : IDisposable
         _cts = new CancellationTokenSource();
 
         var appDirectory = AppDomain.CurrentDomain.BaseDirectory;
-        var chdmanPath = Path.Combine(appDirectory, "chdman.exe");
+        var chdmanPath = Path.Combine(appDirectory, AppConfig.ChdmanExeName);
         _isChdmanAvailable = File.Exists(chdmanPath);
 
         _maxCsoPath = Path.Combine(appDirectory, "maxcso.exe");
-        _isMaxCsoAvailable = File.Exists(_maxCsoPath);
+        _isMaxCsoAvailable = File.Exists(_maxCsoPath) && !AppConfig.IsArm64;
 
         // Initialize Services
         _updateService = new UpdateService(AppConfig.ApplicationName);
@@ -356,7 +356,7 @@ public partial class MainWindow : IDisposable
 
             if (!_isChdmanAvailable)
             {
-                ShowError("chdman.exe is missing.");
+                ShowError($"{AppConfig.ChdmanExeName} is missing.");
                 return;
             }
 
@@ -390,7 +390,7 @@ public partial class MainWindow : IDisposable
 
             try
             {
-                await PerformBatchConversionAsync(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "chdman.exe"),
+                await PerformBatchConversionAsync(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, AppConfig.ChdmanExeName),
                     inputFolder, outputFolder, deleteFiles, smallestFirst, forceCd, forceDvd, _cts.Token);
             }
             catch (OperationCanceledException)
@@ -422,7 +422,7 @@ public partial class MainWindow : IDisposable
 
             if (!_isChdmanAvailable)
             {
-                ShowError("chdman.exe is missing.");
+                ShowError($"{AppConfig.ChdmanExeName} is missing.");
                 return;
             }
 
@@ -450,7 +450,7 @@ public partial class MainWindow : IDisposable
 
             try
             {
-                await PerformBatchVerificationAsync(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "chdman.exe"),
+                await PerformBatchVerificationAsync(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, AppConfig.ChdmanExeName),
                     inputFolder, includeSub, moveSuccess, successFolder, moveFailed, failedFolder, _cts.Token);
             }
             catch (OperationCanceledException)
