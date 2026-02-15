@@ -791,7 +791,22 @@ public partial class MainWindow : IDisposable
 
         process.ErrorDataReceived += (_, a) =>
         {
-            if (!string.IsNullOrEmpty(a.Data) && !a.Data.Contains("% complete")) LogMessage($"[CHDMAN ERR] {a.Data}");
+            if (string.IsNullOrEmpty(a.Data)) return;
+
+            // Check for completion messages (these are good news!)
+            if (a.Data.Contains("Compression complete") || a.Data.Contains("final ratio"))
+            {
+                LogMessage($"[CHDMAN ✓] {a.Data}");
+            }
+            // Filter out progress updates but keep actual errors
+            else if (!a.Data.Contains("% complete") &&
+                     !a.Data.Contains("Compressing") &&
+                     !a.Data.Contains("Output bytes") &&
+                     !a.Data.Contains("Compression ratio"))
+            {
+                LogMessage($"[CHDMAN] {a.Data}");
+            }
+
             UpdateConversionProgressFromChdman(a.Data);
         };
 
