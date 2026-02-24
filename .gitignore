@@ -2,8 +2,5 @@ bin/
 obj/
 /packages/
 riderModule.iml
-/_ReSharper.Caches/!/.idea/
-!/BatchConvertToCHD/bin/
-!/.idea/!/BatchConvertToCHD/obj/
-!/BatchConvertToCHD/bin/
-!/.idea/
+/_ReSharper.Caches/
+.idea/
