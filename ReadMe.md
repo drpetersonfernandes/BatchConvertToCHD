@@ -1,8 +1,9 @@
 # Batch Convert to CHD
 
-[![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE.txt)
+[![Platform: Windows](https://img.shields.io/badge/Platform-Windows%20x64%20%7C%20ARM64-0078d7.svg)](https://www.microsoft.com/windows)
 [![.NET 10.0](https://img.shields.io/badge/.NET-10.0-512bd4.svg)](https://dotnet.microsoft.com/download/dotnet/10.0)
-[![Platform: Windows](https://img.shields.io/badge/Platform-Windows%20x64%20%7C%20ARM64-0078d7.svg)](#)
+[![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE.txt)
+[![GitHub release](https://img.shields.io/github/v/release/drpetersonfernandes/BatchConvertToCHD)](https://github.com/drpetersonfernandes/BatchConvertToCHD/releases)
 
 **Batch Convert to CHD** is a high-performance Windows desktop utility designed to streamline the conversion of various disk image formats into the **Compressed Hunks of Data (CHD)** format.
 
@@ -12,8 +13,9 @@
 ## 🚀 Key Features
 
 ### 💻 Multi-Architecture Support
-*   **Native ARM64 & x64**: Automatically detects your system architecture and utilizes the appropriate `chdman` and `7-Zip` binaries for maximum efficiency.
+*   **Native ARM64 & x64**: Automatically detects your system architecture and utilizes the appropriate `chdman` binaries for maximum efficiency.
 *   **Optimized Performance**: Leverages native instructions on ARM64 hardware to reduce overhead during heavy compression tasks.
+*   **Assembly Preloading**: Background assembly preloading on startup for improved application responsiveness.
 
 ### 🛠️ Intelligent Conversion
 *   **Automated Batch Processing**: Convert entire directories of disk images with real-time progress monitoring.
@@ -28,7 +30,12 @@
 
 ### 📊 Performance & UI
 *   **Real-time Telemetry**: Monitor disk write/read speeds and elapsed time during operations via Windows Performance Counters.
-*   **Comprehensive Logging**: Detailed, timestamped logs for auditing and troubleshooting.
+*   **Comprehensive Logging**: Detailed, timestamped logs for auditing and troubleshooting with automatic truncation for optimal performance.
+
+### 🔄 Updates & Stability
+*   **Automatic Update Checks**: Notifies you when new versions are available on startup.
+*   **Automated Bug Reporting**: Built-in error reporting system helps improve the application by automatically sending crash reports (no personal data collected).
+*   **Global Exception Handling**: Comprehensive error handling ensures the application remains stable even when unexpected issues occur.
 
 ---
 
@@ -63,8 +70,9 @@ The application implements priority-based logic to ensure compatibility:
 *   **Runtime**: [.NET 10.0 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/10.0)
 *   **Bundled Dependencies**:
     *   `chdman.exe` / `chdman_arm64.exe` (MAME Project)
-    *   `7z_x64.dll` / `7z_arm64.dll` (SevenZipSharp library)
     *   `maxcso.exe` (CSO Decompression - x64 only)
+*   **NuGet Dependencies**:
+    *   [SharpCompress](https://github.com/adamhathcock/sharpcompress) (v0.46.2) - Archive extraction support
 
 ---
 
@@ -72,7 +80,7 @@ The application implements priority-based logic to ensure compatibility:
 
 1.  Download the latest binary from the [Releases](https://github.com/drpetersonfernandes/BatchConvertToCHD/releases) page.
 2.  Extract the contents to a permanent folder.
-3.  **Important**: Ensure all `.exe` and `.dll` files (including ARM64 variants) remain in the same directory as `BatchConvertToCHD.exe`.
+3.  **Important**: Ensure all `.exe` files (including ARM64 variants) remain in the same directory as `BatchConvertToCHD.exe`.
 4.  Launch the application.
 
 ---
@@ -112,7 +120,7 @@ This project is licensed under the **GNU General Public License v3.0**. See the 
 **Acknowledgements:**
 *   [MAME Team](https://www.mamedev.org/) for `chdman`.
 *   [unknownbrackets](https://github.com/unknownbrackets/maxcso) for `maxcso`.
-*   [SevenZipSharp](https://github.com/squid-box/SevenZipSharp) for archive handling.
+*   [SharpCompress](https://github.com/adamhathcock/sharpcompress) for archive handling.
 
 ---
 Developed by [Pure Logic Code](https://www.purelogiccode.com)
