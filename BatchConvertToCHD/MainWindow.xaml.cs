@@ -262,7 +262,7 @@ public partial class MainWindow : IDisposable
     private void MainTabControl_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         if (e.Source is not TabControl tabControl) return;
-        if (!StartConversionButton.IsEnabled || !StartVerificationButton.IsEnabled) return;
+        if (!StartConversionButton.IsEnabled && !StartVerificationButton.IsEnabled) return;
 
         Application.Current.Dispatcher.InvokeAsync((Action)(() => LogViewer.Clear()));
         if (tabControl.SelectedItem is TabItem selectedTab)
@@ -293,6 +293,7 @@ public partial class MainWindow : IDisposable
     private void Window_Closing(object sender, CancelEventArgs e)
     {
         _cts.Cancel();
+        Dispose();
     }
 
     private void LogMessage(string message)
@@ -307,7 +308,7 @@ public partial class MainWindow : IDisposable
             {
                 var excessLength = LogViewer.Text.Length - MaxLogLength + 1000; // Keep some buffer
                 var firstNewline = LogViewer.Text.IndexOf('\n', excessLength);
-                if (firstNewline > 0)
+                if (firstNewline >= 0)
                 {
                     LogViewer.Text = string.Concat($"[{DateTime.Now:HH:mm:ss.fff}] --- Log truncated due to size ---{Environment.NewLine}", LogViewer.Text.AsSpan(firstNewline + 1));
                 }
@@ -369,10 +370,11 @@ public partial class MainWindow : IDisposable
                 return;
             }
 
-            // Safely dispose old CTS before creating a new one to avoid ObjectDisposedException
-            var oldCts = _cts;
+            // Cancel any existing operations before creating new CTS
+            // The old CTS will be disposed after the operation completes in finally block
+            _cts.Cancel();
+            _cts.Dispose();
             _cts = new CancellationTokenSource();
-            oldCts.Dispose();
 
             ResetOperationStats();
             SetControlsState(false);
@@ -428,10 +430,11 @@ public partial class MainWindow : IDisposable
             var inputFolder = PathUtils.ValidateAndNormalizePath(VerificationInputFolderTextBox.Text, "CHD Files Folder", ShowError, LogMessage);
             if (inputFolder == null) return;
 
-            // Safely dispose old CTS before creating a new one to avoid ObjectDisposedException
-            var oldCts = _cts;
+            // Cancel any existing operations before creating new CTS
+            // The old CTS will be disposed after the operation completes in finally block
+            _cts.Cancel();
+            _cts.Dispose();
             _cts = new CancellationTokenSource();
-            oldCts.Dispose();
 
             ResetOperationStats();
             SetControlsState(false);
@@ -499,6 +502,7 @@ public partial class MainWindow : IDisposable
         ConversionOutputFolderTextBox.IsEnabled = enabled;
         BrowseConversionOutputButton.IsEnabled = enabled;
         DeleteOriginalsCheckBox.IsEnabled = enabled;
+        ProcessSmallestFirstCheckBox.IsEnabled = enabled;
         StartConversionButton.IsEnabled = enabled;
         ForceCreateCdCheckBox.IsEnabled = enabled;
         ForceCreateDvdCheckBox.IsEnabled = enabled;
@@ -550,7 +554,7 @@ public partial class MainWindow : IDisposable
         LogMessage($"Found {_totalFilesProcessed} files to process.");
         if (_totalFilesProcessed == 0) return;
 
-        ProgressBar.Maximum = _totalFilesProcessed;
+        await Application.Current.Dispatcher.InvokeAsync(() => ProgressBar.Maximum = _totalFilesProcessed);
         var processedCount = 0;
         var cores = Environment.ProcessorCount;
         ResetSpeedCounters();
@@ -582,9 +586,8 @@ public partial class MainWindow : IDisposable
     {
         var originalName = Path.GetFileName(inputFile);
         LogMessage($"Processing: {originalName}");
-        string fileToProcess;
         var ext = Path.GetExtension(inputFile).ToLowerInvariant();
-        var tempDir = string.Empty;
+        var tempDirs = new List<string>();
         var outputChd = string.Empty;
 
         try
@@ -593,9 +596,11 @@ public partial class MainWindow : IDisposable
             var chdBase = Path.GetFileNameWithoutExtension(originalName);
             outputChd = Path.Combine(outputFolder, PathUtils.SanitizeFileName(chdBase) + ".chd");
 
+            string fileToProcess;
             if (ext == ".cso")
             {
-                tempDir = Path.Combine(Path.GetTempPath(), $"{TempDirPrefix}{Guid.NewGuid():N}");
+                var tempDir = Path.Combine(Path.GetTempPath(), $"{TempDirPrefix}{Guid.NewGuid():N}");
+                tempDirs.Add(tempDir);
                 await Task.Run(() => Directory.CreateDirectory(tempDir), token);
                 var tempIso = PathUtils.GetSafeTempFileName(originalName, "iso", tempDir);
 
@@ -606,14 +611,13 @@ public partial class MainWindow : IDisposable
             }
             else if (ArchiveExtensions.Contains(ext))
             {
-                tempDir = Path.Combine(Path.GetTempPath(), $"{TempDirPrefix}{Guid.NewGuid():N}");
+                var tempDir = Path.Combine(Path.GetTempPath(), $"{TempDirPrefix}{Guid.NewGuid():N}");
+                tempDirs.Add(tempDir);
                 var result = await _archiveService.ExtractArchiveAsync(inputFile, tempDir, LogMessage, token);
                 if (!result.Success) return false;
 
-                // Sanitize extracted file
-                var extractedName = Path.GetFileName(result.FilePath);
-                fileToProcess = PathUtils.GetSafeTempFileName(extractedName, Path.GetExtension(result.FilePath).TrimStart('.'), tempDir);
-                await Task.Run(() => File.Copy(result.FilePath, fileToProcess, true), token);
+                // Use the extracted file directly - it's already in tempDir
+                fileToProcess = result.FilePath;
             }
             else
             {
@@ -644,7 +648,8 @@ public partial class MainWindow : IDisposable
 
                 try
                 {
-                    tempDir = Path.Combine(Path.GetTempPath(), $"{TempDirPrefix}{Guid.NewGuid():N}");
+                    var tempDir = Path.Combine(Path.GetTempPath(), $"{TempDirPrefix}{Guid.NewGuid():N}");
+                    tempDirs.Add(tempDir);
                     await Task.Run(() => Directory.CreateDirectory(tempDir), token);
 
                     var tempFile = PathUtils.GetSafeTempFileName(originalName, ext.TrimStart('.'), tempDir);
@@ -692,8 +697,11 @@ public partial class MainWindow : IDisposable
         }
         finally
         {
-            if (!string.IsNullOrEmpty(tempDir) && Directory.Exists(tempDir))
-                await TryDeleteDirectoryAsync(tempDir, "temp dir", CancellationToken.None);
+            foreach (var tempDir in tempDirs)
+            {
+                if (!string.IsNullOrEmpty(tempDir) && Directory.Exists(tempDir))
+                    await TryDeleteDirectoryAsync(tempDir, "temp dir", CancellationToken.None);
+            }
         }
     }
 
@@ -708,7 +716,7 @@ public partial class MainWindow : IDisposable
         if (moveSuccess) Directory.CreateDirectory(successFolder);
         if (moveFailed) Directory.CreateDirectory(failedFolder);
 
-        ProgressBar.Maximum = _totalFilesProcessed;
+        await Application.Current.Dispatcher.InvokeAsync(() => ProgressBar.Maximum = _totalFilesProcessed);
         var processed = 0;
         ResetSpeedCounters();
 
@@ -849,7 +857,7 @@ public partial class MainWindow : IDisposable
         finally
         {
             ctsSpeed.Cancel();
-            await Task.WhenAny(speedMonitoringTask, Task.Delay(500, token));
+            await Task.WhenAny(speedMonitoringTask, Task.Delay(500, CancellationToken.None));
         }
 
         return process.ExitCode == 0 && !token.IsCancellationRequested;
@@ -957,7 +965,7 @@ public partial class MainWindow : IDisposable
         finally
         {
             ctsSpeed.Cancel();
-            await Task.WhenAny(readSpeedTask, Task.Delay(500, token));
+            await Task.WhenAny(readSpeedTask, Task.Delay(500, CancellationToken.None));
         }
 
         return process.ExitCode == 0;
@@ -1177,6 +1185,7 @@ public partial class MainWindow : IDisposable
         _cts.Dispose();
         _writeBytesCounter?.Dispose();
         _readBytesCounter?.Dispose();
+        _archiveService.Dispose();
         _operationTimer.Stop();
         GC.SuppressFinalize(this);
     }

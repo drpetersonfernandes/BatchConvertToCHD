@@ -33,7 +33,7 @@ public class ArchiveService : IDisposable
         }
 
         var csoFileName = Path.GetFileName(originalCsoPath);
-        var process = new Process();
+        using var process = new Process();
 
         try
         {
@@ -64,30 +64,7 @@ public class ArchiveService : IDisposable
             process.BeginOutputReadLine();
             process.BeginErrorReadLine();
 
-            while (!process.HasExited)
-            {
-                if (token.IsCancellationRequested)
-                {
-                    try
-                    {
-                        if (!process.HasExited) process.Kill(true);
-                    }
-                    catch
-                    {
-                        /* ignore */
-                    }
-
-                    token.ThrowIfCancellationRequested();
-                }
-
-                await Task.Delay(AppConfig.WriteSpeedUpdateIntervalMs, token);
-                if (process.HasExited || token.IsCancellationRequested) break;
-
-                // Speed monitoring is handled by the caller (MainWindow)
-                // Call callback to maintain compatibility but with 0 value
-                onSpeedUpdate?.Invoke(0);
-            }
-
+            // Wait for process to exit - WaitForExitAsync is efficient and handles cancellation
             await process.WaitForExitAsync(token);
 
             if (process.ExitCode != 0 || !File.Exists(tempOutputIsoPath))
@@ -110,10 +87,6 @@ public class ArchiveService : IDisposable
             }
 
             throw;
-        }
-        finally
-        {
-            process.Dispose();
         }
     }
 

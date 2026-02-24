@@ -122,6 +122,11 @@ public partial class App : IDisposable
             SharedBugReportService = null;
         }
 
+        // Unregister static event handlers to prevent them from firing after disposal
+        AppDomain.CurrentDomain.UnhandledException -= CurrentDomain_UnhandledException;
+        DispatcherUnhandledException -= App_DispatcherUnhandledException;
+        TaskScheduler.UnobservedTaskException -= TaskScheduler_UnobservedTaskException;
+
         // Suppress finalization
         GC.SuppressFinalize(this);
     }

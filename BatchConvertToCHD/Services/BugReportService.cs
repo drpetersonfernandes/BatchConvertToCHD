@@ -11,12 +11,20 @@ namespace BatchConvertToCHD.Services;
 /// <summary>
 /// Service responsible for sending bug reports to the BugReport API
 /// </summary>
-public class BugReportService(string apiUrl, string apiKey, string applicationName) : IDisposable
+public class BugReportService : IDisposable
 {
     private readonly HttpClient _httpClient = new();
-    private readonly string _apiUrl = apiUrl;
-    private readonly string _apiKey = apiKey;
-    private readonly string _applicationName = applicationName;
+    private readonly string _apiUrl;
+    private readonly string _apiKey;
+    private readonly string _applicationName;
+
+    public BugReportService(string apiUrl, string apiKey, string applicationName)
+    {
+        _apiUrl = apiUrl;
+        _apiKey = apiKey;
+        _applicationName = applicationName;
+        _httpClient.DefaultRequestHeaders.Add("X-API-KEY", _apiKey);
+    }
 
     /// <summary>
     /// Sends a bug report to the API
@@ -31,9 +39,6 @@ public class BugReportService(string apiUrl, string apiKey, string applicationNa
 
         try
         {
-            _httpClient.DefaultRequestHeaders.Clear();
-            _httpClient.DefaultRequestHeaders.Add("X-API-KEY", _apiKey);
-
             // Create the request payload
             var content = JsonContent.Create(new
             {

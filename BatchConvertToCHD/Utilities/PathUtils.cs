@@ -6,11 +6,20 @@ namespace BatchConvertToCHD.Utilities;
 
 public static class PathUtils
 {
+    // Pre-compiled regex for invalid filename characters
+    // Pattern: ([{invalidChars}]*\.+$)|([{invalidChars}]+)
+    private static readonly Regex InvalidFileNameRegex = new(
+        string.Format(
+            CultureInfo.InvariantCulture,
+            @"([{0}]*\.+$)|([{0}]+)",
+            Regex.Escape(new string(Path.GetInvalidFileNameChars()))
+        ),
+        RegexOptions.Compiled
+    );
+
     public static string SanitizeFileName(string name)
     {
-        var invalidChars = Regex.Escape(new string(Path.GetInvalidFileNameChars()));
-        var invalidRegStr = string.Format(CultureInfo.InvariantCulture, @"([{0}]*\.+$)|([{0}]+)", invalidChars);
-        var sanitizedName = Regex.Replace(name, invalidRegStr, "_");
+        var sanitizedName = InvalidFileNameRegex.Replace(name, "_");
 
         // Further replace common problematic characters
         sanitizedName = sanitizedName.Replace("…", "_ellipsis_")
@@ -20,7 +29,8 @@ public static class PathUtils
 
     public static string GetSafeTempFileName(string originalFileNameWithExtension, string desiredExtensionWithoutDot, string tempDirectory)
     {
-        var safeBaseName = Guid.NewGuid().ToString("N");
+        var sanitizedName = SanitizeFileName(Path.GetFileNameWithoutExtension(originalFileNameWithExtension));
+        var safeBaseName = string.IsNullOrEmpty(sanitizedName) ? Guid.NewGuid().ToString("N") : sanitizedName;
         return Path.Combine(tempDirectory, safeBaseName + "." + desiredExtensionWithoutDot);
     }
 

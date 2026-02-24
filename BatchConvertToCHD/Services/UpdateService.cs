@@ -13,15 +13,19 @@ public class UpdateService(string applicationName)
     private const string GitHubApiLatestReleaseUrl = "https://api.github.com/repos/drpetersonfernandes/BatchConvertToCHD/releases/latest";
     private static readonly JsonSerializerOptions JsonSerializerOptions = new() { PropertyNameCaseInsensitive = true };
 
+    // HttpClient should be reused across the application lifetime to avoid socket exhaustion
+    // See: https://docs.microsoft.com/en-us/dotnet/fundamentals/networking/http/httpclient-guidelines
+    private static readonly HttpClient HttpClient = new();
+
     public async Task CheckForNewVersionAsync(Action<string> onLog, Action<string> onStatusUpdate, Func<string, Exception?, Task> onBugReport)
     {
         try
         {
-            using var httpClient = new HttpClient();
-            httpClient.DefaultRequestHeaders.Add("User-Agent", _applicationName);
+            HttpClient.DefaultRequestHeaders.UserAgent.Clear();
+            HttpClient.DefaultRequestHeaders.Add("User-Agent", _applicationName);
 
             onLog("Checking for updates on GitHub...");
-            var response = await httpClient.GetStringAsync(GitHubApiLatestReleaseUrl);
+            var response = await HttpClient.GetStringAsync(GitHubApiLatestReleaseUrl);
 
             var latestRelease = JsonSerializer.Deserialize<GitHubRelease>(response, JsonSerializerOptions);
             if (latestRelease == null || latestRelease.Draft || latestRelease.Prerelease || string.IsNullOrWhiteSpace(latestRelease.TagName))
@@ -39,10 +43,14 @@ public class UpdateService(string applicationName)
                 return;
             }
 
-            onLog($"Current version: {currentVersion}");
-            onLog($"Latest version: {remoteVersion}");
+            // Normalize versions to ensure consistent comparison (handle 2-part vs 4-part versions)
+            var normalizedCurrent = new Version(currentVersion.Major, currentVersion.Minor, currentVersion.Build, currentVersion.Revision);
+            var normalizedRemote = new Version(remoteVersion.Major, remoteVersion.Minor, remoteVersion.Build, remoteVersion.Revision);
 
-            if (remoteVersion > currentVersion)
+            onLog($"Current version: {normalizedCurrent}");
+            onLog($"Latest version: {normalizedRemote}");
+
+            if (normalizedRemote > normalizedCurrent)
             {
                 await Application.Current.Dispatcher.InvokeAsync(() =>
                 {
