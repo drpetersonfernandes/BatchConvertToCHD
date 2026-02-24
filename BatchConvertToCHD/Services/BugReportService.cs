@@ -115,7 +115,6 @@ public class BugReportService(string apiUrl, string apiKey, string applicationNa
             sb.AppendLine(CultureInfo.InvariantCulture, $"User: {Environment.UserName}");
             sb.AppendLine(CultureInfo.InvariantCulture, $"CHDMAN Available: {File.Exists(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "chdman.exe"))}");
             sb.AppendLine(CultureInfo.InvariantCulture, $"MAXCSO Available: {File.Exists(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "maxcso.exe"))}");
-            sb.AppendLine(CultureInfo.InvariantCulture, $"7-Zip Available: {App.IsSevenZipAvailable}");
             return sb.ToString();
         }
         catch (Exception ex)

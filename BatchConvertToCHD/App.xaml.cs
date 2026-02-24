@@ -1,8 +1,6 @@
-using System.IO;
 using System.Windows;
 using System.Windows.Threading;
 using BatchConvertToCHD.Services;
-using SevenZip;
 
 namespace BatchConvertToCHD;
 
@@ -15,19 +13,11 @@ public partial class App : IDisposable
     /// </summary>
     public static BugReportService? SharedBugReportService { get; private set; }
 
-    /// <summary>
-    /// Indicates whether the 7-Zip library (7z_x64.dll) is available.
-    /// </summary>
-    public static bool IsSevenZipAvailable { get; private set; }
-
     public App()
     {
         // Initialize the bug report service first to ensure it's available for reporting initialization errors
         SharedBugReportService = new BugReportService(AppConfig.BugReportApiUrl, AppConfig.BugReportApiKey, AppConfig.ApplicationName);
         _bugReportService = SharedBugReportService;
-
-        // Initialize SevenZipSharp library path first to determine its availability
-        InitializeSevenZipSharp();
 
         // Set up global exception handling
         AppDomain.CurrentDomain.UnhandledException += CurrentDomain_UnhandledException;
@@ -115,46 +105,6 @@ public partial class App : IDisposable
         {
             // Silently ignore any errors in the reporting process
         }
-    }
-
-    private void InitializeSevenZipSharp()
-    {
-        // Run on background thread to avoid blocking startup
-        Task.Run(() =>
-        {
-            try
-            {
-                var dllName = AppConfig.SevenZipDllName;
-                var dllPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, dllName);
-
-                if (File.Exists(dllPath))
-                {
-                    SevenZipBase.SetLibraryPath(dllPath);
-                    IsSevenZipAvailable = true;
-                }
-                else
-                {
-                    // Notify developer
-                    var errorMessage = $"Could not find the required 7-Zip library: {dllName} in {AppDomain.CurrentDomain.BaseDirectory}";
-                    if (_bugReportService != null)
-                    {
-                        _ = _bugReportService.SendBugReportAsync(errorMessage);
-                    }
-
-                    IsSevenZipAvailable = false;
-                }
-            }
-            catch (Exception ex)
-            {
-                // Notify developer
-                if (_bugReportService != null)
-                {
-                    _ = _bugReportService.SendBugReportAsync("Error initializing 7-Zip library", ex);
-                }
-
-                IsSevenZipAvailable = false;
-            }
-        });
     }
 
     /// <inheritdoc />

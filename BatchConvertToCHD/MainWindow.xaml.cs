@@ -249,7 +249,6 @@ public partial class MainWindow : IDisposable
         LogMessage($"Welcome to {AppConfig.ApplicationName}. (Conversion Mode)");
         if (!_isChdmanAvailable) LogMessage("WARNING: chdman.exe not found!");
         if (!_isMaxCsoAvailable) LogMessage("WARNING: maxcso.exe not found.");
-        if (!App.IsSevenZipAvailable) LogMessage("WARNING: 7z_x64.dll not found.");
         LogMessage("--- Ready for Conversion ---");
     }
 

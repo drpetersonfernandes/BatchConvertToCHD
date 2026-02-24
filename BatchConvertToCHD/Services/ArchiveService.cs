@@ -1,7 +1,9 @@
 using System.Diagnostics;
 using System.IO;
 using System.Text;
-using SevenZip;
+using SharpCompress.Archives;
+using SharpCompress.Archives.SevenZip;
+using SharpCompress.Archives.Rar;
 
 namespace BatchConvertToCHD.Services;
 
@@ -136,48 +138,10 @@ public class ArchiveService : IDisposable
                     await Task.Run(() => System.IO.Compression.ZipFile.ExtractToDirectory(originalArchivePath, tempDirectoryRoot, true), token);
                     break;
                 case ".7z":
+                    await Task.Run(() => ExtractSevenZipArchive(originalArchivePath, tempDirectoryRoot, onLog), token);
+                    break;
                 case ".rar":
-                    var directExtractionSuccess = false;
-                    try
-                    {
-                        await Task.Run(() =>
-                        {
-                            using var extractor = new SevenZipExtractor(originalArchivePath);
-                            extractor.ExtractArchive(tempDirectoryRoot);
-                        }, token);
-                        directExtractionSuccess = true;
-                    }
-                    catch (Exception ex)
-                    {
-                        onLog($"Direct extraction failed ({ex.Message}). Attempting fallback with local copy...");
-                    }
-
-                    if (!directExtractionSuccess)
-                    {
-                        // Sanitize path for 7ZipSharp
-                        var sanitizedArchivePath = Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}{extension}");
-                        try
-                        {
-                            File.Copy(originalArchivePath, sanitizedArchivePath, true);
-                            await Task.Run(() =>
-                            {
-                                using var extractor = new SevenZipExtractor(sanitizedArchivePath);
-                                extractor.ExtractArchive(tempDirectoryRoot);
-                            }, token);
-                        }
-                        finally
-                        {
-                            try
-                            {
-                                File.Delete(sanitizedArchivePath);
-                            }
-                            catch
-                            {
-                                /* ignore */
-                            }
-                        }
-                    }
-
+                    await Task.Run(() => ExtractRarArchive(originalArchivePath, tempDirectoryRoot, onLog), token);
                     break;
                 default:
                     return (false, string.Empty, tempDirectoryRoot, $"Unsupported archive type: {extension}");
@@ -196,6 +160,140 @@ public class ArchiveService : IDisposable
         catch (Exception ex)
         {
             return (false, string.Empty, tempDirectoryRoot, $"Error extracting archive: {ex.Message}");
+        }
+    }
+
+    private static void ExtractSevenZipArchive(string archivePath, string outputDirectory, Action<string> onLog)
+    {
+        var directExtractionSuccess = false;
+        try
+        {
+            using var stream = File.OpenRead(archivePath);
+            using var archive = SevenZipArchive.OpenArchive(stream);
+            foreach (var entry in archive.Entries.Where(static e => !e.IsDirectory))
+            {
+                if (entry.Key != null)
+                {
+                    var destinationPath = Path.Combine(outputDirectory, entry.Key);
+                    var directory = Path.GetDirectoryName(destinationPath);
+                    if (!string.IsNullOrEmpty(directory))
+                    {
+                        Directory.CreateDirectory(directory);
+                    }
+
+                    entry.WriteToFile(destinationPath);
+                }
+            }
+
+            directExtractionSuccess = true;
+        }
+        catch (Exception ex)
+        {
+            onLog($"Direct extraction failed ({ex.Message}). Attempting fallback with local copy...");
+        }
+
+        if (!directExtractionSuccess)
+        {
+            // Sanitize path for extraction
+            var sanitizedArchivePath = Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}.7z");
+            try
+            {
+                File.Copy(archivePath, sanitizedArchivePath, true);
+                using var stream = File.OpenRead(sanitizedArchivePath);
+                using var archive = SevenZipArchive.OpenArchive(stream);
+                foreach (var entry in archive.Entries.Where(static e => !e.IsDirectory))
+                {
+                    if (entry.Key != null)
+                    {
+                        var destinationPath = Path.Combine(outputDirectory, entry.Key);
+                        var directory = Path.GetDirectoryName(destinationPath);
+                        if (!string.IsNullOrEmpty(directory))
+                        {
+                            Directory.CreateDirectory(directory);
+                        }
+
+                        entry.WriteToFile(destinationPath);
+                    }
+                }
+            }
+            finally
+            {
+                try
+                {
+                    File.Delete(sanitizedArchivePath);
+                }
+                catch
+                {
+                    /* ignore */
+                }
+            }
+        }
+    }
+
+    private static void ExtractRarArchive(string archivePath, string outputDirectory, Action<string> onLog)
+    {
+        var directExtractionSuccess = false;
+        try
+        {
+            using var stream = File.OpenRead(archivePath);
+            using var archive = RarArchive.OpenArchive(stream);
+            foreach (var entry in archive.Entries.Where(static e => !e.IsDirectory))
+            {
+                if (entry.Key != null)
+                {
+                    var destinationPath = Path.Combine(outputDirectory, entry.Key);
+                    var directory = Path.GetDirectoryName(destinationPath);
+                    if (!string.IsNullOrEmpty(directory))
+                    {
+                        Directory.CreateDirectory(directory);
+                    }
+
+                    entry.WriteToFile(destinationPath);
+                }
+            }
+
+            directExtractionSuccess = true;
+        }
+        catch (Exception ex)
+        {
+            onLog($"Direct extraction failed ({ex.Message}). Attempting fallback with local copy...");
+        }
+
+        if (!directExtractionSuccess)
+        {
+            // Sanitize path for extraction
+            var sanitizedArchivePath = Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}.rar");
+            try
+            {
+                File.Copy(archivePath, sanitizedArchivePath, true);
+                using var stream = File.OpenRead(sanitizedArchivePath);
+                using var archive = RarArchive.OpenArchive(stream);
+                foreach (var entry in archive.Entries.Where(static e => !e.IsDirectory))
+                {
+                    if (entry.Key != null)
+                    {
+                        var destinationPath = Path.Combine(outputDirectory, entry.Key);
+                        var directory = Path.GetDirectoryName(destinationPath);
+                        if (!string.IsNullOrEmpty(directory))
+                        {
+                            Directory.CreateDirectory(directory);
+                        }
+
+                        entry.WriteToFile(destinationPath);
+                    }
+                }
+            }
+            finally
+            {
+                try
+                {
+                    File.Delete(sanitizedArchivePath);
+                }
+                catch
+                {
+                    /* ignore */
+                }
+            }
         }
     }
 
