@@ -44,8 +44,17 @@ public class UpdateService(string applicationName)
             }
 
             // Normalize versions to ensure consistent comparison (handle 2-part vs 4-part versions)
-            var normalizedCurrent = new Version(currentVersion.Major, currentVersion.Minor, currentVersion.Build, currentVersion.Revision);
-            var normalizedRemote = new Version(remoteVersion.Major, remoteVersion.Minor, remoteVersion.Build, remoteVersion.Revision);
+            // If Build or Revision is -1 (undefined), default to 0 to avoid ArgumentOutOfRangeException
+            var normalizedCurrent = new Version(
+                currentVersion.Major,
+                currentVersion.Minor,
+                currentVersion.Build < 0 ? 0 : currentVersion.Build,
+                currentVersion.Revision < 0 ? 0 : currentVersion.Revision);
+            var normalizedRemote = new Version(
+                remoteVersion.Major,
+                remoteVersion.Minor,
+                remoteVersion.Build < 0 ? 0 : remoteVersion.Build,
+                remoteVersion.Revision < 0 ? 0 : remoteVersion.Revision);
 
             onLog($"Current version: {normalizedCurrent}");
             onLog($"Latest version: {normalizedRemote}");
