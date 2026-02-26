@@ -19,8 +19,10 @@ public partial class MainWindow : IDisposable
     private readonly string _maxCsoPath;
     private readonly bool _isMaxCsoAvailable;
     private readonly bool _isChdmanAvailable;
+    private readonly string _psxPackagerPath;
+    private readonly bool _isPsxPackagerAvailable;
 
-    private static readonly string[] AllSupportedInputExtensionsForConversion = [".cue", ".iso", ".img", ".cdi", ".gdi", ".toc", ".raw", ".zip", ".7z", ".rar", ".cso"];
+    private static readonly string[] AllSupportedInputExtensionsForConversion = [".cue", ".iso", ".img", ".cdi", ".gdi", ".toc", ".raw", ".zip", ".7z", ".rar", ".cso", ".pbp"];
     private static readonly string[] ArchiveExtensions = [".zip", ".7z", ".rar"];
 
     // Statistics
@@ -41,6 +43,14 @@ public partial class MainWindow : IDisposable
     private PerformanceCounter? _writeBytesCounter;
     private PerformanceCounter? _readBytesCounter;
 
+    // Result class for PBP extraction
+    private class PbpExtractionResult
+    {
+        public bool Success { get; set; }
+        public string? CueFilePath { get; set; }
+        public string? OutputFolder { get; set; }
+    }
+
     public MainWindow()
     {
         InitializeComponent();
@@ -52,6 +62,9 @@ public partial class MainWindow : IDisposable
 
         _maxCsoPath = Path.Combine(appDirectory, "maxcso.exe");
         _isMaxCsoAvailable = File.Exists(_maxCsoPath) && !AppConfig.IsArm64;
+
+        _psxPackagerPath = Path.Combine(appDirectory, AppConfig.PsxPackagerExeName);
+        _isPsxPackagerAvailable = File.Exists(_psxPackagerPath);
 
         // Initialize Services
         _updateService = new UpdateService(AppConfig.ApplicationName);
@@ -167,6 +180,8 @@ public partial class MainWindow : IDisposable
             StatusBarChdman.Foreground = _isChdmanAvailable ? new SolidColorBrush(Colors.Green) : new SolidColorBrush(Colors.Red);
             StatusBarMaxcso.Text = " MAXCSO ";
             StatusBarMaxcso.Foreground = _isMaxCsoAvailable ? new SolidColorBrush(Colors.Green) : new SolidColorBrush(Colors.Orange);
+            StatusBarPsxPackager.Text = " PSXPACKAGER ";
+            StatusBarPsxPackager.Foreground = _isPsxPackagerAvailable ? new SolidColorBrush(Colors.Green) : new SolidColorBrush(Colors.Orange);
             StatusBarMessage.Text = "Ready";
             SpeedValue.Text = "0.0 MB/s";
         });
@@ -249,6 +264,7 @@ public partial class MainWindow : IDisposable
         LogMessage($"Welcome to {AppConfig.ApplicationName}. (Conversion Mode)");
         if (!_isChdmanAvailable) LogMessage("WARNING: chdman.exe not found!");
         if (!_isMaxCsoAvailable) LogMessage("WARNING: maxcso.exe not found.");
+        if (!_isPsxPackagerAvailable) LogMessage("WARNING: psxpackager.exe not found. PBP conversion unavailable.");
         LogMessage("--- Ready for Conversion ---");
     }
 
@@ -619,6 +635,28 @@ public partial class MainWindow : IDisposable
                 // Use the extracted file directly - it's already in tempDir
                 fileToProcess = result.FilePath;
             }
+            else if (ext == ".pbp")
+            {
+                if (!_isPsxPackagerAvailable)
+                {
+                    LogMessage($"ERROR: Cannot process {originalName}. psxpackager.exe not found.");
+                    return false;
+                }
+
+                var tempDir = Path.Combine(Path.GetTempPath(), $"{TempDirPrefix}{Guid.NewGuid():N}");
+                tempDirs.Add(tempDir);
+                await Task.Run(() => Directory.CreateDirectory(tempDir), token);
+
+                var result = await ExtractPbpToCueBinAsync(_psxPackagerPath, inputFile, tempDir, token);
+                if (!result.Success || string.IsNullOrEmpty(result.CueFilePath))
+                {
+                    LogMessage($"ERROR: Failed to extract PBP file: {originalName}");
+                    return false;
+                }
+
+                // Use the extracted CUE file for chdman conversion
+                fileToProcess = result.CueFilePath;
+            }
             else
             {
                 // Try processing directly from source first to avoid unnecessary I/O
@@ -861,6 +899,87 @@ public partial class MainWindow : IDisposable
         }
 
         return process.ExitCode == 0 && !token.IsCancellationRequested;
+    }
+
+    private async Task<PbpExtractionResult> ExtractPbpToCueBinAsync(string psxPackagerPath, string inputFile, string outputFolder, CancellationToken token)
+    {
+        using var process = new Process();
+        var args = $"-i \"{inputFile}\" -o \"{outputFolder}\" -x";
+        LogMessage($"PSXPACKAGER: Extracting {Path.GetFileName(inputFile)}");
+
+        process.StartInfo = new ProcessStartInfo
+        {
+            FileName = psxPackagerPath,
+            Arguments = args,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+            CreateNoWindow = true
+        };
+
+        process.OutputDataReceived += (_, a) =>
+        {
+            if (!string.IsNullOrEmpty(a.Data))
+            {
+                LogMessage($"[PSXPACKAGER] {a.Data}");
+            }
+        };
+
+        process.ErrorDataReceived += (_, a) =>
+        {
+            if (!string.IsNullOrEmpty(a.Data))
+            {
+                LogMessage($"[PSXPACKAGER ERROR] {a.Data}");
+            }
+        };
+
+        using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(token);
+        timeoutCts.CancelAfter(TimeSpan.FromHours(AppConfig.MaxConversionTimeoutHours));
+
+        process.Start();
+        process.BeginOutputReadLine();
+        process.BeginErrorReadLine();
+
+        try
+        {
+            await process.WaitForExitAsync(timeoutCts.Token);
+            if (token.IsCancellationRequested && !process.HasExited)
+            {
+                process.Kill(true);
+                return new PbpExtractionResult { Success = false };
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            if (!process.HasExited) process.Kill(true);
+            return new PbpExtractionResult { Success = false };
+        }
+
+        if (process.ExitCode != 0)
+        {
+            LogMessage($"PSXPACKAGER: Extraction failed with exit code {process.ExitCode}");
+            return new PbpExtractionResult { Success = false };
+        }
+
+        // Find the generated CUE file in the output folder
+        var cueFiles = Directory.GetFiles(outputFolder, "*.cue");
+        if (cueFiles.Length == 0)
+        {
+            LogMessage("PSXPACKAGER: No CUE file found after extraction");
+            return new PbpExtractionResult { Success = false };
+        }
+
+        // If multiple CUE files are found (multi-disc), use the first one
+        // chdman will handle the referenced BIN files
+        var cueFile = cueFiles[0];
+        LogMessage($"PSXPACKAGER: Extracted to {Path.GetFileName(cueFile)}");
+
+        return new PbpExtractionResult
+        {
+            Success = true,
+            CueFilePath = cueFile,
+            OutputFolder = outputFolder
+        };
     }
 
     private void UpdateWriteSpeedFromPerformanceCounter()

@@ -22,6 +22,7 @@
 *   **Smart Command Selection**: Automatically detects the optimal `chdman` command (`createcd`, `createdvd`, `createhd`, or `createraw`) based on file headers and extensions.
 *   **Archive Integration**: Transparently handles `.zip`, `.7z`, and `.rar` archives, extracting and processing contents automatically.
 *   **CSO Decompression**: Built-in support for `.cso` (Compressed ISO) files via `maxcso` integration (available on x64).
+*   **PBP Extraction**: Convert PlayStation Portable `.pbp` files to CHD format via `psxpackager` integration (extracts to CUE/BIN then converts).
 
 ### ✅ Integrity & Verification
 *   **Batch Verification**: Validate the checksums and structural integrity of existing CHD files.
@@ -41,13 +42,13 @@
 
 ## 📂 Supported Formats
 
-| Category | Formats |
-| :--- | :--- |
-| **Standard Images** | `.iso`, `.cue` (+`.bin`), `.img`, `.raw`, `.toc` |
-| **Console Specific** | `.cdi` (Dreamcast/Saturn), `.gdi` (Dreamcast) |
-| **Compressed** | `.cso` (Compressed ISO) |
-| **Archives** | `.zip`, `.7z`, `.rar` |
-| **Output** | `.chd` (Compressed Hunks of Data) |
+| Category             | Formats                                                                      |
+|:---------------------|:-----------------------------------------------------------------------------|
+| **Standard Images**  | `.iso`, `.cue` (+`.bin`), `.img`, `.raw`, `.toc`                             |
+| **Console Specific** | `.cdi` (Dreamcast/Saturn), `.gdi` (Dreamcast), `.pbp` (PlayStation Portable) |
+| **Compressed**       | `.cso` (Compressed ISO)                                                      |
+| **Archives**         | `.zip`, `.7z`, `.rar`                                                        |
+| **Output**           | `.chd` (Compressed Hunks of Data)                                            |
 
 ---
 
@@ -59,8 +60,9 @@ The application implements priority-based logic to ensure compatibility:
 2.  **Hard Disk Images (`.img`)**: Defaults to `createhd`.
 3.  **Raw Data (`.raw`)**: Defaults to `createraw`.
 4.  **Multi-track/CD Images (`.cue`, `.cdi`, `.gdi`, `.toc`)**: Defaults to `createcd`.
+5.  **PlayStation PBP (`.pbp`)**: Extracts to CUE/BIN using `psxpackager`, then converts to CHD using `createcd`.
 
-*Note: Users can manually override these settings via the UI to force specific modes.*
+*Note: Users can manually override these settings via the UI to force specific modes (except for PBP which always extracts first).*
 
 ---
 
@@ -71,6 +73,7 @@ The application implements priority-based logic to ensure compatibility:
 *   **Bundled Dependencies**:
     *   `chdman.exe` / `chdman_arm64.exe` (MAME Project)
     *   `maxcso.exe` (CSO Decompression - x64 only)
+    *   `psxpackager.exe` (PBP Extraction)
 *   **NuGet Dependencies**:
     *   [SharpCompress](https://github.com/adamhathcock/sharpcompress) (v0.46.2) - Archive extraction support
 
@@ -120,6 +123,7 @@ This project is licensed under the **GNU General Public License v3.0**. See the 
 **Acknowledgements:**
 *   [MAME Team](https://www.mamedev.org/) for `chdman`.
 *   [unknownbrackets](https://github.com/unknownbrackets/maxcso) for `maxcso`.
+*   [PSXPackager](https://github.com/rupert-avery/psxpackager) for PlayStation PBP extraction support.
 *   [SharpCompress](https://github.com/adamhathcock/sharpcompress) for archive handling.
 
 ---

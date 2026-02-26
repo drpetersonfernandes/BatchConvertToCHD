@@ -196,6 +196,8 @@
                     <TextBlock x:Name="StatusBarChdman" Text=" CHDMAN " Foreground="Green" />
                     <TextBlock Text=" | " />
                     <TextBlock x:Name="StatusBarMaxcso" Text=" MAXCSO " Foreground="Green" />
+                    <TextBlock Text=" | " />
+                    <TextBlock x:Name="StatusBarPsxPackager" Text=" PSXPACKAGER " Foreground="Green" />
                 </StackPanel>
             </StatusBarItem>
         </StatusBar>
