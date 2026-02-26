@@ -1,3 +1,4 @@
+using System.IO;
 using System.Windows;
 using System.Windows.Threading;
 using BatchConvertToCHD.Services;
@@ -30,6 +31,9 @@ public partial class App : IDisposable
 
     protected override void OnStartup(StartupEventArgs e)
     {
+        // Delete old 7z DLL files if they exist
+        DeleteOldDllFiles();
+
         base.OnStartup(e);
 
         // Preload assemblies on background thread to improve responsiveness
@@ -55,6 +59,28 @@ public partial class App : IDisposable
                 // ignored
             }
         });
+    }
+
+    private static void DeleteOldDllFiles()
+    {
+        try
+        {
+            string[] dllFilesToDelete = ["7z_x64.dll", "7z_arm64.dll"];
+            string baseDirectory = AppDomain.CurrentDomain.BaseDirectory;
+
+            foreach (string dllFile in dllFilesToDelete)
+            {
+                string filePath = Path.Combine(baseDirectory, dllFile);
+                if (File.Exists(filePath))
+                {
+                    File.Delete(filePath);
+                }
+            }
+        }
+        catch
+        {
+            // Silently ignore errors when deleting old DLL files
+        }
     }
 
     private void App_Exit(object sender, ExitEventArgs e)
