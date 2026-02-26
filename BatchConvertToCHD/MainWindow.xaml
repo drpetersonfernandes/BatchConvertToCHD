@@ -59,8 +59,7 @@
                         <Button x:Name="BrowseConversionOutputButton" Grid.Column="2" Content="Browse" Click="BrowseConversionOutputButton_Click" Padding="10,5"/>
                     </Grid>
                     
-                    <CheckBox x:Name="DeleteOriginalsCheckBox" Content="Delete original files after successful conversion" Margin="0,5,0,5" HorizontalAlignment="Left"/>
-                    <CheckBox x:Name="ProcessSmallestFirstCheckBox" Content="Process smaller files first" Margin="0,5,0,10" HorizontalAlignment="Left" IsChecked="False"/>
+                    <CheckBox x:Name="DeleteOriginalsCheckBox" Content="Delete original files after successful conversion" Margin="0,5,0,10" HorizontalAlignment="Left"/>
                     
                     <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
                         <CheckBox x:Name="ForceCreateCdCheckBox" Content="Force createcd (CD)" Margin="0,0,20,0" Checked="ForceCreateCdCheckBox_Checked"/>

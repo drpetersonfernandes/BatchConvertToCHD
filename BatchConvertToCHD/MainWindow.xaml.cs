@@ -399,7 +399,6 @@ public partial class MainWindow : IDisposable
             ResetSpeedCounters();
 
             var deleteFiles = DeleteOriginalsCheckBox.IsChecked ?? false;
-            var smallestFirst = ProcessSmallestFirstCheckBox.IsChecked ?? false;
             var forceCd = ForceCreateCdCheckBox.IsChecked ?? false;
             var forceDvd = ForceCreateDvdCheckBox.IsChecked ?? false;
 
@@ -408,7 +407,7 @@ public partial class MainWindow : IDisposable
             try
             {
                 await PerformBatchConversionAsync(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, AppConfig.ChdmanExeName),
-                    inputFolder, outputFolder, deleteFiles, smallestFirst, forceCd, forceDvd, _cts.Token);
+                    inputFolder, outputFolder, deleteFiles, forceCd, forceDvd, _cts.Token);
             }
             catch (OperationCanceledException)
             {
@@ -518,7 +517,6 @@ public partial class MainWindow : IDisposable
         ConversionOutputFolderTextBox.IsEnabled = enabled;
         BrowseConversionOutputButton.IsEnabled = enabled;
         DeleteOriginalsCheckBox.IsEnabled = enabled;
-        ProcessSmallestFirstCheckBox.IsEnabled = enabled;
         StartConversionButton.IsEnabled = enabled;
         ForceCreateCdCheckBox.IsEnabled = enabled;
         ForceCreateDvdCheckBox.IsEnabled = enabled;
@@ -553,16 +551,14 @@ public partial class MainWindow : IDisposable
         return dialog.ShowDialog() == true ? dialog.FolderName : null;
     }
 
-    private async Task PerformBatchConversionAsync(string chdmanPath, string inputFolder, string outputFolder, bool deleteFiles, bool processSmallestFirst, bool forceCd, bool forceDvd, CancellationToken token)
+    private async Task PerformBatchConversionAsync(string chdmanPath, string inputFolder, string outputFolder, bool deleteFiles, bool forceCd, bool forceDvd, CancellationToken token)
     {
         var filesToConvert = await Task.Run(() =>
         {
             var files = Directory.GetFiles(inputFolder, "*.*", SearchOption.TopDirectoryOnly)
                 .Where(static file => AllSupportedInputExtensionsForConversion.Contains(Path.GetExtension(file).ToLowerInvariant()))
-                .ToList();
-            return processSmallestFirst
-                ? files.OrderBy(static f => new FileInfo(f).Length).ToArray()
-                : files.ToArray();
+                .ToArray();
+            return files;
         }, token);
 
         _totalFilesProcessed = filesToConvert.Length;
