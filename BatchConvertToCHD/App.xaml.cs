@@ -66,11 +66,11 @@ public partial class App : IDisposable
         try
         {
             string[] dllFilesToDelete = ["7z_x64.dll", "7z_arm64.dll"];
-            string baseDirectory = AppDomain.CurrentDomain.BaseDirectory;
+            var baseDirectory = AppDomain.CurrentDomain.BaseDirectory;
 
-            foreach (string dllFile in dllFilesToDelete)
+            foreach (var dllFile in dllFilesToDelete)
             {
-                string filePath = Path.Combine(baseDirectory, dllFile);
+                var filePath = Path.Combine(baseDirectory, dllFile);
                 if (File.Exists(filePath))
                 {
                     File.Delete(filePath);

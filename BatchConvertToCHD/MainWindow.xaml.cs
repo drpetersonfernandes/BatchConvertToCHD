@@ -243,6 +243,46 @@ public partial class MainWindow : IDisposable
         }
     }
 
+    /// <summary>
+    /// Validates that chdman.exe is compatible with the current OS platform.
+    /// This catches Win32Exception (0x800700C1) when the executable is not valid for this OS.
+    /// </summary>
+    private async Task<bool> ValidateChdmanCompatibilityAsync(string chdmanPath)
+    {
+        try
+        {
+            using var process = new Process();
+            process.StartInfo = new ProcessStartInfo
+            {
+                FileName = chdmanPath,
+                Arguments = "help",
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true
+            };
+
+            process.Start();
+            await process.WaitForExitAsync(CancellationToken.None);
+            return true;
+        }
+        catch (Win32Exception ex) when (ex.NativeErrorCode == 193 || ex.Message.Contains("not a valid application"))
+        {
+            LogMessage("ERROR: The bundled chdman.exe is not compatible with this version of Windows.");
+            LogMessage("       This typically occurs when running on older Windows versions (e.g., Windows 7).");
+            LogMessage("       Please download a compatible version of chdman.exe from MAME releases.");
+            ShowError("chdman.exe is not compatible with this OS.\n\n" +
+                      "The bundled chdman.exe requires a newer Windows version.\n" +
+                      "For Windows 7, please obtain a compatible chdman.exe from an older MAME release.");
+            return false;
+        }
+        catch
+        {
+            // Other errors are acceptable - at least the exe started
+            return true;
+        }
+    }
+
     private void LogEnvironmentDetails()
     {
         try
@@ -816,6 +856,10 @@ public partial class MainWindow : IDisposable
 
     private async Task<bool> ConvertToChdAsync(string chdmanPath, string inputFile, string outputFile, int cores, bool forceCd, bool forceDvd, CancellationToken token)
     {
+        // Validate chdman is compatible with the OS before attempting conversion
+        if (!await ValidateChdmanCompatibilityAsync(chdmanPath))
+            return false;
+
         using var process = new Process();
         var command = forceCd || (!forceDvd && !inputFile.EndsWith(".iso", StringComparison.OrdinalIgnoreCase) && !inputFile.EndsWith(".img", StringComparison.OrdinalIgnoreCase) && !inputFile.EndsWith(".raw", StringComparison.OrdinalIgnoreCase))
             ? "createcd"
