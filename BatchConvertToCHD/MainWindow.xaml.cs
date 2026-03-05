@@ -315,6 +315,14 @@ public partial class MainWindow : IDisposable
         LogMessage("--- Ready for Verification ---");
     }
 
+    private void DisplayExtractionInstructionsInLog()
+    {
+        LogMessage($"Welcome to {AppConfig.ApplicationName}. (Extraction Mode)");
+        if (!_isChdmanAvailable) LogMessage("WARNING: chdman.exe not found!");
+        LogMessage("This feature extracts CHD files back to their original format (ISO/BIN/CUE etc.)");
+        LogMessage("--- Ready for Extraction ---");
+    }
+
     private void MainTabControl_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         if (e.Source is not TabControl tabControl) return;
@@ -338,6 +346,10 @@ public partial class MainWindow : IDisposable
                     LogMessage($"Welcome to {AppConfig.ApplicationName}. (Rewrite Mode)");
                     LogMessage("--- Ready for CHD Rewrite ---");
                     UpdateStatusBarMessage("Ready for CHD rewrite");
+                    break;
+                case "ExtractTab":
+                    DisplayExtractionInstructionsInLog();
+                    UpdateStatusBarMessage("Ready for extraction");
                     break;
             }
         }
@@ -404,9 +416,7 @@ public partial class MainWindow : IDisposable
         try
         {
             await Application.Current.Dispatcher.InvokeAsync((Action)(() => LogViewer.Clear()));
-            LogMessage("=== Extract from CHD ===");
-            LogMessage("This feature will extract CHD files back to their original format (ISO/BIN/CUE etc.)");
-            LogMessage("Feature implementation pending...");
+            DisplayExtractionInstructionsInLog();
 
             if (!_isChdmanAvailable)
             {
@@ -434,13 +444,49 @@ public partial class MainWindow : IDisposable
                 return;
             }
 
-            LogMessage($"Input folder: {inputFolder}");
-            LogMessage($"Output folder: {outputFolder}");
-            LogMessage("Extraction feature will be implemented here.");
+            if (inputFolder.Equals(outputFolder, StringComparison.OrdinalIgnoreCase))
+            {
+                ShowError("Input and output folders must be different.");
+                return;
+            }
+
+            // Cancel any existing operations before creating new CTS
+            _cts.Cancel();
+            _cts.Dispose();
+            _cts = new CancellationTokenSource();
+
+            ResetOperationStats();
+            SetControlsState(false);
+            await Task.Yield();
+            _operationTimer.Restart();
+            ResetSpeedCounters();
+
+            var includeSub = ExtractionIncludeSubfoldersCheckBox.IsChecked ?? false;
+
+            LogMessage("--- Starting batch extraction process... ---");
+
+            try
+            {
+                await PerformBatchExtractionAsync(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, AppConfig.ChdmanExeName),
+                    inputFolder, outputFolder, includeSub, _cts.Token);
+            }
+            catch (OperationCanceledException)
+            {
+                LogMessage("Extraction canceled.");
+            }
+            catch (Exception ex)
+            {
+                LogMessage($"Error: {ex.Message}");
+                await ReportBugAsync("Batch extraction error", ex);
+            }
+            finally
+            {
+                FinishOperation("Extraction");
+            }
         }
         catch (Exception ex)
         {
-            ShowError($"Error starting extraction: {ex.Message}");
+            _ = ReportBugAsync("StartExtractionButton_Click error", ex);
         }
     }
 
@@ -621,6 +667,12 @@ public partial class MainWindow : IDisposable
         StartVerificationButton.IsEnabled = enabled;
         MoveSuccessFilesCheckBox.IsEnabled = enabled;
         MoveFailedFilesCheckBox.IsEnabled = enabled;
+        ExtractionInputFolderTextBox.IsEnabled = enabled;
+        BrowseExtractionInputButton.IsEnabled = enabled;
+        ExtractionOutputFolderTextBox.IsEnabled = enabled;
+        BrowseExtractionOutputButton.IsEnabled = enabled;
+        ExtractionIncludeSubfoldersCheckBox.IsEnabled = enabled;
+        StartExtractionButton.IsEnabled = enabled;
         MainTabControl.IsEnabled = enabled;
         ProgressText.Visibility = enabled ? Visibility.Collapsed : Visibility.Visible;
         ProgressBar.Visibility = enabled ? Visibility.Collapsed : Visibility.Visible;
@@ -630,7 +682,14 @@ public partial class MainWindow : IDisposable
         if (!enabled)
         {
             var tab = MainTabControl.SelectedItem as TabItem;
-            UpdateStatusBarMessage(tab?.Name == "ConvertTab" ? "Converting files..." : "Verifying files...");
+            var message = tab?.Name switch
+            {
+                "ConvertTab" => "Converting files...",
+                "VerifyTab" => "Verifying files...",
+                "ExtractTab" => "Extracting files...",
+                _ => "Processing..."
+            };
+            UpdateStatusBarMessage(message);
         }
         else
         {
@@ -906,6 +965,194 @@ public partial class MainWindow : IDisposable
         catch (Exception ex)
         {
             LogMessage($"Move error: {ex.Message}");
+        }
+    }
+
+    private async Task PerformBatchExtractionAsync(string chdmanPath, string inputFolder, string outputFolder, bool includeSub, CancellationToken token)
+    {
+        var files = await Task.Run(() => Directory.GetFiles(inputFolder, "*.chd", includeSub ? SearchOption.AllDirectories : SearchOption.TopDirectoryOnly), token);
+        _totalFilesProcessed = files.Length;
+        UpdateStatsDisplay();
+        LogMessage($"Found {_totalFilesProcessed} CHD files.");
+        if (_totalFilesProcessed == 0) return;
+
+        await Application.Current.Dispatcher.InvokeAsync(() => ProgressBar.Maximum = _totalFilesProcessed);
+        var processed = 0;
+        ResetSpeedCounters();
+
+        foreach (var file in files)
+        {
+            // Show current file in text, but bar shows 'processed' (completed) count
+            UpdateProgressDisplay(processed, _totalFilesProcessed, Path.GetFileName(file), "Extracting");
+
+            var success = await ExtractChdAsync(chdmanPath, file, outputFolder, token);
+
+            if (success)
+            {
+                LogMessage($"✓ Extracted: {Path.GetFileName(file)}");
+                _processedOkCount++;
+            }
+            else
+            {
+                LogMessage($"✗ Failed: {Path.GetFileName(file)}");
+                _failedCount++;
+            }
+
+            processed++;
+            UpdateProgressDisplay(processed, _totalFilesProcessed, "Finishing...", "Extracting");
+            UpdateStatsDisplay();
+            UpdateProcessingTimeDisplay();
+            UpdateReadSpeedFromPerformanceCounter();
+        }
+    }
+
+    private async Task<bool> ExtractChdAsync(string chdmanPath, string chdFile, string outputFolder, CancellationToken token)
+    {
+        if (!await ValidateExecutableAccessAsync(chdmanPath, "chdman.exe"))
+            return false;
+
+        var fileName = Path.GetFileNameWithoutExtension(chdFile);
+
+        var extractCommand =
+            // Detect CHD type to determine output format
+            // We'll try to determine the best extraction command based on common patterns
+            // For now, use extractcd as default (most common), fallback to others if needed
+            await DetectChdExtractCommandAsync(chdmanPath, chdFile, token);
+
+        // Determine output extension based on command
+        var outputExt = extractCommand switch
+        {
+            "extractcd" => ".bin",
+            "extractdvd" => ".iso",
+            "extracthd" => ".img",
+            _ => ".bin"
+        };
+
+        var outputFile = Path.Combine(outputFolder, fileName + outputExt);
+
+        // Check if output file already exists
+        if (File.Exists(outputFile))
+        {
+            LogMessage($"Skipping: {fileName}{outputExt} already exists in output folder.");
+            return true;
+        }
+
+        using var process = new Process();
+        process.StartInfo = new ProcessStartInfo
+        {
+            FileName = chdmanPath,
+            Arguments = $"{extractCommand} -i \"{chdFile}\" -o \"{outputFile}\"",
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+            CreateNoWindow = true,
+            WorkingDirectory = Path.GetDirectoryName(chdmanPath)
+        };
+
+        process.ErrorDataReceived += (_, a) =>
+        {
+            if (string.IsNullOrEmpty(a.Data)) return;
+
+            // Filter progress messages but log important ones
+            if (a.Data.Contains("% complete"))
+            {
+                UpdateReadSpeedFromPerformanceCounter();
+            }
+            else if (!a.Data.Contains("Extracting") && !a.Data.Contains("hunk"))
+            {
+                LogMessage($"[CHDMAN] {a.Data}");
+            }
+        };
+
+        using var ctsSpeed = CancellationTokenSource.CreateLinkedTokenSource(token);
+        process.Start();
+        process.BeginOutputReadLine();
+        process.BeginErrorReadLine();
+
+        var speedToken = ctsSpeed.Token;
+        var readSpeedTask = Task.Run(async () =>
+        {
+            try
+            {
+                await Task.Delay(100, speedToken);
+                while (!speedToken.IsCancellationRequested)
+                {
+                    UpdateReadSpeedFromPerformanceCounter();
+                    await Task.Delay(AppConfig.WriteSpeedUpdateIntervalMs, speedToken);
+                }
+            }
+            catch (OperationCanceledException)
+            {
+            }
+        }, speedToken);
+
+        try
+        {
+            using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(token);
+            timeoutCts.CancelAfter(TimeSpan.FromHours(AppConfig.MaxConversionTimeoutHours));
+            await process.WaitForExitAsync(timeoutCts.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            if (!process.HasExited) process.Kill(true);
+            throw;
+        }
+        finally
+        {
+            ctsSpeed.Cancel();
+            await Task.WhenAny(readSpeedTask, Task.Delay(500, CancellationToken.None));
+        }
+
+        return process.ExitCode == 0 && !token.IsCancellationRequested;
+    }
+
+    private static async Task<string> DetectChdExtractCommandAsync(string chdmanPath, string chdFile, CancellationToken token)
+    {
+        try
+        {
+            using var process = new Process();
+            process.StartInfo = new ProcessStartInfo
+            {
+                FileName = chdmanPath,
+                Arguments = $"info -i \"{chdFile}\"",
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true
+            };
+
+            var output = new StringBuilder();
+            process.OutputDataReceived += (_, a) =>
+            {
+                if (!string.IsNullOrEmpty(a.Data))
+                    output.AppendLine(a.Data);
+            };
+            process.ErrorDataReceived += (_, a) =>
+            {
+                if (!string.IsNullOrEmpty(a.Data))
+                    output.AppendLine(a.Data);
+            };
+
+            process.Start();
+            process.BeginOutputReadLine();
+            process.BeginErrorReadLine();
+            await process.WaitForExitAsync(token);
+
+            var infoText = output.ToString().ToLowerInvariant();
+
+            // Determine extraction command based on CHD metadata
+            if (infoText.Contains("dvd") || infoText.Contains("gd-rom"))
+                return "extractdvd";
+            if (infoText.Contains("hard disk") || infoText.Contains("hd") || infoText.Contains("hdd"))
+                return "extracthd";
+
+            // Default to CD extraction (most common)
+            return "extractcd";
+        }
+        catch
+        {
+            // Default to extractcd if detection fails
+            return "extractcd";
         }
     }
 
