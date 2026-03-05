@@ -1542,8 +1542,8 @@ public partial class MainWindow : IDisposable
             SpeedValue.Text = $"{speed:F1} MB/s";
             StatusBarMessage.Text = speed switch
             {
-                > 0 when !StartVerificationButton.IsEnabled => "Verifying...",
                 > 0 when !StartExtractionButton.IsEnabled => "Extracting...",
+                > 0 when !StartVerificationButton.IsEnabled => "Verifying...",
                 _ => StatusBarMessage.Text
             };
         });
