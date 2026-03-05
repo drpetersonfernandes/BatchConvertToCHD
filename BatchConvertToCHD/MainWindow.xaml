@@ -90,6 +90,36 @@
                     <Button x:Name="StartVerificationButton" Content="Start Verification" Click="StartVerificationButton_Click" Margin="0,10,0,0" Padding="15,8" HorizontalAlignment="Center" FontWeight="Bold" />
                 </StackPanel>
             </TabItem>
+
+            <TabItem Header="Extract from CHD" x:Name="ExtractTab">
+                <StackPanel Margin="10">
+                    <Grid Margin="0,0,0,5">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="130" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <Label Grid.Column="0" Content="CHD Files Folder:" VerticalAlignment="Center" />
+                        <TextBox x:Name="ExtractionInputFolderTextBox" Grid.Column="1" Margin="5,0,5,0" Padding="5" IsReadOnly="True" />
+                        <Button x:Name="BrowseExtractionInputButton" Grid.Column="2" Content="Browse" Click="BrowseExtractionInputButton_Click" Padding="10,5" />
+                    </Grid>
+
+                    <Grid Margin="0,0,0,5">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="130" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <Label Grid.Column="0" Content="Output Folder:" VerticalAlignment="Center" />
+                        <TextBox x:Name="ExtractionOutputFolderTextBox" Grid.Column="1" Margin="5,0,5,0" Padding="5" IsReadOnly="True" />
+                        <Button x:Name="BrowseExtractionOutputButton" Grid.Column="2" Content="Browse" Click="BrowseExtractionOutputButton_Click" Padding="10,5" />
+                    </Grid>
+
+                    <CheckBox x:Name="ExtractionIncludeSubfoldersCheckBox" Content="Include subfolders in CHD search" Margin="0,10,0,0" HorizontalAlignment="Left" IsChecked="True" />
+
+                    <Button x:Name="StartExtractionButton" Content="Start Extraction" Click="StartExtractionButton_Click" Margin="0,10,0,0" Padding="15,8" HorizontalAlignment="Center" FontWeight="Bold" />
+                </StackPanel>
+            </TabItem>
         </TabControl>
 
         <TextBox x:Name="LogViewer"
@@ -191,12 +221,12 @@
 
             <StatusBarItem Grid.Column="2">
                 <StackPanel Orientation="Horizontal">
-                    <TextBlock Text="Dependencies: " />
-                    <TextBlock x:Name="StatusBarChdman" Text=" CHDMAN " Foreground="Green" />
-                    <TextBlock Text=" | " />
-                    <TextBlock x:Name="StatusBarMaxcso" Text=" MAXCSO " Foreground="Green" />
-                    <TextBlock Text=" | " />
-                    <TextBlock x:Name="StatusBarPsxPackager" Text=" PSXPACKAGER " Foreground="Green" />
+                    <TextBlock Text="Dependencies:" Margin="0,0,5,0"/>
+                    <TextBlock x:Name="StatusBarChdman" Text="CHDMAN" Foreground="Green" Margin="0,0,5,0"/>
+                    <TextBlock Text="|" Margin="0,0,5,0"/>
+                    <TextBlock x:Name="StatusBarMaxcso" Text="MAXCSO" Foreground="Green" Margin="0,0,5,0"/>
+                    <TextBlock Text="|" Margin="0,0,5,0"/>
+                    <TextBlock x:Name="StatusBarPsxPackager" Text="PSXPACKAGER" Foreground="Green" Margin="0"/>
                 </StackPanel>
             </StatusBarItem>
         </StatusBar>

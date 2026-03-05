@@ -389,6 +389,61 @@ public partial class MainWindow : IDisposable
         HandleFolderBrowse(VerificationInputFolderTextBox, "Verification input");
     }
 
+    private void BrowseExtractionInputButton_Click(object sender, RoutedEventArgs e)
+    {
+        HandleFolderBrowse(ExtractionInputFolderTextBox, "Extraction input");
+    }
+
+    private void BrowseExtractionOutputButton_Click(object sender, RoutedEventArgs e)
+    {
+        HandleFolderBrowse(ExtractionOutputFolderTextBox, "Extraction output");
+    }
+
+    private async void StartExtractionButton_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            await Application.Current.Dispatcher.InvokeAsync((Action)(() => LogViewer.Clear()));
+            LogMessage("=== Extract from CHD ===");
+            LogMessage("This feature will extract CHD files back to their original format (ISO/BIN/CUE etc.)");
+            LogMessage("Feature implementation pending...");
+
+            if (!_isChdmanAvailable)
+            {
+                ShowError($"{AppConfig.ChdmanExeName} is missing.");
+                return;
+            }
+
+            var inputFolder = PathUtils.ValidateAndNormalizePath(ExtractionInputFolderTextBox.Text, "CHD Files Folder", ShowError, LogMessage);
+            var outputFolder = PathUtils.ValidateAndNormalizePath(ExtractionOutputFolderTextBox.Text, "Output Folder", ShowError, LogMessage);
+
+            if (inputFolder == null || outputFolder == null)
+            {
+                return;
+            }
+
+            if (!Directory.Exists(inputFolder))
+            {
+                ShowError($"Input folder does not exist: {inputFolder}");
+                return;
+            }
+
+            if (!Directory.Exists(outputFolder))
+            {
+                ShowError($"Output folder does not exist: {outputFolder}");
+                return;
+            }
+
+            LogMessage($"Input folder: {inputFolder}");
+            LogMessage($"Output folder: {outputFolder}");
+            LogMessage("Extraction feature will be implemented here.");
+        }
+        catch (Exception ex)
+        {
+            ShowError($"Error starting extraction: {ex.Message}");
+        }
+    }
+
     private void HandleFolderBrowse(TextBox targetBox, string logName)
     {
         var folder = SelectFolder($"Select {logName} folder");
