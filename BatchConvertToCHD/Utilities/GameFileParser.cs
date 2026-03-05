@@ -94,4 +94,49 @@ public static class GameFileParser
 
         return referencedFiles;
     }
+
+    public static async Task<List<string>> GetReferencedFilesFromTocAsync(string tocPath, Action<string> onLog, CancellationToken token)
+    {
+        var referencedFiles = new List<string>();
+        var tocDir = Path.GetDirectoryName(tocPath) ?? string.Empty;
+        try
+        {
+            var lines = await File.ReadAllLinesAsync(tocPath, token);
+            token.ThrowIfCancellationRequested();
+            foreach (var line in lines)
+            {
+                var trimmedLine = line.Trim();
+                if (!trimmedLine.StartsWith("FILE ", StringComparison.OrdinalIgnoreCase)) continue;
+
+                string fileName;
+                var firstQuote = trimmedLine.IndexOf('"');
+                var lastQuote = trimmedLine.LastIndexOf('"');
+
+                if (firstQuote != -1 && lastQuote > firstQuote)
+                {
+                    fileName = trimmedLine.Substring(firstQuote + 1, lastQuote - firstQuote - 1);
+                }
+                else
+                {
+                    var parts = trimmedLine.Split(Separator, StringSplitOptions.RemoveEmptyEntries);
+                    if (parts.Length < 2) continue;
+
+                    fileName = parts[1];
+                }
+
+                referencedFiles.Add(Path.Combine(tocDir, fileName));
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            onLog($"Error parsing TOC file {Path.GetFileName(tocPath)}: {ex.Message}");
+            throw;
+        }
+
+        return referencedFiles;
+    }
 }

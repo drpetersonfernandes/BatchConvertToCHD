@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.IO;
 using System.Text;
+using System.Security;
 using SharpCompress.Archives;
 using SharpCompress.Archives.SevenZip;
 using SharpCompress.Archives.Rar;
@@ -130,6 +131,10 @@ public class ArchiveService : IDisposable
                 ? (true, foundFile, tempDirectoryRoot, string.Empty)
                 : (false, string.Empty, tempDirectoryRoot, "No supported primary files found in archive.");
         }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
         catch (Exception ex)
         {
             return (false, string.Empty, tempDirectoryRoot, $"Error extracting archive: {ex.Message}");
@@ -152,6 +157,11 @@ public class ArchiveService : IDisposable
                     if (!string.IsNullOrEmpty(directory))
                     {
                         Directory.CreateDirectory(directory);
+                    }
+
+                    if (!Path.GetFullPath(destinationPath).StartsWith(Path.GetFullPath(outputDirectory), StringComparison.OrdinalIgnoreCase))
+                    {
+                        throw new SecurityException("Attempted to extract file outside of the target directory.");
                     }
 
                     entry.WriteToFile(destinationPath);
@@ -183,6 +193,11 @@ public class ArchiveService : IDisposable
                         if (!string.IsNullOrEmpty(directory))
                         {
                             Directory.CreateDirectory(directory);
+                        }
+
+                        if (!Path.GetFullPath(destinationPath).StartsWith(Path.GetFullPath(outputDirectory), StringComparison.OrdinalIgnoreCase))
+                        {
+                            throw new SecurityException("Attempted to extract file outside of the target directory.");
                         }
 
                         entry.WriteToFile(destinationPath);
@@ -221,6 +236,11 @@ public class ArchiveService : IDisposable
                         Directory.CreateDirectory(directory);
                     }
 
+                    if (!Path.GetFullPath(destinationPath).StartsWith(Path.GetFullPath(outputDirectory), StringComparison.OrdinalIgnoreCase))
+                    {
+                        throw new SecurityException("Attempted to extract file outside of the target directory.");
+                    }
+
                     entry.WriteToFile(destinationPath);
                 }
             }
@@ -250,6 +270,11 @@ public class ArchiveService : IDisposable
                         if (!string.IsNullOrEmpty(directory))
                         {
                             Directory.CreateDirectory(directory);
+                        }
+
+                        if (!Path.GetFullPath(destinationPath).StartsWith(Path.GetFullPath(outputDirectory), StringComparison.OrdinalIgnoreCase))
+                        {
+                            throw new SecurityException("Attempted to extract file outside of the target directory.");
                         }
 
                         entry.WriteToFile(destinationPath);

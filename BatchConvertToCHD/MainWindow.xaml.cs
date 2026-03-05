@@ -461,7 +461,7 @@ public partial class MainWindow : IDisposable
             _operationTimer.Restart();
             ResetSpeedCounters();
 
-            var includeSub = ExtractionIncludeSubfoldersCheckBox.IsChecked ?? false;
+            const bool includeSub = false; // ExtractionIncludeSubfoldersCheckBox.IsChecked ?? false;
 
             LogMessage("--- Starting batch extraction process... ---");
 
@@ -598,7 +598,7 @@ public partial class MainWindow : IDisposable
             _operationTimer.Restart();
             ResetSpeedCounters();
 
-            var includeSub = VerificationIncludeSubfoldersCheckBox.IsChecked ?? false;
+            const bool includeSub = false; // VerificationIncludeSubfoldersCheckBox.IsChecked ?? false; // Disabled to prevent infinite nesting
             var moveSuccess = MoveSuccessFilesCheckBox.IsChecked ?? false;
             var moveFailed = MoveFailedFilesCheckBox.IsChecked ?? false;
             var successFolder = moveSuccess ? Path.Combine(inputFolder, "Success") : string.Empty;
@@ -663,7 +663,7 @@ public partial class MainWindow : IDisposable
         ForceCreateDvdCheckBox.IsEnabled = enabled;
         VerificationInputFolderTextBox.IsEnabled = enabled;
         BrowseVerificationInputButton.IsEnabled = enabled;
-        VerificationIncludeSubfoldersCheckBox.IsEnabled = enabled;
+        // VerificationIncludeSubfoldersCheckBox.IsEnabled = false; // Removed
         StartVerificationButton.IsEnabled = enabled;
         MoveSuccessFilesCheckBox.IsEnabled = enabled;
         MoveFailedFilesCheckBox.IsEnabled = enabled;
@@ -671,7 +671,7 @@ public partial class MainWindow : IDisposable
         BrowseExtractionInputButton.IsEnabled = enabled;
         ExtractionOutputFolderTextBox.IsEnabled = enabled;
         BrowseExtractionOutputButton.IsEnabled = enabled;
-        ExtractionIncludeSubfoldersCheckBox.IsEnabled = enabled;
+        // ExtractionIncludeSubfoldersCheckBox.IsEnabled = enabled; // Removed
         StartExtractionButton.IsEnabled = enabled;
         MainTabControl.IsEnabled = enabled;
         ProgressText.Visibility = enabled ? Visibility.Collapsed : Visibility.Visible;
@@ -707,6 +707,9 @@ public partial class MainWindow : IDisposable
 
     private async Task PerformBatchConversionAsync(string chdmanPath, string inputFolder, string outputFolder, bool deleteFiles, bool forceCd, bool forceDvd, CancellationToken token)
     {
+        if (!await ValidateExecutableAccessAsync(chdmanPath, "chdman.exe")) return;
+        if (!await ValidateChdmanCompatibilityAsync(chdmanPath)) return;
+
         var filesToConvert = await Task.Run(() =>
         {
             var files = Directory.GetFiles(inputFolder, "*.*", SearchOption.TopDirectoryOnly)
@@ -840,10 +843,48 @@ public partial class MainWindow : IDisposable
                     tempDirs.Add(tempDir);
                     await Task.Run(() => Directory.CreateDirectory(tempDir), token);
 
-                    var tempFile = PathUtils.GetSafeTempFileName(originalName, ext.TrimStart('.'), tempDir);
-                    await Task.Run(() => File.Copy(inputFile, tempFile, true), token);
+                    string tempInputFile;
 
-                    fileToProcess = tempFile;
+                    if (ext is ".cue" or ".gdi" or ".toc")
+                    {
+                        LogMessage("Copying game with dependencies to temporary directory...");
+                        var filesToCopy = new List<string> { inputFile };
+                        switch (ext)
+                        {
+                            case ".cue":
+                                filesToCopy.AddRange(await GameFileParser.GetReferencedFilesFromCueAsync(inputFile, LogMessage, token));
+                                break;
+                            case ".gdi":
+                                filesToCopy.AddRange(await GameFileParser.GetReferencedFilesFromGdiAsync(inputFile, LogMessage, token));
+                                break;
+                            // .toc
+                            default:
+                                filesToCopy.AddRange(await GameFileParser.GetReferencedFilesFromTocAsync(inputFile, LogMessage, token));
+                                break;
+                        }
+
+                        foreach (var file in filesToCopy.Distinct())
+                        {
+                            if (!File.Exists(file))
+                            {
+                                LogMessage($"WARNING: Referenced file not found, skipping copy: {Path.GetFileName(file)}");
+                                continue;
+                            }
+
+                            var destPath = Path.Combine(tempDir, Path.GetFileName(file));
+                            await Task.Run(() => File.Copy(file, destPath, true), token);
+                        }
+
+                        tempInputFile = Path.Combine(tempDir, Path.GetFileName(inputFile));
+                    }
+                    else
+                    {
+                        // Original logic for single, non-dependent files
+                        tempInputFile = Path.Combine(tempDir, originalName);
+                        await Task.Run(() => File.Copy(inputFile, tempInputFile, true), token);
+                    }
+
+                    fileToProcess = tempInputFile;
                     success = await ConvertToChdAsync(chdmanPath, fileToProcess, outputChd, cores, forceCd, forceDvd, token);
                 }
                 catch (Exception ex)
@@ -857,7 +898,7 @@ public partial class MainWindow : IDisposable
                 LogMessage($"Converted: {originalName}");
                 if (deleteOriginal)
                 {
-                    if (ext is ".cue" or ".gdi")
+                    if (ext is ".cue" or ".gdi" or ".toc")
                     {
                         // Parse and delete dependencies + input file
                         await DeleteOriginalGameFilesAsync(inputFile, token);
@@ -877,6 +918,10 @@ public partial class MainWindow : IDisposable
                 return false;
             }
         }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
         catch (Exception ex)
         {
             LogMessage($"Error processing {originalName}: {ex.Message}");
@@ -895,7 +940,11 @@ public partial class MainWindow : IDisposable
 
     private async Task PerformBatchVerificationAsync(string chdmanPath, string inputFolder, bool includeSub, bool moveSuccess, string successFolder, bool moveFailed, string failedFolder, CancellationToken token)
     {
-        var files = await Task.Run(() => Directory.GetFiles(inputFolder, "*.chd", includeSub ? SearchOption.AllDirectories : SearchOption.TopDirectoryOnly), token);
+        if (!await ValidateExecutableAccessAsync(chdmanPath, "chdman.exe")) return;
+        if (!await ValidateChdmanCompatibilityAsync(chdmanPath)) return;
+
+        // Force TopDirectoryOnly to prevent infinite recursion when moving files to subfolders
+        var files = await Task.Run(() => Directory.GetFiles(inputFolder, "*.chd", SearchOption.TopDirectoryOnly), token);
         _totalFilesProcessed = files.Length;
         UpdateStatsDisplay();
         LogMessage($"Found {_totalFilesProcessed} CHD files.");
@@ -970,6 +1019,9 @@ public partial class MainWindow : IDisposable
 
     private async Task PerformBatchExtractionAsync(string chdmanPath, string inputFolder, string outputFolder, bool includeSub, CancellationToken token)
     {
+        if (!await ValidateExecutableAccessAsync(chdmanPath, "chdman.exe")) return;
+        if (!await ValidateChdmanCompatibilityAsync(chdmanPath)) return;
+
         var files = await Task.Run(() => Directory.GetFiles(inputFolder, "*.chd", includeSub ? SearchOption.AllDirectories : SearchOption.TopDirectoryOnly), token);
         _totalFilesProcessed = files.Length;
         UpdateStatsDisplay();
@@ -1008,9 +1060,6 @@ public partial class MainWindow : IDisposable
 
     private async Task<bool> ExtractChdAsync(string chdmanPath, string chdFile, string outputFolder, CancellationToken token)
     {
-        if (!await ValidateExecutableAccessAsync(chdmanPath, "chdman.exe"))
-            return false;
-
         var fileName = Path.GetFileNameWithoutExtension(chdFile);
 
         // Get extraction command based on user-selected output format
@@ -1019,10 +1068,10 @@ public partial class MainWindow : IDisposable
         // Determine output extension based on command
         var outputExt = extractCommand switch
         {
-            "extractcd" => ".bin",
+            "extractcd" => ".cue",
             "extractdvd" => ".iso",
             "extracthd" => ".img",
-            _ => ".bin"
+            _ => ".cue"
         };
 
         var outputFile = Path.Combine(outputFolder, fileName + outputExt);
@@ -1117,9 +1166,9 @@ public partial class MainWindow : IDisposable
 
     private static async Task<string> DetectChdExtractCommandAsync(string chdmanPath, string chdFile, CancellationToken token)
     {
+        using var process = new Process();
         try
         {
-            using var process = new Process();
             process.StartInfo = new ProcessStartInfo
             {
                 FileName = chdmanPath,
@@ -1158,6 +1207,11 @@ public partial class MainWindow : IDisposable
             // Default to CD extraction (most common)
             return "extractcd";
         }
+        catch (OperationCanceledException)
+        {
+            if (!process.HasExited) process.Kill(true);
+            throw;
+        }
         catch
         {
             // Default to extractcd if detection fails
@@ -1167,10 +1221,6 @@ public partial class MainWindow : IDisposable
 
     private async Task<bool> ConvertToChdAsync(string chdmanPath, string inputFile, string outputFile, int cores, bool forceCd, bool forceDvd, CancellationToken token)
     {
-        // Validate chdman is compatible with the OS before attempting conversion
-        if (!await ValidateChdmanCompatibilityAsync(chdmanPath))
-            return false;
-
         using var process = new Process();
         var command = forceCd || (!forceDvd && !inputFile.EndsWith(".iso", StringComparison.OrdinalIgnoreCase) && !inputFile.EndsWith(".img", StringComparison.OrdinalIgnoreCase) && !inputFile.EndsWith(".raw", StringComparison.OrdinalIgnoreCase))
             ? "createcd"
@@ -1297,13 +1347,13 @@ public partial class MainWindow : IDisposable
             if (token.IsCancellationRequested && !process.HasExited)
             {
                 process.Kill(true);
-                return new PbpExtractionResult { Success = false };
+                throw new OperationCanceledException();
             }
         }
         catch (OperationCanceledException)
         {
             if (!process.HasExited) process.Kill(true);
-            return new PbpExtractionResult { Success = false };
+            throw;
         }
 
         if (process.ExitCode != 0)
@@ -1368,8 +1418,6 @@ public partial class MainWindow : IDisposable
     private async Task<bool> VerifyChdAsync(string chdmanPath, string chdFile, CancellationToken token)
     {
         using var process = new Process();
-        if (!await ValidateExecutableAccessAsync(chdmanPath, "chdman.exe")) return false;
-
         process.StartInfo = new ProcessStartInfo
         {
             FileName = chdmanPath,
@@ -1432,6 +1480,11 @@ public partial class MainWindow : IDisposable
         {
             await process.WaitForExitAsync(token);
         }
+        catch (OperationCanceledException)
+        {
+            if (!process.HasExited) process.Kill(true);
+            throw;
+        }
         finally
         {
             ctsSpeed.Cancel();
@@ -1487,10 +1540,12 @@ public partial class MainWindow : IDisposable
         Application.Current.Dispatcher.InvokeAsync(() =>
         {
             SpeedValue.Text = $"{speed:F1} MB/s";
-            if (speed > 0 && !StartVerificationButton.IsEnabled)
+            StatusBarMessage.Text = speed switch
             {
-                StatusBarMessage.Text = "Verifying...";
-            }
+                > 0 when !StartVerificationButton.IsEnabled => "Verifying...",
+                > 0 when !StartExtractionButton.IsEnabled => "Extracting...",
+                _ => StatusBarMessage.Text
+            };
         });
     }
 
@@ -1547,6 +1602,9 @@ public partial class MainWindow : IDisposable
                     break;
                 case ".gdi":
                     files.AddRange(await GameFileParser.GetReferencedFilesFromGdiAsync(inputFile, LogMessage, token));
+                    break;
+                case ".toc":
+                    files.AddRange(await GameFileParser.GetReferencedFilesFromTocAsync(inputFile, LogMessage, token));
                     break;
             }
 
