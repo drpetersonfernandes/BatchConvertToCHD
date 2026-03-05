@@ -1013,11 +1013,8 @@ public partial class MainWindow : IDisposable
 
         var fileName = Path.GetFileNameWithoutExtension(chdFile);
 
-        var extractCommand =
-            // Detect CHD type to determine output format
-            // We'll try to determine the best extraction command based on common patterns
-            // For now, use extractcd as default (most common), fallback to others if needed
-            await DetectChdExtractCommandAsync(chdmanPath, chdFile, token);
+        // Get extraction command based on user-selected output format
+        var extractCommand = await GetSelectedExtractCommandAsync(chdmanPath, chdFile, token);
 
         // Determine output extension based on command
         var outputExt = extractCommand switch
@@ -1104,6 +1101,18 @@ public partial class MainWindow : IDisposable
         }
 
         return process.ExitCode == 0 && !token.IsCancellationRequested;
+    }
+
+    private async Task<string> GetSelectedExtractCommandAsync(string chdmanPath, string chdFile, CancellationToken token)
+    {
+        if (ExtractAutoRadioButton.IsChecked == true)
+            return await DetectChdExtractCommandAsync(chdmanPath, chdFile, token);
+        if (ExtractDvdRadioButton.IsChecked == true)
+            return "extractdvd";
+        if (ExtractHdRadioButton.IsChecked == true)
+            return "extracthd";
+
+        return "extractcd"; // Default to CD extraction
     }
 
     private static async Task<string> DetectChdExtractCommandAsync(string chdmanPath, string chdFile, CancellationToken token)
