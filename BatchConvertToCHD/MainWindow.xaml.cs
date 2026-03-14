@@ -1145,7 +1145,14 @@ public partial class MainWindow : IDisposable
         }
         catch (OperationCanceledException)
         {
-            if (!process.HasExited) process.Kill(true);
+            if (!process.HasExited)
+            {
+                process.Kill(true);
+                // Wait for process to fully exit and release file handles
+                await Task.Run(() => process.WaitForExit(5000), CancellationToken.None);
+            }
+            // Wait a bit more for file handles to be fully released
+            await Task.Delay(500, CancellationToken.None);
             // Clean up partially extracted file
             await TryDeleteFileAsync(outputFile, "partially extracted file", CancellationToken.None);
             throw;
