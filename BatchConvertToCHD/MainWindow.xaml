@@ -123,6 +123,8 @@
                         </StackPanel>
                     </GroupBox>
 
+                    <CheckBox x:Name="DeleteOriginalChdCheckBox" Content="Delete original CHD file after successful extraction" Margin="0,10,0,0" HorizontalAlignment="Left" />
+
                     <Button x:Name="StartExtractionButton" Content="Start Extraction" Click="StartExtractionButton_Click" Margin="0,10,0,0" Padding="15,8" HorizontalAlignment="Center" FontWeight="Bold" />
                 </StackPanel>
             </TabItem>

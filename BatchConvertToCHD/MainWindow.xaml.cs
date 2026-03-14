@@ -462,13 +462,14 @@ public partial class MainWindow : IDisposable
             ResetSpeedCounters();
 
             const bool includeSub = false; // ExtractionIncludeSubfoldersCheckBox.IsChecked ?? false;
+            var deleteOriginal = DeleteOriginalChdCheckBox.IsChecked ?? false;
 
             LogMessage("--- Starting batch extraction process... ---");
 
             try
             {
                 await PerformBatchExtractionAsync(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, AppConfig.ChdmanExeName),
-                    inputFolder, outputFolder, includeSub, _cts.Token);
+                    inputFolder, outputFolder, includeSub, deleteOriginal, _cts.Token);
             }
             catch (OperationCanceledException)
             {
@@ -671,7 +672,11 @@ public partial class MainWindow : IDisposable
         BrowseExtractionInputButton.IsEnabled = enabled;
         ExtractionOutputFolderTextBox.IsEnabled = enabled;
         BrowseExtractionOutputButton.IsEnabled = enabled;
-        // ExtractionIncludeSubfoldersCheckBox.IsEnabled = enabled; // Removed
+        DeleteOriginalChdCheckBox.IsEnabled = enabled;
+        ExtractAutoRadioButton.IsEnabled = enabled;
+        ExtractCdRadioButton.IsEnabled = enabled;
+        ExtractDvdRadioButton.IsEnabled = enabled;
+        ExtractHdRadioButton.IsEnabled = enabled;
         StartExtractionButton.IsEnabled = enabled;
         MainTabControl.IsEnabled = enabled;
         ProgressText.Visibility = enabled ? Visibility.Collapsed : Visibility.Visible;
@@ -1017,7 +1022,7 @@ public partial class MainWindow : IDisposable
         }
     }
 
-    private async Task PerformBatchExtractionAsync(string chdmanPath, string inputFolder, string outputFolder, bool includeSub, CancellationToken token)
+    private async Task PerformBatchExtractionAsync(string chdmanPath, string inputFolder, string outputFolder, bool includeSub, bool deleteOriginal, CancellationToken token)
     {
         if (!await ValidateExecutableAccessAsync(chdmanPath, "chdman.exe")) return;
         if (!await ValidateChdmanCompatibilityAsync(chdmanPath)) return;
@@ -1037,7 +1042,7 @@ public partial class MainWindow : IDisposable
             // Show current file in text, but bar shows 'processed' (completed) count
             UpdateProgressDisplay(processed, _totalFilesProcessed, Path.GetFileName(file), "Extracting");
 
-            var success = await ExtractChdAsync(chdmanPath, file, outputFolder, token);
+            var success = await ExtractChdAsync(chdmanPath, file, outputFolder, deleteOriginal, token);
 
             if (success)
             {
@@ -1058,7 +1063,7 @@ public partial class MainWindow : IDisposable
         }
     }
 
-    private async Task<bool> ExtractChdAsync(string chdmanPath, string chdFile, string outputFolder, CancellationToken token)
+    private async Task<bool> ExtractChdAsync(string chdmanPath, string chdFile, string outputFolder, bool deleteOriginal, CancellationToken token)
     {
         var fileName = Path.GetFileNameWithoutExtension(chdFile);
 
@@ -1141,6 +1146,8 @@ public partial class MainWindow : IDisposable
         catch (OperationCanceledException)
         {
             if (!process.HasExited) process.Kill(true);
+            // Clean up partially extracted file
+            await TryDeleteFileAsync(outputFile, "partially extracted file", CancellationToken.None);
             throw;
         }
         finally
@@ -1149,7 +1156,14 @@ public partial class MainWindow : IDisposable
             await Task.WhenAny(readSpeedTask, Task.Delay(500, CancellationToken.None));
         }
 
-        return process.ExitCode == 0 && !token.IsCancellationRequested;
+        var success = process.ExitCode == 0 && !token.IsCancellationRequested;
+
+        if (success && deleteOriginal)
+        {
+            await TryDeleteFileAsync(chdFile, "original CHD file", token);
+        }
+
+        return success;
     }
 
     private async Task<string> GetSelectedExtractCommandAsync(string chdmanPath, string chdFile, CancellationToken token)
