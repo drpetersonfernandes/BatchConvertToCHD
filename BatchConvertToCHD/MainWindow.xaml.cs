@@ -1081,11 +1081,11 @@ public partial class MainWindow : IDisposable
 
         var outputFile = Path.Combine(outputFolder, fileName + outputExt);
 
-        // Check if output file already exists
+        // Delete existing output file if it exists (will be overwritten)
         if (File.Exists(outputFile))
         {
-            LogMessage($"Skipping: {fileName}{outputExt} already exists in output folder.");
-            return true;
+            LogMessage($"Overwriting: {fileName}{outputExt} already exists in output folder.");
+            await TryDeleteFileAsync(outputFile, "existing output file", CancellationToken.None);
         }
 
         using var process = new Process();
