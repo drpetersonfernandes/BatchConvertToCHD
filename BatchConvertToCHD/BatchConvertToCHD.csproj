@@ -46,6 +46,10 @@
   <ItemGroup>
     <Compile Remove="References\**" />
     <None Remove="References\**" />
+    <Page Remove="References\**" />
+    <Resource Remove="References\**" />
+    <EmbeddedResource Remove="References\**" />
+    <ApplicationDefinition Remove="References\**" />
   </ItemGroup>
 
 </Project>

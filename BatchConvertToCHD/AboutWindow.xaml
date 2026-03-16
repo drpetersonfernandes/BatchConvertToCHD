@@ -2,36 +2,68 @@
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="About Batch Convert to CHD"
-        Width="500"
-        Height="510"
+        Width="600"
+        Height="650"
         ResizeMode="NoResize"
         WindowStartupLocation="CenterScreen"
-        Background="{StaticResource BgLight}">
+        Background="{StaticResource WindowBackgroundBrush}">
     <Grid Margin="20">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
-        <StackPanel Grid.Row="0" Margin="10" HorizontalAlignment="Center" Orientation="Horizontal">
-            <Image Width="128" Height="128" Source="pack://application:,,,/images/logo.png" />
-        </StackPanel>
+        <!-- Logo Section -->
+        <Border Grid.Row="0" Background="{StaticResource CardBackgroundBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="8" Margin="0,0,0,15" Padding="15">
+            <StackPanel HorizontalAlignment="Center">
+                <Image Width="100" Height="100" Source="pack://application:,,,/images/logo.png" />
+            </StackPanel>
+        </Border>
 
-        <StackPanel Grid.Row="1" Margin="20">
-            <TextBlock FontWeight="Bold" FontSize="18" Text="Batch Convert to CHD" />
-            <TextBlock x:Name="DescriptionTextBlock" TextWrapping="Wrap" Text="A utility for batch converting various disc image formats to CHD and for verifying the integrity of CHD files." Margin="0,5,0,0" />
-            <TextBlock Name="AppVersionTextBlock" Margin="0,10,0,0" Text="" />
-            <TextBlock Margin="0,20,0,0" Text="Uses CHDMAN from the MAME project for conversions and verifications." />
-            <TextBlock Margin="0,5,0,0" Text="Uses maxcso.exe for .cso decompression during conversion." />
-            <TextBlock Margin="0,5,0,0" Text="Uses psxpackager.exe for PlayStation .pkg and .pbp file handling." />
-            <TextBlock Margin="0,10,0,0">
-                <Hyperlink NavigateUri="https://www.purelogiccode.com" RequestNavigate="Hyperlink_RequestNavigate">https://www.purelogiccode.com</Hyperlink>
-            </TextBlock>
-        </StackPanel>
+        <!-- Title & Version Section -->
+        <Border Grid.Row="1" Background="{StaticResource CardBackgroundBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="8" Margin="0,0,0,15" Padding="15">
+            <StackPanel>
+                <TextBlock FontWeight="Bold" FontSize="20" Foreground="{StaticResource HeaderTextBrush}" Text="Batch Convert to CHD" HorizontalAlignment="Center" />
+                <TextBlock Name="AppVersionTextBlock" Margin="0,8,0,0" Text="" HorizontalAlignment="Center" Foreground="{StaticResource PrimaryAccentBrush}" FontWeight="SemiBold" FontSize="14" />
+            </StackPanel>
+        </Border>
 
-        <StackPanel Grid.Row="2" Margin="10" HorizontalAlignment="Center" Orientation="Horizontal">
-            <Button Width="100" Margin="10,0,0,0" Click="CloseButton_Click" Content="Close" />
+        <!-- Description Section -->
+        <Border Grid.Row="2" Background="{StaticResource CardBackgroundBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="8" Margin="0,0,0,15" Padding="15">
+            <StackPanel>
+                <TextBlock FontWeight="Bold" FontSize="14" Foreground="{StaticResource TextPrimaryBrush}" Text="Description" Margin="0,0,0,10" />
+                <TextBlock x:Name="DescriptionTextBlock" TextWrapping="Wrap" Text="A utility for batch converting various disc image formats to CHD and for verifying the integrity of CHD files." Foreground="{StaticResource TextSecondaryBrush}" LineHeight="20" />
+            </StackPanel>
+        </Border>
+
+        <!-- Acknowledgements Section -->
+        <Border Grid.Row="3" Background="{StaticResource CardBackgroundBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="8" Margin="0,0,0,15" Padding="15">
+            <StackPanel>
+                <TextBlock FontWeight="Bold" FontSize="14" Foreground="{StaticResource TextPrimaryBrush}" Text="Acknowledgements" Margin="0,0,0,10" />
+                <TextBlock Margin="0,0,0,8" TextWrapping="Wrap" Foreground="{StaticResource TextSecondaryBrush}">
+                    <Run Text="• Uses " /><Run Text="CHDMAN" FontWeight="Bold" Foreground="{StaticResource PrimaryAccentBrush}" /><Run Text=" from the MAME project for conversions and verifications." />
+                </TextBlock>
+                <TextBlock Margin="0,0,0,8" TextWrapping="Wrap" Foreground="{StaticResource TextSecondaryBrush}">
+                    <Run Text="• Uses " /><Run Text="maxcso.exe" FontWeight="Bold" Foreground="{StaticResource PrimaryAccentBrush}" /><Run Text=" for .cso decompression during conversion." />
+                </TextBlock>
+                <TextBlock Margin="0,0,0,8" TextWrapping="Wrap" Foreground="{StaticResource TextSecondaryBrush}">
+                    <Run Text="• Uses " /><Run Text="psxpackager.exe" FontWeight="Bold" Foreground="{StaticResource PrimaryAccentBrush}" /><Run Text=" for PlayStation .pkg and .pbp file handling." />
+                </TextBlock>
+                
+                <TextBlock Margin="0,15,0,0">
+                    <Hyperlink NavigateUri="https://www.purelogiccode.com" RequestNavigate="Hyperlink_RequestNavigate" Foreground="{StaticResource LinkTextBrush}" TextDecorations="Underline">
+                        https://www.purelogiccode.com
+                    </Hyperlink>
+                </TextBlock>
+            </StackPanel>
+        </Border>
+
+        <!-- Close Button Section -->
+        <StackPanel Grid.Row="4" HorizontalAlignment="Center">
+            <Button Click="CloseButton_Click" Content="Close" Style="{StaticResource ActionButtonStyle}" />
         </StackPanel>
     </Grid>
 </Window>

@@ -367,23 +367,29 @@ public partial class MainWindow : IDisposable
     private void LogMessage(string message)
     {
         var timestampedMessage = $"[{DateTime.Now:HH:mm:ss.fff}] {message}";
-        Application.Current.Dispatcher.InvokeAsync(() =>
+        
+        Application.Current.Dispatcher.BeginInvoke(new Action(() =>
         {
-            LogViewer.AppendText($"{timestampedMessage}{Environment.NewLine}");
-
-            // Truncate log if it gets too large
+            // Truncate log if it gets too large BEFORE appending
             if (LogViewer.Text.Length > MaxLogLength)
             {
-                var excessLength = LogViewer.Text.Length - MaxLogLength + 1000; // Keep some buffer
-                var firstNewline = LogViewer.Text.IndexOf('\n', excessLength);
+                var text = LogViewer.Text;
+                var excessLength = text.Length - (MaxLogLength / 2); // Remove half to avoid frequent truncations
+                var firstNewline = text.IndexOf('\n', excessLength);
+                
                 if (firstNewline >= 0)
                 {
-                    LogViewer.Text = string.Concat($"[{DateTime.Now:HH:mm:ss.fff}] --- Log truncated due to size ---{Environment.NewLine}", LogViewer.Text.AsSpan(firstNewline + 1));
+                    LogViewer.Text = $"[{DateTime.Now:HH:mm:ss.fff}] --- Log truncated ---{Environment.NewLine}" + text.Substring(firstNewline + 1);
+                }
+                else
+                {
+                    LogViewer.Clear(); // Fallback if no newline found
                 }
             }
 
+            LogViewer.AppendText($"{timestampedMessage}{Environment.NewLine}");
             LogViewer.ScrollToEnd();
-        });
+        }));
     }
 
     private void BrowseConversionInputButton_Click(object sender, RoutedEventArgs e)
