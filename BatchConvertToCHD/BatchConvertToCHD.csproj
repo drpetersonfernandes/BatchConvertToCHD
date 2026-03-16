@@ -6,10 +6,10 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <UseWPF>true</UseWPF>
-    <ApplicationIcon>icon\icon.ico</ApplicationIcon>
+    <ApplicationIcon>icon\chd.ico</ApplicationIcon>
     <SupportedOSPlatformVersion>7.0</SupportedOSPlatformVersion>
-    <AssemblyVersion>2.3</AssemblyVersion>
-    <FileVersion>2.3</FileVersion>
+    <AssemblyVersion>2.3.0</AssemblyVersion>
+    <FileVersion>2.3.0</FileVersion>
     <IsPackable>false</IsPackable>
     <NeutralLanguage>en</NeutralLanguage>
     <DebugType>embedded</DebugType>
@@ -17,11 +17,11 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <Resource Include="icon\icon.ico" />
-    <Resource Include="icon\icon.png" />
     <Resource Include="images\about.png" />
     <Resource Include="images\exit.png" />
     <Resource Include="images\logo.png" />
+    <None Remove="icon\chd.ico" />
+    <Resource Include="icon\chd.ico" />
   </ItemGroup>
 
   <ItemGroup>
