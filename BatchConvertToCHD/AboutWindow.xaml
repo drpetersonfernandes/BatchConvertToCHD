@@ -36,6 +36,16 @@
             <StackPanel>
                 <TextBlock FontWeight="Bold" FontSize="14" Foreground="{StaticResource TextPrimaryBrush}" Text="Description" Margin="0,0,0,10" />
                 <TextBlock x:Name="DescriptionTextBlock" TextWrapping="Wrap" Text="A utility for batch converting various disc image formats to CHD and for verifying the integrity of CHD files." Foreground="{StaticResource TextSecondaryBrush}" LineHeight="20" />
+                <TextBlock Margin="0,10,0,0">
+                    <Hyperlink NavigateUri="https://github.com/drpetersonfernandes/BatchConvertToCHD" RequestNavigate="Hyperlink_RequestNavigate" Foreground="{StaticResource LinkTextBrush}" TextDecorations="Underline" ToolTip="Visit the project repository">
+                        https://github.com/drpetersonfernandes/BatchConvertToCHD
+                    </Hyperlink>
+                </TextBlock>
+                <TextBlock Margin="0,15,0,0">
+                    <Hyperlink NavigateUri="https://www.purelogiccode.com" RequestNavigate="Hyperlink_RequestNavigate" Foreground="{StaticResource LinkTextBrush}" TextDecorations="Underline" ToolTip="Visit the official website">
+                        https://www.purelogiccode.com
+                    </Hyperlink>
+                </TextBlock>
             </StackPanel>
         </Border>
 
@@ -44,20 +54,21 @@
             <StackPanel>
                 <TextBlock FontWeight="Bold" FontSize="14" Foreground="{StaticResource TextPrimaryBrush}" Text="Acknowledgements" Margin="0,0,0,10" />
                 <TextBlock Margin="0,0,0,8" TextWrapping="Wrap" Foreground="{StaticResource TextSecondaryBrush}">
-                    <Run Text="• Uses " /><Run Text="CHDMAN" FontWeight="Bold" Foreground="{StaticResource PrimaryAccentBrush}" /><Run Text=" from the MAME project for conversions and verifications." />
+                    <Run Text="• Uses " />
+                    <Hyperlink NavigateUri="https://github.com/mamedev/mame/" RequestNavigate="Hyperlink_RequestNavigate" Foreground="{StaticResource PrimaryAccentBrush}" FontWeight="Bold" TextDecorations="None">CHDMAN</Hyperlink>
+                    <Run Text=" from the MAME project for conversions and verifications." />
                 </TextBlock>
                 <TextBlock Margin="0,0,0,8" TextWrapping="Wrap" Foreground="{StaticResource TextSecondaryBrush}">
-                    <Run Text="• Uses " /><Run Text="maxcso.exe" FontWeight="Bold" Foreground="{StaticResource PrimaryAccentBrush}" /><Run Text=" for .cso decompression during conversion." />
+                    <Run Text="• Uses " />
+                    <Hyperlink NavigateUri="https://github.com/unknownbrackets/maxcso" RequestNavigate="Hyperlink_RequestNavigate" Foreground="{StaticResource PrimaryAccentBrush}" FontWeight="Bold" TextDecorations="None">maxcso</Hyperlink>
+                    <Run Text=" for .cso decompression during conversion." />
                 </TextBlock>
                 <TextBlock Margin="0,0,0,8" TextWrapping="Wrap" Foreground="{StaticResource TextSecondaryBrush}">
-                    <Run Text="• Uses " /><Run Text="psxpackager.exe" FontWeight="Bold" Foreground="{StaticResource PrimaryAccentBrush}" /><Run Text=" for PlayStation .pkg and .pbp file handling." />
+                    <Run Text="• Uses " />
+                    <Hyperlink NavigateUri="https://github.com/RupertAvery/PSXPackager" RequestNavigate="Hyperlink_RequestNavigate" Foreground="{StaticResource PrimaryAccentBrush}" FontWeight="Bold" TextDecorations="None">psxpackager</Hyperlink>
+                    <Run Text=" for PlayStation .pkg and .pbp file handling." />
                 </TextBlock>
-                
-                <TextBlock Margin="0,15,0,0">
-                    <Hyperlink NavigateUri="https://www.purelogiccode.com" RequestNavigate="Hyperlink_RequestNavigate" Foreground="{StaticResource LinkTextBrush}" TextDecorations="Underline" ToolTip="Visit the official website">
-                        https://www.purelogiccode.com
-                    </Hyperlink>
-                </TextBlock>
+
             </StackPanel>
         </Border>
 
