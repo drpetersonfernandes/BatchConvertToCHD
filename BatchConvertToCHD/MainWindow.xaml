@@ -26,7 +26,7 @@
                 </StackPanel>
                 
                 <StackPanel Grid.Column="2" Orientation="Horizontal">
-                    <Button Click="AboutMenuItem_Click" Style="{StaticResource ActionButtonStyle}" Background="{StaticResource AboutButtonBrush}" ToolTip="View application information">
+                    <Button Click="AboutMenuItem_Click" Style="{StaticResource ActionButtonStyle}" Background="{StaticResource AboutButtonBrush}" ToolTip="View application information and acknowledgements">
                         <Button.Content>
                             <StackPanel Orientation="Horizontal">
                                 <Image Source="pack://application:,,,/images/about.png" Width="16" Height="16" Margin="0,0,5,0" />
@@ -56,7 +56,7 @@
             </Grid.RowDefinitions>
 
             <TabControl Grid.Row="0" x:Name="MainTabControl" Margin="0,0,0,15" SelectionChanged="MainTabControl_SelectionChanged" Background="Transparent" BorderThickness="0">
-                <TabItem Header="Convert to CHD" x:Name="ConvertTab">
+                <TabItem Header="Convert to CHD" x:Name="ConvertTab" ToolTip="Batch convert various disc image formats to CHD">
                     <Border Background="{StaticResource CardBackgroundBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="0,0,6,6" Padding="15">
                         <StackPanel>
                             <Grid Margin="0,0,0,10">
@@ -65,9 +65,9 @@
                                     <ColumnDefinition Width="*" />
                                     <ColumnDefinition Width="Auto" />
                                 </Grid.ColumnDefinitions>
-                                <Label Content="Source Files Folder:" />
-                                <TextBox x:Name="ConversionInputFolderTextBox" Grid.Column="1" Margin="5,0" IsReadOnly="True" />
-                                <Button x:Name="BrowseConversionInputButton" Grid.Column="2" Content="Browse..." Click="BrowseConversionInputButton_Click" Style="{StaticResource ActionButtonStyle}" />
+                                <Label Content="Source Files Folder:" ToolTip="Select the folder containing files you want to convert" />
+                                <TextBox x:Name="ConversionInputFolderTextBox" Grid.Column="1" Margin="5,0" IsReadOnly="True" ToolTip="The selected folder path for conversion input" />
+                                <Button x:Name="BrowseConversionInputButton" Grid.Column="2" Content="Browse..." Click="BrowseConversionInputButton_Click" Style="{StaticResource ActionButtonStyle}" ToolTip="Browse and select the source files folder" />
                             </Grid>
 
                             <Grid Margin="0,0,0,10">
@@ -76,27 +76,28 @@
                                     <ColumnDefinition Width="*" />
                                     <ColumnDefinition Width="Auto" />
                                 </Grid.ColumnDefinitions>
-                                <Label Content="Output CHD Folder:" />
-                                <TextBox x:Name="ConversionOutputFolderTextBox" Grid.Column="1" Margin="5,0" IsReadOnly="True" />
-                                <Button x:Name="BrowseConversionOutputButton" Grid.Column="2" Content="Browse..." Click="BrowseConversionOutputButton_Click" Style="{StaticResource ActionButtonStyle}" />
+                                <Label Content="Output CHD Folder:" ToolTip="Select where the converted CHD files should be saved" />
+                                <TextBox x:Name="ConversionOutputFolderTextBox" Grid.Column="1" Margin="5,0" IsReadOnly="True" ToolTip="The selected folder path for CHD output" />
+                                <Button x:Name="BrowseConversionOutputButton" Grid.Column="2" Content="Browse..." Click="BrowseConversionOutputButton_Click" Style="{StaticResource ActionButtonStyle}" ToolTip="Browse and select the output folder" />
                             </Grid>
 
                             <GroupBox Header="Options" Margin="0,5,0,10" Padding="10">
                                 <StackPanel>
-                                    <CheckBox x:Name="DeleteOriginalsCheckBox" Content="Delete original files after successful conversion" Margin="0,5" HorizontalAlignment="Left" />
+                                    <CheckBox x:Name="DeleteOriginalsCheckBox" Content="Delete original files after successful conversion" Margin="0,5" HorizontalAlignment="Left" ToolTip="Automatically delete source files once they are successfully converted to CHD" />
+                                    <CheckBox x:Name="ProcessSmallerFirstCheckBox" Content="Process smaller files first" Margin="0,5" HorizontalAlignment="Left" ToolTip="Sort files by size and process the smallest ones first" />
                                     <StackPanel Orientation="Horizontal" Margin="0,5">
-                                        <CheckBox x:Name="ForceCreateCdCheckBox" Content="Force createcd (CD)" Margin="0,0,20,0" Checked="ForceCreateCdCheckBox_Checked" />
-                                        <CheckBox x:Name="ForceCreateDvdCheckBox" Content="Force createdvd (DVD)" Checked="ForceCreateDvdCheckBox_Checked" />
+                                        <CheckBox x:Name="ForceCreateCdCheckBox" Content="Force createcd (CD)" Margin="0,0,20,0" Checked="ForceCreateCdCheckBox_Checked" ToolTip="Force CHDMAN to use the 'createcd' command for all files" />
+                                        <CheckBox x:Name="ForceCreateDvdCheckBox" Content="Force createdvd (DVD)" Checked="ForceCreateDvdCheckBox_Checked" ToolTip="Force CHDMAN to use the 'createdvd' command for all files" />
                                     </StackPanel>
                                 </StackPanel>
                             </GroupBox>
 
-                            <Button x:Name="StartConversionButton" Content="Start Conversion" Click="StartConversionButton_Click" Style="{StaticResource StartButtonStyle}" HorizontalAlignment="Center" Margin="0,5,0,0" />
+                            <Button x:Name="StartConversionButton" Content="Start Conversion" Click="StartConversionButton_Click" Style="{StaticResource StartButtonStyle}" HorizontalAlignment="Center" Margin="0,5,0,0" ToolTip="Begin the batch conversion process" />
                         </StackPanel>
                     </Border>
                 </TabItem>
 
-                <TabItem Header="Verify CHD Files" x:Name="VerifyTab">
+                <TabItem Header="Verify CHD Files" x:Name="VerifyTab" ToolTip="Verify the integrity of existing CHD files">
                     <Border Background="{StaticResource CardBackgroundBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="0,0,6,6" Padding="15">
                         <StackPanel>
                             <Grid Margin="0,0,0,10">
@@ -105,24 +106,24 @@
                                     <ColumnDefinition Width="*" />
                                     <ColumnDefinition Width="Auto" />
                                 </Grid.ColumnDefinitions>
-                                <Label Content="CHD Files Folder:" />
-                                <TextBox x:Name="VerificationInputFolderTextBox" Grid.Column="1" Margin="5,0" IsReadOnly="True" />
-                                <Button x:Name="BrowseVerificationInputButton" Grid.Column="2" Content="Browse..." Click="BrowseVerificationInputButton_Click" Style="{StaticResource ActionButtonStyle}" />
+                                <Label Content="CHD Files Folder:" ToolTip="Select the folder containing the CHD files you want to verify" />
+                                <TextBox x:Name="VerificationInputFolderTextBox" Grid.Column="1" Margin="5,0" IsReadOnly="True" ToolTip="The selected folder path for verification" />
+                                <Button x:Name="BrowseVerificationInputButton" Grid.Column="2" Content="Browse..." Click="BrowseVerificationInputButton_Click" Style="{StaticResource ActionButtonStyle}" ToolTip="Browse and select the folder with CHD files" />
                             </Grid>
 
                             <GroupBox Header="Options" Margin="0,5,0,10" Padding="10">
                                 <StackPanel>
-                                    <CheckBox x:Name="MoveSuccessFilesCheckBox" Content="Move successfully tested CHD files to 'Success' folder" Margin="0,5" HorizontalAlignment="Left" />
-                                    <CheckBox x:Name="MoveFailedFilesCheckBox" Content="Move failed tested CHD files to 'Failed' folder" Margin="0,5" HorizontalAlignment="Left" />
+                                    <CheckBox x:Name="MoveSuccessFilesCheckBox" Content="Move successfully tested CHD files to 'Success' folder" Margin="0,5" HorizontalAlignment="Left" ToolTip="Move CHD files that pass verification into a 'Success' subfolder" />
+                                    <CheckBox x:Name="MoveFailedFilesCheckBox" Content="Move failed tested CHD files to 'Failed' folder" Margin="0,5" HorizontalAlignment="Left" ToolTip="Move CHD files that fail verification into a 'Failed' subfolder" />
                                 </StackPanel>
                             </GroupBox>
 
-                            <Button x:Name="StartVerificationButton" Content="Start Verification" Click="StartVerificationButton_Click" Style="{StaticResource StartButtonStyle}" HorizontalAlignment="Center" Margin="0,5,0,0" />
+                            <Button x:Name="StartVerificationButton" Content="Start Verification" Click="StartVerificationButton_Click" Style="{StaticResource StartButtonStyle}" HorizontalAlignment="Center" Margin="0,5,0,0" ToolTip="Begin the batch verification process" />
                         </StackPanel>
                     </Border>
                 </TabItem>
 
-                <TabItem Header="Extract from CHD" x:Name="ExtractTab">
+                <TabItem Header="Extract from CHD" x:Name="ExtractTab" ToolTip="Extract CHD files back to their original formats">
                     <Border Background="{StaticResource CardBackgroundBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="0,0,6,6" Padding="15">
                         <StackPanel>
                             <Grid Margin="0,0,0,10">
@@ -131,9 +132,9 @@
                                     <ColumnDefinition Width="*" />
                                     <ColumnDefinition Width="Auto" />
                                 </Grid.ColumnDefinitions>
-                                <Label Content="CHD Files Folder:" />
-                                <TextBox x:Name="ExtractionInputFolderTextBox" Grid.Column="1" Margin="5,0" IsReadOnly="True" />
-                                <Button x:Name="BrowseExtractionInputButton" Grid.Column="2" Content="Browse..." Click="BrowseExtractionInputButton_Click" Style="{StaticResource ActionButtonStyle}" />
+                                <Label Content="CHD Files Folder:" ToolTip="Select the folder containing CHD files for extraction" />
+                                <TextBox x:Name="ExtractionInputFolderTextBox" Grid.Column="1" Margin="5,0" IsReadOnly="True" ToolTip="The selected folder path for extraction input" />
+                                <Button x:Name="BrowseExtractionInputButton" Grid.Column="2" Content="Browse..." Click="BrowseExtractionInputButton_Click" Style="{StaticResource ActionButtonStyle}" ToolTip="Browse and select the folder with CHD files" />
                             </Grid>
 
                             <Grid Margin="0,0,0,10">
@@ -142,9 +143,9 @@
                                     <ColumnDefinition Width="*" />
                                     <ColumnDefinition Width="Auto" />
                                 </Grid.ColumnDefinitions>
-                                <Label Content="Output Folder:" />
-                                <TextBox x:Name="ExtractionOutputFolderTextBox" Grid.Column="1" Margin="5,0" IsReadOnly="True" />
-                                <Button x:Name="BrowseExtractionOutputButton" Grid.Column="2" Content="Browse..." Click="BrowseExtractionOutputButton_Click" Style="{StaticResource ActionButtonStyle}" />
+                                <Label Content="Output Folder:" ToolTip="Select the folder where extracted files will be saved" />
+                                <TextBox x:Name="ExtractionOutputFolderTextBox" Grid.Column="1" Margin="5,0" IsReadOnly="True" ToolTip="The selected folder path for extraction output" />
+                                <Button x:Name="BrowseExtractionOutputButton" Grid.Column="2" Content="Browse..." Click="BrowseExtractionOutputButton_Click" Style="{StaticResource ActionButtonStyle}" ToolTip="Browse and select the extraction output folder" />
                             </Grid>
 
                             <Grid>
@@ -154,19 +155,19 @@
                                 </Grid.ColumnDefinitions>
                                 <GroupBox Grid.Column="0" Header="Output Format" Margin="0,5,10,10" Padding="10">
                                     <StackPanel Orientation="Vertical">
-                                        <RadioButton x:Name="ExtractAutoRadioButton" Content="Auto (detect)" IsChecked="True" Margin="0,2" />
-                                        <RadioButton x:Name="ExtractCdRadioButton" Content="CD (.bin)" Margin="0,2" />
-                                        <RadioButton x:Name="ExtractDvdRadioButton" Content="DVD (.iso)" Margin="0,2" />
-                                        <RadioButton x:Name="ExtractHdRadioButton" Content="Hard Disk (.img)" Margin="0,2" />
+                                        <RadioButton x:Name="ExtractAutoRadioButton" Content="Auto (detect)" IsChecked="True" Margin="0,2" ToolTip="Automatically detect the original format based on CHD metadata" />
+                                        <RadioButton x:Name="ExtractCdRadioButton" Content="CD (.bin)" Margin="0,2" ToolTip="Force extraction as a CD image (.bin/.cue)" />
+                                        <RadioButton x:Name="ExtractDvdRadioButton" Content="DVD (.iso)" Margin="0,2" ToolTip="Force extraction as a DVD image (.iso)" />
+                                        <RadioButton x:Name="ExtractHdRadioButton" Content="Hard Disk (.img)" Margin="0,2" ToolTip="Force extraction as a Hard Disk image (.img)" />
                                     </StackPanel>
                                 </GroupBox>
 
                                 <GroupBox Grid.Column="1" Header="Options" Margin="10,5,0,10" Padding="10">
-                                    <CheckBox x:Name="DeleteOriginalChdCheckBox" Content="Delete original CHD file after successful extraction" Margin="0,5" HorizontalAlignment="Left" VerticalAlignment="Top" VerticalContentAlignment="Top"/>
+                                    <CheckBox x:Name="DeleteOriginalChdCheckBox" Content="Delete original CHD file after successful extraction" Margin="0,5" HorizontalAlignment="Left" VerticalAlignment="Top" VerticalContentAlignment="Top" ToolTip="Automatically delete the source CHD file after it has been successfully extracted" />
                                 </GroupBox>
                             </Grid>
 
-                            <Button x:Name="StartExtractionButton" Content="Start Extraction" Click="StartExtractionButton_Click" Style="{StaticResource StartButtonStyle}" HorizontalAlignment="Center" Margin="0,5,0,0" />
+                            <Button x:Name="StartExtractionButton" Content="Start Extraction" Click="StartExtractionButton_Click" Style="{StaticResource StartButtonStyle}" HorizontalAlignment="Center" Margin="0,5,0,0" ToolTip="Begin the batch extraction process" />
                         </StackPanel>
                     </Border>
                 </TabItem>
@@ -188,7 +189,8 @@
                          BorderThickness="0"
                          TextAlignment="Left"
                          TextWrapping="NoWrap"
-                         CaretBrush="{StaticResource TerminalForegroundBrush}">
+                         CaretBrush="{StaticResource TerminalForegroundBrush}"
+                         ToolTip="Application activity log and process details">
                     <TextBox.Effect>
                         <DropShadowEffect ShadowDepth="0" Color="#39FF14" BlurRadius="2" Opacity="0.4"/>
                     </TextBox.Effect>
@@ -204,35 +206,35 @@
                     <ColumnDefinition Width="*" />
                 </Grid.ColumnDefinitions>
 
-                <Border Grid.Column="0" Style="{StaticResource StatCard}">
+                <Border Grid.Column="0" Style="{StaticResource StatCard}" ToolTip="Total number of files identified for the current operation">
                     <StackPanel Orientation="Vertical" HorizontalAlignment="Center">
                         <TextBlock Text="TOTAL FILES" FontSize="10" Foreground="{StaticResource TextSecondaryBrush}" FontWeight="Bold" HorizontalAlignment="Center" />
                         <TextBlock x:Name="TotalFilesValue" Text="0" FontSize="18" FontWeight="Bold" HorizontalAlignment="Center" Foreground="{StaticResource TextPrimaryBrush}" />
                     </StackPanel>
                 </Border>
 
-                <Border Grid.Column="1" Style="{StaticResource StatCard}">
+                <Border Grid.Column="1" Style="{StaticResource StatCard}" ToolTip="Number of successfully processed files">
                     <StackPanel Orientation="Vertical" HorizontalAlignment="Center">
                         <TextBlock Text="SUCCESS" FontSize="10" Foreground="{StaticResource SuccessTextBrush}" FontWeight="Bold" HorizontalAlignment="Center" />
                         <TextBlock x:Name="SuccessValue" Text="0" FontSize="18" FontWeight="Bold" Foreground="{StaticResource SuccessTextBrush}" HorizontalAlignment="Center" />
                     </StackPanel>
                 </Border>
 
-                <Border Grid.Column="2" Style="{StaticResource StatCard}">
+                <Border Grid.Column="2" Style="{StaticResource StatCard}" ToolTip="Number of files that failed to process">
                     <StackPanel Orientation="Vertical" HorizontalAlignment="Center">
                         <TextBlock Text="FAILED" FontSize="10" Foreground="{StaticResource FailedTextBrush}" FontWeight="Bold" HorizontalAlignment="Center" />
                         <TextBlock x:Name="FailedValue" Text="0" FontSize="18" FontWeight="Bold" Foreground="{StaticResource FailedTextBrush}" HorizontalAlignment="Center" />
                     </StackPanel>
                 </Border>
 
-                <Border Grid.Column="3" Style="{StaticResource StatCard}">
+                <Border Grid.Column="3" Style="{StaticResource StatCard}" ToolTip="Time elapsed since the operation started">
                     <StackPanel Orientation="Vertical" HorizontalAlignment="Center">
                         <TextBlock Text="ELAPSED" FontSize="10" Foreground="{StaticResource TextSecondaryBrush}" FontWeight="Bold" HorizontalAlignment="Center" />
                         <TextBlock x:Name="ProcessingTimeValue" Text="00:00:00" FontSize="18" FontWeight="Bold" HorizontalAlignment="Center" Foreground="{StaticResource TextPrimaryBrush}" />
                     </StackPanel>
                 </Border>
 
-                <Border x:Name="SpeedStatCard" Grid.Column="4" Style="{StaticResource StatCard}">
+                <Border x:Name="SpeedStatCard" Grid.Column="4" Style="{StaticResource StatCard}" ToolTip="Current processing speed in MB/s">
                     <StackPanel Orientation="Vertical" HorizontalAlignment="Center">
                         <TextBlock Text="SPEED" FontSize="10" Foreground="{StaticResource TextSecondaryBrush}" FontWeight="Bold" HorizontalAlignment="Center" />
                         <TextBlock x:Name="SpeedValue" Text="0.0 MB/s" FontSize="18" FontWeight="Bold" HorizontalAlignment="Center" Foreground="{StaticResource TextPrimaryBrush}" />
@@ -245,13 +247,13 @@
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
-                <Border BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="4" Padding="1" Background="{StaticResource CardBackgroundBrush}">
+                <Border BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="4" Padding="1" Background="{StaticResource CardBackgroundBrush}" ToolTip="Visual progress indicator">
                     <Grid>
                         <ProgressBar x:Name="ProgressBar" Height="28" Foreground="{StaticResource ProgressForegroundBrush}" Background="{StaticResource ProgressBackgroundBrush}" BorderThickness="0" />
                         <TextBlock x:Name="ProgressText" HorizontalAlignment="Center" VerticalAlignment="Center" FontWeight="SemiBold" Foreground="{StaticResource TextPrimaryBrush}" />
                     </Grid>
                 </Border>
-                <Button x:Name="CancelButton" Grid.Column="1" Content="Cancel" Style="{StaticResource CancelButtonStyle}" Margin="10,0,0,0" Click="CancelButton_Click" />
+                <Button x:Name="CancelButton" Grid.Column="1" Content="Cancel" Style="{StaticResource CancelButtonStyle}" Margin="10,0,0,0" Click="CancelButton_Click" ToolTip="Abort the current operation" />
             </Grid>
         </Grid>
 
@@ -269,17 +271,17 @@
             </StatusBar.ItemsPanel>
 
             <StatusBarItem Grid.Column="0">
-                <TextBlock x:Name="StatusBarMessage" Text="Ready" Foreground="{StaticResource TextSecondaryBrush}" />
+                <TextBlock x:Name="StatusBarMessage" Text="Ready" Foreground="{StaticResource TextSecondaryBrush}" ToolTip="Current application status" />
             </StatusBarItem>
 
-            <StatusBarItem Grid.Column="1">
+            <StatusBarItem Grid.Column="1" ToolTip="Status of required external tools">
                 <StackPanel Orientation="Horizontal">
                     <TextBlock Text="Dependencies:" Margin="0,0,5,0" Foreground="{StaticResource TextSecondaryBrush}"/>
-                    <TextBlock x:Name="StatusBarChdman" Text="CHDMAN" Foreground="{StaticResource SuccessTextBrush}" Margin="0,0,5,0"/>
+                    <TextBlock x:Name="StatusBarChdman" Text="CHDMAN" Foreground="{StaticResource SuccessTextBrush}" Margin="0,0,5,0" ToolTip="Status of chdman.exe"/>
                     <TextBlock Text="|" Margin="0,0,5,0" Foreground="{StaticResource TextMutedBrush}"/>
-                    <TextBlock x:Name="StatusBarMaxcso" Text="MAXCSO" Foreground="{StaticResource SuccessTextBrush}" Margin="0,0,5,0"/>
+                    <TextBlock x:Name="StatusBarMaxcso" Text="MAXCSO" Foreground="{StaticResource SuccessTextBrush}" Margin="0,0,5,0" ToolTip="Status of maxcso.exe"/>
                     <TextBlock Text="|" Margin="0,0,5,0" Foreground="{StaticResource TextMutedBrush}"/>
-                    <TextBlock x:Name="StatusBarPsxPackager" Text="PSXPACKAGER" Foreground="{StaticResource SuccessTextBrush}" Margin="0"/>
+                    <TextBlock x:Name="StatusBarPsxPackager" Text="PSXPACKAGER" Foreground="{StaticResource SuccessTextBrush}" Margin="0" ToolTip="Status of psxpackager.exe"/>
                 </StackPanel>
             </StatusBarItem>
         </StatusBar>

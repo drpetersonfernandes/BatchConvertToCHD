@@ -2,9 +2,9 @@
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="About Batch Convert to CHD"
-        Width="600"
-        Height="650"
-        ResizeMode="NoResize"
+        Width="700"
+        Height="700"
+        ResizeMode="CanResize"
         WindowStartupLocation="CenterScreen"
         Background="{StaticResource WindowBackgroundBrush}">
     <Grid Margin="20">
@@ -17,14 +17,14 @@
         </Grid.RowDefinitions>
 
         <!-- Logo Section -->
-        <Border Grid.Row="0" Background="{StaticResource CardBackgroundBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="8" Margin="0,0,0,15" Padding="15">
+        <Border Grid.Row="0" Background="{StaticResource CardBackgroundBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="8" Margin="0,0,0,15" Padding="15" ToolTip="Application Logo">
             <StackPanel HorizontalAlignment="Center">
-                <Image Width="100" Height="100" Source="pack://application:,,,/images/logo.png" />
+                <Image Width="130" Height="130" Source="pack://application:,,,/images/logo.png" />
             </StackPanel>
         </Border>
 
         <!-- Title & Version Section -->
-        <Border Grid.Row="1" Background="{StaticResource CardBackgroundBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="8" Margin="0,0,0,15" Padding="15">
+        <Border Grid.Row="1" Background="{StaticResource CardBackgroundBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="8" Margin="0,0,0,15" Padding="15" ToolTip="Application name and version">
             <StackPanel>
                 <TextBlock FontWeight="Bold" FontSize="20" Foreground="{StaticResource HeaderTextBrush}" Text="Batch Convert to CHD" HorizontalAlignment="Center" />
                 <TextBlock Name="AppVersionTextBlock" Margin="0,8,0,0" Text="" HorizontalAlignment="Center" Foreground="{StaticResource PrimaryAccentBrush}" FontWeight="SemiBold" FontSize="14" />
@@ -32,7 +32,7 @@
         </Border>
 
         <!-- Description Section -->
-        <Border Grid.Row="2" Background="{StaticResource CardBackgroundBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="8" Margin="0,0,0,15" Padding="15">
+        <Border Grid.Row="2" Background="{StaticResource CardBackgroundBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="8" Margin="0,0,0,15" Padding="15" ToolTip="Brief overview of the application purpose">
             <StackPanel>
                 <TextBlock FontWeight="Bold" FontSize="14" Foreground="{StaticResource TextPrimaryBrush}" Text="Description" Margin="0,0,0,10" />
                 <TextBlock x:Name="DescriptionTextBlock" TextWrapping="Wrap" Text="A utility for batch converting various disc image formats to CHD and for verifying the integrity of CHD files." Foreground="{StaticResource TextSecondaryBrush}" LineHeight="20" />
@@ -40,7 +40,7 @@
         </Border>
 
         <!-- Acknowledgements Section -->
-        <Border Grid.Row="3" Background="{StaticResource CardBackgroundBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="8" Margin="0,0,0,15" Padding="15">
+        <Border Grid.Row="3" Background="{StaticResource CardBackgroundBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="8" Margin="0,0,0,15" Padding="15" ToolTip="Credits and third-party tools used">
             <StackPanel>
                 <TextBlock FontWeight="Bold" FontSize="14" Foreground="{StaticResource TextPrimaryBrush}" Text="Acknowledgements" Margin="0,0,0,10" />
                 <TextBlock Margin="0,0,0,8" TextWrapping="Wrap" Foreground="{StaticResource TextSecondaryBrush}">
@@ -54,7 +54,7 @@
                 </TextBlock>
                 
                 <TextBlock Margin="0,15,0,0">
-                    <Hyperlink NavigateUri="https://www.purelogiccode.com" RequestNavigate="Hyperlink_RequestNavigate" Foreground="{StaticResource LinkTextBrush}" TextDecorations="Underline">
+                    <Hyperlink NavigateUri="https://www.purelogiccode.com" RequestNavigate="Hyperlink_RequestNavigate" Foreground="{StaticResource LinkTextBrush}" TextDecorations="Underline" ToolTip="Visit the official website">
                         https://www.purelogiccode.com
                     </Hyperlink>
                 </TextBlock>
@@ -63,7 +63,7 @@
 
         <!-- Close Button Section -->
         <StackPanel Grid.Row="4" HorizontalAlignment="Center">
-            <Button Click="CloseButton_Click" Content="Close" Style="{StaticResource ActionButtonStyle}" />
+            <Button Click="CloseButton_Click" Content="Close" Style="{StaticResource ActionButtonStyle}" ToolTip="Close the About window" />
         </StackPanel>
     </Grid>
 </Window>

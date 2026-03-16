@@ -367,7 +367,7 @@ public partial class MainWindow : IDisposable
     private void LogMessage(string message)
     {
         var timestampedMessage = $"[{DateTime.Now:HH:mm:ss.fff}] {message}";
-        
+
         Application.Current.Dispatcher.BeginInvoke(new Action(() =>
         {
             // Truncate log if it gets too large BEFORE appending
@@ -376,10 +376,10 @@ public partial class MainWindow : IDisposable
                 var text = LogViewer.Text;
                 var excessLength = text.Length - (MaxLogLength / 2); // Remove half to avoid frequent truncations
                 var firstNewline = text.IndexOf('\n', excessLength);
-                
+
                 if (firstNewline >= 0)
                 {
-                    LogViewer.Text = $"[{DateTime.Now:HH:mm:ss.fff}] --- Log truncated ---{Environment.NewLine}" + text.Substring(firstNewline + 1);
+                    LogViewer.Text = string.Concat($"[{DateTime.Now:HH:mm:ss.fff}] --- Log truncated ---{Environment.NewLine}", text.AsSpan(firstNewline + 1));
                 }
                 else
                 {
@@ -547,6 +547,7 @@ public partial class MainWindow : IDisposable
             ResetSpeedCounters();
 
             var deleteFiles = DeleteOriginalsCheckBox.IsChecked ?? false;
+            var processSmallerFirst = ProcessSmallerFirstCheckBox.IsChecked ?? false;
             var forceCd = ForceCreateCdCheckBox.IsChecked ?? false;
             var forceDvd = ForceCreateDvdCheckBox.IsChecked ?? false;
 
@@ -555,7 +556,7 @@ public partial class MainWindow : IDisposable
             try
             {
                 await PerformBatchConversionAsync(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, AppConfig.ChdmanExeName),
-                    inputFolder, outputFolder, deleteFiles, forceCd, forceDvd, _cts.Token);
+                    inputFolder, outputFolder, deleteFiles, processSmallerFirst, forceCd, forceDvd, _cts.Token);
             }
             catch (OperationCanceledException)
             {
@@ -665,6 +666,7 @@ public partial class MainWindow : IDisposable
         ConversionOutputFolderTextBox.IsEnabled = enabled;
         BrowseConversionOutputButton.IsEnabled = enabled;
         DeleteOriginalsCheckBox.IsEnabled = enabled;
+        ProcessSmallerFirstCheckBox.IsEnabled = enabled;
         StartConversionButton.IsEnabled = enabled;
         ForceCreateCdCheckBox.IsEnabled = enabled;
         ForceCreateDvdCheckBox.IsEnabled = enabled;
@@ -716,7 +718,7 @@ public partial class MainWindow : IDisposable
         return dialog.ShowDialog() == true ? dialog.FolderName : null;
     }
 
-    private async Task PerformBatchConversionAsync(string chdmanPath, string inputFolder, string outputFolder, bool deleteFiles, bool forceCd, bool forceDvd, CancellationToken token)
+    private async Task PerformBatchConversionAsync(string chdmanPath, string inputFolder, string outputFolder, bool deleteFiles, bool processSmallerFirst, bool forceCd, bool forceDvd, CancellationToken token)
     {
         if (!await ValidateExecutableAccessAsync(chdmanPath, "chdman.exe")) return;
         if (!await ValidateChdmanCompatibilityAsync(chdmanPath)) return;
@@ -724,9 +726,14 @@ public partial class MainWindow : IDisposable
         var filesToConvert = await Task.Run(() =>
         {
             var files = Directory.GetFiles(inputFolder, "*.*", SearchOption.TopDirectoryOnly)
-                .Where(static file => AllSupportedInputExtensionsForConversion.Contains(Path.GetExtension(file).ToLowerInvariant()))
-                .ToArray();
-            return files;
+                .Where(static file => AllSupportedInputExtensionsForConversion.Contains(Path.GetExtension(file).ToLowerInvariant()));
+
+            if (processSmallerFirst)
+            {
+                files = files.OrderBy(static f => new FileInfo(f).Length);
+            }
+
+            return files.ToArray();
         }, token);
 
         _totalFilesProcessed = filesToConvert.Length;
