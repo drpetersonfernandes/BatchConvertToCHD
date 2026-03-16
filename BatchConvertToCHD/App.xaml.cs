@@ -8,6 +8,7 @@ namespace BatchConvertToCHD;
 public partial class App : IDisposable
 {
     private BugReportService? _bugReportService;
+    private StatsService? _statsService;
 
     /// <summary>
     /// Provides a shared, static instance of the BugReportService for the entire application.
@@ -16,9 +17,11 @@ public partial class App : IDisposable
 
     public App()
     {
-        // Initialize the bug report service first to ensure it's available for reporting initialization errors
+        // Initialize services
         SharedBugReportService = new BugReportService(AppConfig.BugReportApiUrl, AppConfig.BugReportApiKey, AppConfig.ApplicationName);
         _bugReportService = SharedBugReportService;
+
+        _statsService = new StatsService(AppConfig.ApplicationStatsApiUrl, AppConfig.ApplicationStatsApiKey, AppConfig.ApplicationName);
 
         // Set up global exception handling
         AppDomain.CurrentDomain.UnhandledException += CurrentDomain_UnhandledException;
@@ -35,6 +38,9 @@ public partial class App : IDisposable
         DeleteOldDllFiles();
 
         base.OnStartup(e);
+
+        // Record usage statistics on a background thread
+        _ = _statsService?.RecordUsageAsync();
 
         // Preload assemblies on background thread to improve responsiveness
         Task.Run(static () =>
@@ -85,11 +91,13 @@ public partial class App : IDisposable
 
     private void App_Exit(object sender, ExitEventArgs e)
     {
-        // Dispose the bug report service and clear references to prevent double disposal
-        // if Dispose() is called explicitly later
+        // Dispose services and clear references to prevent double disposal
         _bugReportService?.Dispose();
         _bugReportService = null;
         SharedBugReportService = null;
+
+        _statsService?.Dispose();
+        _statsService = null;
 
         // Unregister static event handlers to prevent memory leaks
         AppDomain.CurrentDomain.UnhandledException -= CurrentDomain_UnhandledException;
@@ -141,12 +149,12 @@ public partial class App : IDisposable
     {
         // Cleanup is primarily handled in App_Exit. This method provides a safety net
         // for explicit disposal scenarios and prevents double disposal.
-        if (_bugReportService != null)
-        {
-            _bugReportService.Dispose();
-            _bugReportService = null;
-            SharedBugReportService = null;
-        }
+        _bugReportService?.Dispose();
+        _bugReportService = null;
+        SharedBugReportService = null;
+
+        _statsService?.Dispose();
+        _statsService = null;
 
         // Unregister static event handlers to prevent them from firing after disposal
         AppDomain.CurrentDomain.UnhandledException -= CurrentDomain_UnhandledException;
