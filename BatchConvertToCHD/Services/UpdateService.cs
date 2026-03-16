@@ -21,13 +21,16 @@ public class UpdateService(string applicationName)
     {
         try
         {
-            HttpClient.DefaultRequestHeaders.UserAgent.Clear();
-            HttpClient.DefaultRequestHeaders.Add("User-Agent", _applicationName);
-
             onLog("Checking for updates on GitHub...");
-            var response = await HttpClient.GetStringAsync(GitHubApiLatestReleaseUrl);
 
-            var latestRelease = JsonSerializer.Deserialize<GitHubRelease>(response, JsonSerializerOptions);
+            using var request = new HttpRequestMessage(HttpMethod.Get, GitHubApiLatestReleaseUrl);
+            request.Headers.UserAgent.ParseAdd(_applicationName);
+
+            var response = await HttpClient.SendAsync(request);
+            response.EnsureSuccessStatusCode();
+
+            var responseBody = await response.Content.ReadAsStringAsync();
+            var latestRelease = JsonSerializer.Deserialize<GitHubRelease>(responseBody, JsonSerializerOptions);
             if (latestRelease == null || latestRelease.Draft || latestRelease.Prerelease || string.IsNullOrWhiteSpace(latestRelease.TagName))
             {
                 onLog("Latest release is invalid, draft, or prerelease. Skipping.");

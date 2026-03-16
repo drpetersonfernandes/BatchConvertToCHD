@@ -687,6 +687,9 @@ public partial class MainWindow : IDisposable
         ExtractHdRadioButton.IsEnabled = enabled;
         StartExtractionButton.IsEnabled = enabled;
         MainTabControl.IsEnabled = enabled;
+
+        // Toggle progress area visibility
+        ProgressAreaGrid.Visibility = enabled ? Visibility.Collapsed : Visibility.Visible;
         ProgressText.Visibility = enabled ? Visibility.Collapsed : Visibility.Visible;
         ProgressBar.Visibility = enabled ? Visibility.Collapsed : Visibility.Visible;
         ProgressBar.IsIndeterminate = !enabled; // Start moving immediately

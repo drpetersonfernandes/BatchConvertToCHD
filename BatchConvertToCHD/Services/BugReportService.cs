@@ -117,8 +117,7 @@ public class BugReportService : IDisposable
             sb.AppendLine(CultureInfo.InvariantCulture, $"Application Version: {Assembly.GetExecutingAssembly().GetName().Version}");
             sb.AppendLine(CultureInfo.InvariantCulture, $"Base Directory: {AppDomain.CurrentDomain.BaseDirectory}");
             sb.AppendLine(CultureInfo.InvariantCulture, $"Temp Path: {Path.GetTempPath()}");
-            sb.AppendLine(CultureInfo.InvariantCulture, $"User: {Environment.UserName}");
-            sb.AppendLine(CultureInfo.InvariantCulture, $"CHDMAN Available: {File.Exists(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "chdman.exe"))}");
+            sb.AppendLine(CultureInfo.InvariantCulture, $"CHDMAN Available: {File.Exists(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, AppConfig.ChdmanExeName))}");
             sb.AppendLine(CultureInfo.InvariantCulture, $"MAXCSO Available: {File.Exists(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "maxcso.exe"))}");
             return sb.ToString();
         }
