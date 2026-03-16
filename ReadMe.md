@@ -9,6 +9,7 @@
 
 ![Batch Convert to CHD Screenshot](screenshot.png)
 ![Batch Convert to CHD Screenshot](screenshot2.png)
+![Batch Convert to CHD Screenshot](screenshot3.png)
 
 ## 🚀 Key Features
 
