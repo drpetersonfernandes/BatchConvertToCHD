@@ -43,4 +43,9 @@
     <PackageReference Include="SharpCompress" Version="0.47.0" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Compile Remove="References\**" />
+    <None Remove="References\**" />
+  </ItemGroup>
+
 </Project>

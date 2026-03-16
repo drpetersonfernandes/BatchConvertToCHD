@@ -1151,6 +1151,7 @@ public partial class MainWindow : IDisposable
                 // Wait for process to fully exit and release file handles
                 await Task.Run(() => process.WaitForExit(5000), CancellationToken.None);
             }
+
             // Wait a bit more for file handles to be fully released
             await Task.Delay(500, CancellationToken.None);
             // Clean up partially extracted file
