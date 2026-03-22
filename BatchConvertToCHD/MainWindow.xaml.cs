@@ -550,13 +550,14 @@ public partial class MainWindow : IDisposable
             var processSmallerFirst = ProcessSmallerFirstCheckBox.IsChecked ?? false;
             var forceCd = ForceCreateCdCheckBox.IsChecked ?? false;
             var forceDvd = ForceCreateDvdCheckBox.IsChecked ?? false;
+            var includeSubfolders = SearchSubfoldersConversionCheckBox.IsChecked ?? false;
 
             LogMessage("--- Starting batch conversion process... ---");
 
             try
             {
                 await PerformBatchConversionAsync(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, AppConfig.ChdmanExeName),
-                    inputFolder, outputFolder, deleteFiles, processSmallerFirst, forceCd, forceDvd, _cts.Token);
+                    inputFolder, outputFolder, deleteFiles, processSmallerFirst, forceCd, forceDvd, includeSubfolders, _cts.Token);
             }
             catch (OperationCanceledException)
             {
@@ -606,7 +607,7 @@ public partial class MainWindow : IDisposable
             _operationTimer.Restart();
             ResetSpeedCounters();
 
-            const bool includeSub = false; // VerificationIncludeSubfoldersCheckBox.IsChecked ?? false; // Disabled to prevent infinite nesting
+            var includeSubfolders = SearchSubfoldersVerificationCheckBox.IsChecked ?? false;
             var moveSuccess = MoveSuccessFilesCheckBox.IsChecked ?? false;
             var moveFailed = MoveFailedFilesCheckBox.IsChecked ?? false;
             var successFolder = moveSuccess ? Path.Combine(inputFolder, "Success") : string.Empty;
@@ -617,7 +618,7 @@ public partial class MainWindow : IDisposable
             try
             {
                 await PerformBatchVerificationAsync(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, AppConfig.ChdmanExeName),
-                    inputFolder, includeSub, moveSuccess, successFolder, moveFailed, failedFolder, _cts.Token);
+                    inputFolder, includeSubfolders, moveSuccess, successFolder, moveFailed, failedFolder, _cts.Token);
             }
             catch (OperationCanceledException)
             {
@@ -665,6 +666,7 @@ public partial class MainWindow : IDisposable
         BrowseConversionInputButton.IsEnabled = enabled;
         ConversionOutputFolderTextBox.IsEnabled = enabled;
         BrowseConversionOutputButton.IsEnabled = enabled;
+        SearchSubfoldersConversionCheckBox.IsEnabled = enabled;
         DeleteOriginalsCheckBox.IsEnabled = enabled;
         ProcessSmallerFirstCheckBox.IsEnabled = enabled;
         StartConversionButton.IsEnabled = enabled;
@@ -672,7 +674,7 @@ public partial class MainWindow : IDisposable
         ForceCreateDvdCheckBox.IsEnabled = enabled;
         VerificationInputFolderTextBox.IsEnabled = enabled;
         BrowseVerificationInputButton.IsEnabled = enabled;
-        // VerificationIncludeSubfoldersCheckBox.IsEnabled = false; // Removed
+        SearchSubfoldersVerificationCheckBox.IsEnabled = enabled;
         StartVerificationButton.IsEnabled = enabled;
         MoveSuccessFilesCheckBox.IsEnabled = enabled;
         MoveFailedFilesCheckBox.IsEnabled = enabled;
@@ -721,14 +723,14 @@ public partial class MainWindow : IDisposable
         return dialog.ShowDialog() == true ? dialog.FolderName : null;
     }
 
-    private async Task PerformBatchConversionAsync(string chdmanPath, string inputFolder, string outputFolder, bool deleteFiles, bool processSmallerFirst, bool forceCd, bool forceDvd, CancellationToken token)
+    private async Task PerformBatchConversionAsync(string chdmanPath, string inputFolder, string outputFolder, bool deleteFiles, bool processSmallerFirst, bool forceCd, bool forceDvd, bool includeSubfolders, CancellationToken token)
     {
         if (!await ValidateExecutableAccessAsync(chdmanPath, "chdman.exe")) return;
         if (!await ValidateChdmanCompatibilityAsync(chdmanPath)) return;
 
         var filesToConvert = await Task.Run(() =>
         {
-            var files = Directory.GetFiles(inputFolder, "*.*", SearchOption.TopDirectoryOnly)
+            var files = Directory.GetFiles(inputFolder, "*.*", includeSubfolders ? SearchOption.AllDirectories : SearchOption.TopDirectoryOnly)
                 .Where(static file => AllSupportedInputExtensionsForConversion.Contains(Path.GetExtension(file).ToLowerInvariant()));
 
             if (processSmallerFirst)
@@ -964,8 +966,8 @@ public partial class MainWindow : IDisposable
         if (!await ValidateExecutableAccessAsync(chdmanPath, "chdman.exe")) return;
         if (!await ValidateChdmanCompatibilityAsync(chdmanPath)) return;
 
-        // Force TopDirectoryOnly to prevent infinite recursion when moving files to subfolders
-        var files = await Task.Run(() => Directory.GetFiles(inputFolder, "*.chd", SearchOption.TopDirectoryOnly), token);
+        // Use includeSub parameter to determine search option
+        var files = await Task.Run(() => Directory.GetFiles(inputFolder, "*.chd", includeSub ? SearchOption.AllDirectories : SearchOption.TopDirectoryOnly), token);
         _totalFilesProcessed = files.Length;
         UpdateStatsDisplay();
         LogMessage($"Found {_totalFilesProcessed} CHD files.");

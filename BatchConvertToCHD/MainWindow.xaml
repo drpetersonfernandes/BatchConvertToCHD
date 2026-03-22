@@ -83,6 +83,7 @@
 
                             <GroupBox Header="Options" Margin="0,5,0,10" Padding="10">
                                 <StackPanel>
+                                    <CheckBox x:Name="SearchSubfoldersConversionCheckBox" Content="Search for files in subfolders" Margin="0,5" HorizontalAlignment="Left" ToolTip="Recursively search for files in all subfolders" />
                                     <CheckBox x:Name="DeleteOriginalsCheckBox" Content="Delete original files after successful conversion" Margin="0,5" HorizontalAlignment="Left" ToolTip="Automatically delete source files once they are successfully converted to CHD" />
                                     <CheckBox x:Name="ProcessSmallerFirstCheckBox" Content="Process smaller files first" Margin="0,5" HorizontalAlignment="Left" ToolTip="Sort files by size and process the smallest ones first" />
                                     <StackPanel Orientation="Horizontal" Margin="0,5">
@@ -113,6 +114,7 @@
 
                             <GroupBox Header="Options" Margin="0,5,0,10" Padding="10">
                                 <StackPanel>
+                                    <CheckBox x:Name="SearchSubfoldersVerificationCheckBox" Content="Search for files in subfolders" Margin="0,5" HorizontalAlignment="Left" ToolTip="Recursively search for files in all subfolders" />
                                     <CheckBox x:Name="MoveSuccessFilesCheckBox" Content="Move successfully tested CHD files to 'Success' folder" Margin="0,5" HorizontalAlignment="Left" ToolTip="Move CHD files that pass verification into a 'Success' subfolder" />
                                     <CheckBox x:Name="MoveFailedFilesCheckBox" Content="Move failed tested CHD files to 'Failed' folder" Margin="0,5" HorizontalAlignment="Left" ToolTip="Move CHD files that fail verification into a 'Failed' subfolder" />
                                 </StackPanel>
