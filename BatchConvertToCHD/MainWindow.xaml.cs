@@ -276,9 +276,17 @@ public partial class MainWindow : IDisposable
                       "For Windows 7, please obtain a compatible chdman.exe from an older MAME release.");
             return false;
         }
-        catch
+        catch (Win32Exception ex) when (ex.NativeErrorCode == 5)
         {
-            // Other errors are acceptable - at least the exe started
+            LogMessage($"ERROR: Access denied when trying to start {Path.GetFileName(chdmanPath)}.");
+            LogMessage("       This can be caused by antivirus blocking the executable or insufficient file permissions.");
+            ShowError($"Access denied to {Path.GetFileName(chdmanPath)}.\n\nPlease check your antivirus settings or file permissions.");
+            return false;
+        }
+        catch (Exception ex)
+        {
+            // Other errors are acceptable - at least the exe started or we have a generic error
+            LogMessage($"WARNING: Could not validate chdman compatibility: {ex.Message}");
             return true;
         }
     }
@@ -730,7 +738,14 @@ public partial class MainWindow : IDisposable
 
         var filesToConvert = await Task.Run(() =>
         {
-            var files = Directory.GetFiles(inputFolder, "*.*", includeSubfolders ? SearchOption.AllDirectories : SearchOption.TopDirectoryOnly)
+            var options = new EnumerationOptions
+            {
+                RecurseSubdirectories = includeSubfolders,
+                IgnoreInaccessible = true,
+                AttributesToSkip = FileAttributes.System | FileAttributes.Hidden // Skip system/hidden to avoid protected folders
+            };
+
+            var files = Directory.GetFiles(inputFolder, "*.*", options)
                 .Where(static file => AllSupportedInputExtensionsForConversion.Contains(Path.GetExtension(file).ToLowerInvariant()));
 
             if (processSmallerFirst)
@@ -967,7 +982,16 @@ public partial class MainWindow : IDisposable
         if (!await ValidateChdmanCompatibilityAsync(chdmanPath)) return;
 
         // Use includeSub parameter to determine search option
-        var files = await Task.Run(() => Directory.GetFiles(inputFolder, "*.chd", includeSub ? SearchOption.AllDirectories : SearchOption.TopDirectoryOnly), token);
+        var files = await Task.Run(() =>
+        {
+            var options = new EnumerationOptions
+            {
+                RecurseSubdirectories = includeSub,
+                IgnoreInaccessible = true,
+                AttributesToSkip = FileAttributes.System | FileAttributes.Hidden
+            };
+            return Directory.GetFiles(inputFolder, "*.chd", options);
+        }, token);
         _totalFilesProcessed = files.Length;
         UpdateStatsDisplay();
         LogMessage($"Found {_totalFilesProcessed} CHD files.");
@@ -1045,7 +1069,16 @@ public partial class MainWindow : IDisposable
         if (!await ValidateExecutableAccessAsync(chdmanPath, "chdman.exe")) return;
         if (!await ValidateChdmanCompatibilityAsync(chdmanPath)) return;
 
-        var files = await Task.Run(() => Directory.GetFiles(inputFolder, "*.chd", includeSub ? SearchOption.AllDirectories : SearchOption.TopDirectoryOnly), token);
+        var files = await Task.Run(() =>
+        {
+            var options = new EnumerationOptions
+            {
+                RecurseSubdirectories = includeSub,
+                IgnoreInaccessible = true,
+                AttributesToSkip = FileAttributes.System | FileAttributes.Hidden
+            };
+            return Directory.GetFiles(inputFolder, "*.chd", options);
+        }, token);
         _totalFilesProcessed = files.Length;
         UpdateStatsDisplay();
         LogMessage($"Found {_totalFilesProcessed} CHD files.");

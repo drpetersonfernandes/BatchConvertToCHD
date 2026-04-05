@@ -40,7 +40,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="SharpCompress" Version="0.47.2" />
+    <PackageReference Include="SharpCompress" Version="0.47.3" />
   </ItemGroup>
 
   <ItemGroup>

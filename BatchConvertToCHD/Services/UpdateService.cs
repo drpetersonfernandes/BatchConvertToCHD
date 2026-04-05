@@ -4,6 +4,8 @@ using System.Reflection;
 using System.Text.Json;
 using System.Windows;
 using BatchConvertToCHD.Models;
+using System.Security.Authentication;
+using System.Net.Security;
 
 namespace BatchConvertToCHD.Services;
 
@@ -14,8 +16,16 @@ public class UpdateService(string applicationName)
     private static readonly JsonSerializerOptions JsonSerializerOptions = new() { PropertyNameCaseInsensitive = true };
 
     // HttpClient should be reused across the application lifetime to avoid socket exhaustion
-    // See: https://docs.microsoft.com/en-us/dotnet/fundamentals/networking/http/httpclient-guidelines
-    private static readonly HttpClient HttpClient = new();
+    // Configure with SocketsHttpHandler to ensure TLS 1.2 and 1.3 are enabled (important for older Windows versions)
+    private static readonly HttpClient HttpClient = new(new SocketsHttpHandler
+    {
+        SslOptions = new SslClientAuthenticationOptions
+        {
+            // SslProtocols.None allows the OS to decide, but on Win7 TLS 1.2 is often disabled by default.
+            // Explicitly including Tls12 and Tls13 ensures they are available if the OS supports them.
+            EnabledSslProtocols = SslProtocols.Tls12 | SslProtocols.Tls13
+        }
+    });
 
     public async Task CheckForNewVersionAsync(Action<string> onLog, Action<string> onStatusUpdate, Func<string, Exception?, Task> onBugReport)
     {
@@ -27,6 +37,18 @@ public class UpdateService(string applicationName)
             request.Headers.UserAgent.ParseAdd(_applicationName);
 
             var response = await HttpClient.SendAsync(request);
+
+            if (response.StatusCode == System.Net.HttpStatusCode.Forbidden)
+            {
+                var responseBody403 = await response.Content.ReadAsStringAsync();
+                if (responseBody403.Contains("rate limit exceeded", StringComparison.OrdinalIgnoreCase))
+                {
+                    onLog("GitHub API rate limit exceeded. Skipping update check.");
+                    onStatusUpdate("Update check skipped (rate limit)");
+                    return;
+                }
+            }
+
             response.EnsureSuccessStatusCode();
 
             var responseBody = await response.Content.ReadAsStringAsync();
@@ -86,6 +108,11 @@ public class UpdateService(string applicationName)
                 onLog("Application is up to date.");
                 onStatusUpdate("Application is up to date");
             }
+        }
+        catch (HttpRequestException ex)
+        {
+            onLog($"Update check failed (Network/SSL): {ex.Message}");
+            onStatusUpdate("Update check failed (network)");
         }
         catch (Exception ex)
         {

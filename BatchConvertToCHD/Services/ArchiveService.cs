@@ -124,8 +124,16 @@ public class ArchiveService : IDisposable
             token.ThrowIfCancellationRequested();
 
             var foundFile = await Task.Run(() =>
-                Directory.GetFiles(tempDirectoryRoot, "*.*", SearchOption.AllDirectories)
-                    .FirstOrDefault(static f => PrimaryTargetExtensions.Contains(Path.GetExtension(f).ToLowerInvariant())), token);
+            {
+                var options = new EnumerationOptions
+                {
+                    RecurseSubdirectories = true,
+                    IgnoreInaccessible = true
+                };
+
+                return Directory.GetFiles(tempDirectoryRoot, "*.*", options)
+                    .FirstOrDefault(static f => PrimaryTargetExtensions.Contains(Path.GetExtension(f).ToLowerInvariant()));
+            }, token);
 
             return foundFile != null
                 ? (true, foundFile, tempDirectoryRoot, string.Empty)
