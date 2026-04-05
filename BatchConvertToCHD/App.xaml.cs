@@ -125,15 +125,15 @@ public partial class App : IDisposable
         e.SetObserved();
     }
 
-    private async void ReportException(Exception exception, string source)
+    private void ReportException(Exception exception, string source)
     {
         try
         {
             // Notify the developer using the shared service instance
-            if (_bugReportService != null)
-            {
-                await _bugReportService.SendBugReportAsync($"Unhandled Exception from {source}", exception);
-            }
+            // Block synchronously — critical for AppDomain.UnhandledException where the OS
+            // terminates the process immediately after this handler returns. Using async void
+            // would fire off the HTTP request and return before it completes, losing the report.
+            _bugReportService?.SendBugReportAsync($"Unhandled Exception from {source}", exception).GetAwaiter().GetResult();
         }
         catch
         {

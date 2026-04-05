@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.IO;
+using System.IO.Compression;
 using System.Text;
 using System.Security;
 using SharpCompress.Archives;
@@ -45,7 +46,11 @@ public class ArchiveService : IDisposable
             {
                 FileName = _maxCsoPath,
                 Arguments = $"--decompress \"{originalCsoPath}\" -o \"{tempOutputIsoPath}\"",
-                RedirectStandardOutput = true, RedirectStandardError = true, UseShellExecute = false, CreateNoWindow = true
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true,
+                ErrorDialog = false
             };
 
             var outputBuilder = new StringBuilder();
@@ -91,7 +96,7 @@ public class ArchiveService : IDisposable
         }
     }
 
-    public async Task<(bool Success, string FilePath, string TempDir, string ErrorMessage)> ExtractArchiveAsync(
+    public async Task<(bool Success, List<string> FilePaths, string TempDir, string ErrorMessage)> ExtractArchiveAsync(
         string originalArchivePath,
         string tempDirectoryRoot,
         Action<string> onLog,
@@ -109,21 +114,21 @@ public class ArchiveService : IDisposable
             switch (extension)
             {
                 case ".zip":
-                    await Task.Run(() => System.IO.Compression.ZipFile.ExtractToDirectory(originalArchivePath, tempDirectoryRoot, true), token);
+                    await Task.Run(() => ExtractZipArchive(originalArchivePath, tempDirectoryRoot, token), token);
                     break;
                 case ".7z":
-                    await Task.Run(() => ExtractSevenZipArchive(originalArchivePath, tempDirectoryRoot, onLog), token);
+                    await Task.Run(() => ExtractSevenZipArchive(originalArchivePath, tempDirectoryRoot, onLog, token), token);
                     break;
                 case ".rar":
-                    await Task.Run(() => ExtractRarArchive(originalArchivePath, tempDirectoryRoot, onLog), token);
+                    await Task.Run(() => ExtractRarArchive(originalArchivePath, tempDirectoryRoot, onLog, token), token);
                     break;
                 default:
-                    return (false, string.Empty, tempDirectoryRoot, $"Unsupported archive type: {extension}");
+                    return (false, new List<string>(), tempDirectoryRoot, $"Unsupported archive type: {extension}");
             }
 
             token.ThrowIfCancellationRequested();
 
-            var foundFile = await Task.Run(() =>
+            var foundFiles = await Task.Run(() =>
             {
                 var options = new EnumerationOptions
                 {
@@ -132,12 +137,13 @@ public class ArchiveService : IDisposable
                 };
 
                 return Directory.GetFiles(tempDirectoryRoot, "*.*", options)
-                    .FirstOrDefault(static f => PrimaryTargetExtensions.Contains(Path.GetExtension(f).ToLowerInvariant()));
+                    .Where(static f => PrimaryTargetExtensions.Contains(Path.GetExtension(f).ToLowerInvariant()))
+                    .ToList();
             }, token);
 
-            return foundFile != null
-                ? (true, foundFile, tempDirectoryRoot, string.Empty)
-                : (false, string.Empty, tempDirectoryRoot, "No supported primary files found in archive.");
+            return foundFiles.Count > 0
+                ? (true, foundFiles, tempDirectoryRoot, string.Empty)
+                : (false, new List<string>(), tempDirectoryRoot, "No supported primary files found in archive.");
         }
         catch (OperationCanceledException)
         {
@@ -145,12 +151,40 @@ public class ArchiveService : IDisposable
         }
         catch (Exception ex)
         {
-            return (false, string.Empty, tempDirectoryRoot, $"Error extracting archive: {ex.Message}");
+            return (false, new List<string>(), tempDirectoryRoot, $"Error extracting archive: {ex.Message}");
         }
     }
 
-    private static void ExtractSevenZipArchive(string archivePath, string outputDirectory, Action<string> onLog)
+    private static void ExtractZipArchive(string archivePath, string outputDirectory, CancellationToken token)
     {
+        var fullOutputDirectory = Path.GetFullPath(outputDirectory).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar) + Path.DirectorySeparatorChar;
+
+        using var archive = ZipFile.OpenRead(archivePath);
+        foreach (var entry in archive.Entries)
+        {
+            token.ThrowIfCancellationRequested();
+
+            if (string.IsNullOrEmpty(entry.Name)) continue; // Skip directories
+
+            var destinationPath = Path.Combine(outputDirectory, entry.FullName);
+            var directory = Path.GetDirectoryName(destinationPath);
+            if (!string.IsNullOrEmpty(directory))
+            {
+                Directory.CreateDirectory(directory);
+            }
+
+            if (!Path.GetFullPath(destinationPath).StartsWith(fullOutputDirectory, StringComparison.OrdinalIgnoreCase))
+            {
+                throw new SecurityException("Attempted to extract file outside of the target directory.");
+            }
+
+            entry.ExtractToFile(destinationPath, true);
+        }
+    }
+
+    private static void ExtractSevenZipArchive(string archivePath, string outputDirectory, Action<string> onLog, CancellationToken token)
+    {
+        var fullOutputDirectory = Path.GetFullPath(outputDirectory).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar) + Path.DirectorySeparatorChar;
         var directExtractionSuccess = false;
         try
         {
@@ -158,6 +192,8 @@ public class ArchiveService : IDisposable
             using var archive = SevenZipArchive.OpenArchive(stream);
             foreach (var entry in archive.Entries.Where(static e => !e.IsDirectory))
             {
+                token.ThrowIfCancellationRequested();
+
                 if (entry.Key != null)
                 {
                     var destinationPath = Path.Combine(outputDirectory, entry.Key);
@@ -167,7 +203,7 @@ public class ArchiveService : IDisposable
                         Directory.CreateDirectory(directory);
                     }
 
-                    if (!Path.GetFullPath(destinationPath).StartsWith(Path.GetFullPath(outputDirectory), StringComparison.OrdinalIgnoreCase))
+                    if (!Path.GetFullPath(destinationPath).StartsWith(fullOutputDirectory, StringComparison.OrdinalIgnoreCase))
                     {
                         throw new SecurityException("Attempted to extract file outside of the target directory.");
                     }
@@ -177,6 +213,10 @@ public class ArchiveService : IDisposable
             }
 
             directExtractionSuccess = true;
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
         }
         catch (Exception ex)
         {
@@ -194,6 +234,8 @@ public class ArchiveService : IDisposable
                 using var archive = SevenZipArchive.OpenArchive(stream);
                 foreach (var entry in archive.Entries.Where(static e => !e.IsDirectory))
                 {
+                    token.ThrowIfCancellationRequested();
+
                     if (entry.Key != null)
                     {
                         var destinationPath = Path.Combine(outputDirectory, entry.Key);
@@ -203,7 +245,7 @@ public class ArchiveService : IDisposable
                             Directory.CreateDirectory(directory);
                         }
 
-                        if (!Path.GetFullPath(destinationPath).StartsWith(Path.GetFullPath(outputDirectory), StringComparison.OrdinalIgnoreCase))
+                        if (!Path.GetFullPath(destinationPath).StartsWith(fullOutputDirectory, StringComparison.OrdinalIgnoreCase))
                         {
                             throw new SecurityException("Attempted to extract file outside of the target directory.");
                         }
@@ -226,8 +268,9 @@ public class ArchiveService : IDisposable
         }
     }
 
-    private static void ExtractRarArchive(string archivePath, string outputDirectory, Action<string> onLog)
+    private static void ExtractRarArchive(string archivePath, string outputDirectory, Action<string> onLog, CancellationToken token)
     {
+        var fullOutputDirectory = Path.GetFullPath(outputDirectory).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar) + Path.DirectorySeparatorChar;
         var directExtractionSuccess = false;
         try
         {
@@ -235,6 +278,8 @@ public class ArchiveService : IDisposable
             using var archive = RarArchive.OpenArchive(stream);
             foreach (var entry in archive.Entries.Where(static e => !e.IsDirectory))
             {
+                token.ThrowIfCancellationRequested();
+
                 if (entry.Key != null)
                 {
                     var destinationPath = Path.Combine(outputDirectory, entry.Key);
@@ -244,7 +289,7 @@ public class ArchiveService : IDisposable
                         Directory.CreateDirectory(directory);
                     }
 
-                    if (!Path.GetFullPath(destinationPath).StartsWith(Path.GetFullPath(outputDirectory), StringComparison.OrdinalIgnoreCase))
+                    if (!Path.GetFullPath(destinationPath).StartsWith(fullOutputDirectory, StringComparison.OrdinalIgnoreCase))
                     {
                         throw new SecurityException("Attempted to extract file outside of the target directory.");
                     }
@@ -254,6 +299,10 @@ public class ArchiveService : IDisposable
             }
 
             directExtractionSuccess = true;
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
         }
         catch (Exception ex)
         {
@@ -271,6 +320,8 @@ public class ArchiveService : IDisposable
                 using var archive = RarArchive.OpenArchive(stream);
                 foreach (var entry in archive.Entries.Where(static e => !e.IsDirectory))
                 {
+                    token.ThrowIfCancellationRequested();
+
                     if (entry.Key != null)
                     {
                         var destinationPath = Path.Combine(outputDirectory, entry.Key);
@@ -280,7 +331,7 @@ public class ArchiveService : IDisposable
                             Directory.CreateDirectory(directory);
                         }
 
-                        if (!Path.GetFullPath(destinationPath).StartsWith(Path.GetFullPath(outputDirectory), StringComparison.OrdinalIgnoreCase))
+                        if (!Path.GetFullPath(destinationPath).StartsWith(fullOutputDirectory, StringComparison.OrdinalIgnoreCase))
                         {
                             throw new SecurityException("Attempted to extract file outside of the target directory.");
                         }

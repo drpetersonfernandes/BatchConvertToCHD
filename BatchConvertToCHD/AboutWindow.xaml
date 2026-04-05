@@ -17,14 +17,14 @@
         </Grid.RowDefinitions>
 
         <!-- Logo Section -->
-        <Border Grid.Row="0" Background="{StaticResource CardBackgroundBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="8" Margin="0,0,0,15" Padding="15" ToolTip="Application Logo">
+        <Border Grid.Row="0" Style="{StaticResource CardBorder}" ToolTip="Application Logo">
             <StackPanel HorizontalAlignment="Center">
                 <Image Width="130" Height="130" Source="pack://application:,,,/images/logo.png" />
             </StackPanel>
         </Border>
 
         <!-- Title & Version Section -->
-        <Border Grid.Row="1" Background="{StaticResource CardBackgroundBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="8" Margin="0,0,0,15" Padding="15" ToolTip="Application name and version">
+        <Border Grid.Row="1" Style="{StaticResource CardBorder}" ToolTip="Application name and version">
             <StackPanel>
                 <TextBlock FontWeight="Bold" FontSize="20" Foreground="{StaticResource HeaderTextBrush}" Text="Batch Convert to CHD" HorizontalAlignment="Center" />
                 <TextBlock Name="AppVersionTextBlock" Margin="0,8,0,0" Text="" HorizontalAlignment="Center" Foreground="{StaticResource PrimaryAccentBrush}" FontWeight="SemiBold" FontSize="14" />
@@ -32,7 +32,7 @@
         </Border>
 
         <!-- Description Section -->
-        <Border Grid.Row="2" Background="{StaticResource CardBackgroundBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="8" Margin="0,0,0,15" Padding="15" ToolTip="Brief overview of the application purpose">
+        <Border Grid.Row="2" Style="{StaticResource CardBorder}" ToolTip="Brief overview of the application purpose">
             <StackPanel>
                 <TextBlock FontWeight="Bold" FontSize="14" Foreground="{StaticResource TextPrimaryBrush}" Text="Description" Margin="0,0,0,10" />
                 <TextBlock x:Name="DescriptionTextBlock" TextWrapping="Wrap" Text="A utility for batch converting various disc image formats to CHD and for verifying the integrity of CHD files." Foreground="{StaticResource TextSecondaryBrush}" LineHeight="20" />
@@ -50,7 +50,7 @@
         </Border>
 
         <!-- Acknowledgements Section -->
-        <Border Grid.Row="3" Background="{StaticResource CardBackgroundBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="8" Margin="0,0,0,15" Padding="15" ToolTip="Credits and third-party tools used">
+        <Border Grid.Row="3" Style="{StaticResource CardBorder}" ToolTip="Credits and third-party tools used">
             <StackPanel>
                 <TextBlock FontWeight="Bold" FontSize="14" Foreground="{StaticResource TextPrimaryBrush}" Text="Acknowledgements" Margin="0,0,0,10" />
                 <TextBlock Margin="0,0,0,8" TextWrapping="Wrap" Foreground="{StaticResource TextSecondaryBrush}">

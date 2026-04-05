@@ -30,10 +30,34 @@ public static class GameFileParser
                 }
                 else
                 {
-                    var parts = trimmedLine.Split(Separator, StringSplitOptions.RemoveEmptyEntries);
+                    // Unquoted fallback: split with limit to preserve filename+spaces+type
+                    var parts = trimmedLine.Split(Separator, 2, StringSplitOptions.RemoveEmptyEntries);
                     if (parts.Length < 2) continue;
 
-                    fileName = parts[1];
+                    // parts[1] is now "filename TYPE" — strip the trailing file type keyword
+                    var rest = parts[1].TrimEnd();
+                    var lastSpace = rest.LastIndexOf(' ');
+                    if (lastSpace > 0)
+                    {
+                        // Known CUE file type keywords that follow the filename
+                        var afterFilename = rest[(lastSpace + 1)..];
+                        if (afterFilename.Equals("BINARY", StringComparison.OrdinalIgnoreCase) ||
+                            afterFilename.Equals("WAVE", StringComparison.OrdinalIgnoreCase) ||
+                            afterFilename.Equals("MP3", StringComparison.OrdinalIgnoreCase) ||
+                            afterFilename.Equals("AIFF", StringComparison.OrdinalIgnoreCase) ||
+                            afterFilename.Equals("MOTOROLA", StringComparison.OrdinalIgnoreCase))
+                        {
+                            fileName = rest[..lastSpace];
+                        }
+                        else
+                        {
+                            fileName = rest;
+                        }
+                    }
+                    else
+                    {
+                        fileName = rest;
+                    }
                 }
 
                 referencedFiles.Add(Path.Combine(cueDir, fileName));
@@ -75,10 +99,24 @@ public static class GameFileParser
                 }
                 else
                 {
+                    // GDI format: <track> <filename> <lba> <sector_size> <offset>
+                    // The last 3 fields are always numeric — count backwards to isolate the filename
                     var parts = trimmedLine.Split(Separator, StringSplitOptions.RemoveEmptyEntries);
                     if (parts.Length < 5) continue;
 
-                    referencedFiles.Add(Path.Combine(gdiDir, parts[4]));
+                    string fileName;
+                    if (parts.Length > 5)
+                    {
+                        // Filename contains spaces; reconstruct from parts[4..^3]
+                        var fileNameParts = parts[4..^3];
+                        fileName = string.Join(' ', fileNameParts);
+                    }
+                    else
+                    {
+                        fileName = parts[4];
+                    }
+
+                    referencedFiles.Add(Path.Combine(gdiDir, fileName));
                 }
             }
         }
@@ -118,10 +156,34 @@ public static class GameFileParser
                 }
                 else
                 {
-                    var parts = trimmedLine.Split(Separator, StringSplitOptions.RemoveEmptyEntries);
+                    // Unquoted fallback: split with limit to preserve filename+spaces+type
+                    var parts = trimmedLine.Split(Separator, 2, StringSplitOptions.RemoveEmptyEntries);
                     if (parts.Length < 2) continue;
 
-                    fileName = parts[1];
+                    // parts[1] is now "filename TYPE" — strip the trailing file type keyword
+                    var rest = parts[1].TrimEnd();
+                    var lastSpace = rest.LastIndexOf(' ');
+                    if (lastSpace > 0)
+                    {
+                        // Known TOC/CUE file type keywords that follow the filename
+                        var afterFilename = rest[(lastSpace + 1)..];
+                        if (afterFilename.Equals("BINARY", StringComparison.OrdinalIgnoreCase) ||
+                            afterFilename.Equals("WAVE", StringComparison.OrdinalIgnoreCase) ||
+                            afterFilename.Equals("MP3", StringComparison.OrdinalIgnoreCase) ||
+                            afterFilename.Equals("AIFF", StringComparison.OrdinalIgnoreCase) ||
+                            afterFilename.Equals("MOTOROLA", StringComparison.OrdinalIgnoreCase))
+                        {
+                            fileName = rest[..lastSpace];
+                        }
+                        else
+                        {
+                            fileName = rest;
+                        }
+                    }
+                    else
+                    {
+                        fileName = rest;
+                    }
                 }
 
                 referencedFiles.Add(Path.Combine(tocDir, fileName));

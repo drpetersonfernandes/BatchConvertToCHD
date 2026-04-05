@@ -13,31 +13,40 @@
 
 ## 🚀 Key Features
 
+### 💻 Modern Side-by-Side Dashboard
+*   **Dual-Pane Interface**: View your settings and file list on the left, while monitoring real-time process logs on the right.
+*   **Interactive File Selection**: Automatically scans folders and allows you to manually pick exactly which files to process via a detailed file list.
+*   **Optimized File Loader**: Utilizes a chunked loading strategy to maintain UI responsiveness even when scanning directories with thousands of files.
+*   **Resizable Layout**: Includes a built-in grid splitter to adjust the balance between the file explorer and the terminal view.
+
 ### 💻 Multi-Architecture Support
 *   **Native ARM64 & x64**: Automatically detects your system architecture and utilizes the appropriate `chdman` binaries for maximum efficiency.
 *   **Optimized Performance**: Leverages native instructions on ARM64 hardware to reduce overhead during heavy compression tasks.
-*   **Assembly Preloading**: Background assembly preloading on startup for improved application responsiveness.
 
-### 🛠️ Intelligent Conversion
-*   **Automated Batch Processing**: Convert entire directories of disk images with real-time progress monitoring.
-*   **Smart Command Selection**: Automatically detects the optimal `chdman` command (`createcd`, `createdvd`, `createhd`, or `createraw`) based on file headers and extensions.
-*   **Archive Integration**: Transparently handles `.zip`, `.7z`, and `.rar` archives, extracting and processing contents automatically.
-*   **CSO Decompression**: Built-in support for `.cso` (Compressed ISO) files via `maxcso` integration (available on x64).
-*   **PBP Extraction**: Convert PlayStation Portable `.pbp` files to CHD format via `psxpackager` integration (extracts to CUE/BIN then converts).
+### 🛠️ Intelligent Conversion & Extraction
+*   **Automated Batch Processing**: Convert entire directories of disk images with real-time progress monitoring and immediate cancellation response.
+*   **Recursive Structure Preservation**: Maintains your original directory hierarchy in the output folder when processing subfolders.
+*   **CloneCD Support**: Smart detection of `.img` files that belong to CloneCD sets (via `.ccd` files), automatically ensuring the correct `createcd` command is used.
+*   **Robust Extraction**: Supports extracting CHD files back to **.cue (CD)**, **.iso (DVD)**, **.gdi (Dreamcast/Naomi)**, and **.img (HDD)** with intelligent metadata auto-detection.
+*   **Archive Integration**: Transparently handles `.zip`, `.7z`, and `.rar` archives, extracting and processing contents automatically while respecting cancellation tokens.
+*   **CSO Decompression**: Built-in support for `.cso` (Compressed ISO) files via `maxcso` integration.
+*   **PBP Extraction**: Convert PlayStation Portable `.pbp` files to CHD format via `psxpackager` integration.
 
-### ✅ Integrity & Verification
+### ✅ Integrity, Safety & Verification
+*   **Safe Deletion**: Source files (and their dependencies like `.bin`, `.sub`, etc.) are only deleted if the conversion/extraction is confirmed successful.
 *   **Batch Verification**: Validate the checksums and structural integrity of existing CHD files.
-*   **Automated Organization**: Optionally move verified or failed files into dedicated subfolders (`Success`/`Failed`) for easy library management.
-*   **Recursive Scanning**: Support for deep-folder verification passes.
+*   **Automated Organization**: Optionally move verified or failed files into dedicated subfolders (`Success`/`Failed`) while ignoring these special folders during subsequent scans.
+*   **Cleanup**: Automatically removes empty subdirectories left behind after files are moved or deleted.
+*   **Dependency Protection**: Performs a critical dependency check on startup to notify you if required components (like `chdman.exe`) are missing.
 
 ### 📊 Performance & UI
-*   **Real-time Telemetry**: Monitor disk write/read speeds and elapsed time during operations via Windows Performance Counters.
-*   **Comprehensive Logging**: Detailed, timestamped logs for auditing and troubleshooting with automatic truncation for optimal performance.
+*   **Real-time Telemetry**: Monitor disk write/read speeds and elapsed time during operations.
+*   **Optimized Logging**: High-performance logging system with automatic truncation to keep the application responsive during long-running tasks.
+*   **Centralized Styling**: Modern dark-themed UI with consistent, accessible design elements.
 
 ### 🔄 Updates & Stability
-*   **Automatic Update Checks**: Notifies you when new versions are available on startup.
+*   **Automatic Update Checks**: Notifies you immediately if a newer version is available on GitHub at startup.
 *   **Automated Bug Reporting**: Built-in error reporting system helps improve the application by automatically sending crash reports (no personal data collected).
-*   **Global Exception Handling**: Comprehensive error handling ensures the application remains stable even when unexpected issues occur.
 
 ---
 
@@ -45,7 +54,7 @@
 
 | Category             | Formats                                                                      |
 |:---------------------|:-----------------------------------------------------------------------------|
-| **Standard Images**  | `.iso`, `.cue` (+`.bin`), `.img`, `.raw`, `.toc`                             |
+| **Standard Images**  | `.iso`, `.cue` (+`.bin`), `.img`, `.ccd` (+`.sub`), `.raw`, `.toc`           |
 | **Console Specific** | `.cdi` (Dreamcast/Saturn), `.gdi` (Dreamcast), `.pbp` (PlayStation Portable) |
 | **Compressed**       | `.cso` (Compressed ISO)                                                      |
 | **Archives**         | `.zip`, `.7z`, `.rar`                                                        |
@@ -58,9 +67,9 @@
 The application implements priority-based logic to ensure compatibility:
 
 1.  **DVD Images (`.iso`)**: Defaults to `createdvd`.
-2.  **Hard Disk Images (`.img`)**: Defaults to `createhd`.
-3.  **Raw Data (`.raw`)**: Defaults to `createraw`.
-4.  **Multi-track/CD Images (`.cue`, `.cdi`, `.gdi`, `.toc`)**: Defaults to `createcd`.
+2.  **CloneCD / Multi-track Images (`.ccd`, `.cue`, `.cdi`, `.gdi`, `.toc`)**: Defaults to `createcd`.
+3.  **Hard Disk Images (`.img`)**: Defaults to `createhd` unless an accompanying `.ccd` file is detected.
+4.  **Raw Data (`.raw`)**: Defaults to `createraw`.
 5.  **PlayStation PBP (`.pbp`)**: Extracts to CUE/BIN using `psxpackager`, then converts to CHD using `createcd`.
 
 *Note: Users can manually override these settings via the UI to force specific modes (except for PBP which always extracts first).*
