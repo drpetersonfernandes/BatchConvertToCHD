@@ -439,6 +439,20 @@ public partial class MainWindow : IDisposable
         }));
     }
 
+    public void SetInputFolder(string path)
+    {
+        if (Directory.Exists(path))
+        {
+            ConversionInputFolderTextBox.Text = path;
+            LogMessage($"Input folder set from command line: {path}");
+            _ = LoadFilesForConversionAsync();
+        }
+        else
+        {
+            LogMessage($"Warning: Command line path does not exist: {path}");
+        }
+    }
+
     private void BrowseConversionInputButton_Click(object sender, RoutedEventArgs e)
     {
         HandleFolderBrowse(ConversionInputFolderTextBox, "Conversion input");

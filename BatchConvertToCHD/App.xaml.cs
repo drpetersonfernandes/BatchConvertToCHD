@@ -39,6 +39,13 @@ public partial class App : IDisposable
 
         base.OnStartup(e);
 
+        // Apply command-line argument for system ROM path
+        if (e.Args.Length > 0 && MainWindow is MainWindow mainWindow)
+        {
+            var romPath = e.Args[0];
+            mainWindow.ContentRendered += (_, _) => mainWindow.SetInputFolder(romPath);
+        }
+
         // Record usage statistics on a background thread
         _ = _statsService?.RecordUsageAsync();
 
