@@ -102,6 +102,14 @@ public partial class MainWindow : IDisposable
     {
         try
         {
+            // Apply command-line argument for input folder path if provided
+            var args = Environment.GetCommandLineArgs();
+            if (args.Length > 1)
+            {
+                var inputPath = args[1];
+                SetInputFolder(inputPath);
+            }
+
             // Initialize performance counters asynchronously
             await Task.Run(() =>
             {
