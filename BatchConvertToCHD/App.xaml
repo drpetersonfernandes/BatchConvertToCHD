@@ -579,5 +579,49 @@
             <Setter Property="Padding" Value="10"/>
         </Style>
 
+        <!-- ==================== LOG TEXTBOX STYLES ==================== -->
+        <!-- Terminal TextBox Style (reused across windows) -->
+        <Style x:Key="TerminalLogTextBox" TargetType="TextBox">
+            <Setter Property="FontFamily" Value="Consolas"/>
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="Background" Value="{StaticResource TerminalBackgroundBrush}"/>
+            <Setter Property="Foreground" Value="{StaticResource TerminalForegroundBrush}"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Padding" Value="10"/>
+            <Setter Property="AcceptsReturn" Value="True"/>
+            <Setter Property="VerticalScrollBarVisibility" Value="Auto"/>
+            <Setter Property="HorizontalScrollBarVisibility" Value="Auto"/>
+            <Setter Property="IsReadOnly" Value="True"/>
+            <Setter Property="TextAlignment" Value="Left"/>
+            <Setter Property="TextWrapping" Value="NoWrap"/>
+            <Setter Property="CaretBrush" Value="{StaticResource TerminalForegroundBrush}"/>
+            <Setter Property="VerticalAlignment" Value="Stretch"/>
+            <Setter Property="VerticalContentAlignment" Value="Top"/>
+        </Style>
+
+        <!-- Terminal TextBox with Glow Effect -->
+        <Style x:Key="TerminalLogTextBoxWithGlow" TargetType="TextBox" BasedOn="{StaticResource TerminalLogTextBox}">
+            <Setter Property="Effect">
+                <Setter.Value>
+                    <DropShadowEffect ShadowDepth="0" Color="#39FF14" BlurRadius="2" Opacity="0.4"/>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- ==================== BUTTON CONTENT COLORS ==================== -->
+        <!-- Dark text color for buttons with light backgrounds -->
+        <SolidColorBrush x:Key="ButtonTextDarkBrush" Color="#121518"/>
+
+        <!-- ==================== TABCONTROL STYLE ==================== -->
+        <Style TargetType="TabControl">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="0"/>
+        </Style>
+
+        <!-- ==================== GRIDSPLITTER STYLE ==================== -->
+        <Style TargetType="GridSplitter">
+            <Setter Property="Background" Value="Transparent"/>
+        </Style>
+
     </Application.Resources>
 </Application>

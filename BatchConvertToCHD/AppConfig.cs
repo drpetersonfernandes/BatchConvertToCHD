@@ -19,7 +19,4 @@ internal static class AppConfig
 
     // Timeout configurations
     public const int MaxConversionTimeoutHours = 4;
-    public const int ProcessKillTimeoutSeconds = 5;
-    public const int FileAccessTimeoutSeconds = 5;
-    public const int ValidationTimeoutSeconds = 10;
 }

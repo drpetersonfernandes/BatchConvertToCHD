@@ -85,7 +85,7 @@ The application implements priority-based logic to ensure compatibility:
     *   `maxcso.exe` (CSO Decompression - x64 only)
     *   `psxpackager.exe` (PBP Extraction)
 *   **NuGet Dependencies**:
-    *   [SharpCompress](https://github.com/adamhathcock/sharpcompress) (v0.46.2) - Archive extraction support
+* [SharpCompress](https://github.com/adamhathcock/sharpcompress) (v0.47.4) - Archive extraction support
 
 ---
 

@@ -92,13 +92,13 @@ public partial class MainWindow : IDisposable
         LogEnvironmentDetails();
 
         // Defer heavy initialization until after window is shown
-        Loaded += MainWindow_Loaded;
+        Loaded += MainWindow_LoadedAsync;
 
         // Hide speed display initially until we know counters are available
         SpeedStatCard.Visibility = Visibility.Collapsed;
     }
 
-    private async void MainWindow_Loaded(object sender, RoutedEventArgs e)
+    private async void MainWindow_LoadedAsync(object sender, RoutedEventArgs e)
     {
         try
         {
@@ -414,8 +414,30 @@ public partial class MainWindow : IDisposable
 
     private void Window_Closing(object sender, CancelEventArgs e)
     {
-        _cts.Cancel();
+        // Check if any operation is currently running (buttons disabled = operation in progress)
+        bool isOperationRunning = !StartConversionButton.IsEnabled || !StartVerificationButton.IsEnabled || !StartExtractionButton.IsEnabled;
+
+        if (isOperationRunning)
+        {
+            if (!_cts.IsCancellationRequested)
+            {
+                // First close attempt - cancel operations but keep window open momentarily
+                _cts.Cancel();
+                LogMessage("Cancelling operations before closing...");
+                UpdateStatusBarMessage("Cancelling...");
+                e.Cancel = true;
+                return;
+            }
+            // else: Cancellation already requested, allow close but force termination
+            // because background tasks might be stuck
+        }
+
+        // Perform cleanup of resources
         Dispose();
+
+        // Ensure the application shuts down completely
+        // This is necessary because background tasks/threads might keep the app alive
+        Application.Current.Shutdown();
     }
 
     private void LogMessage(string message)
@@ -486,7 +508,7 @@ public partial class MainWindow : IDisposable
         HandleFolderBrowse(ExtractionOutputFolderTextBox, "Extraction output");
     }
 
-    private async void StartExtractionButton_Click(object sender, RoutedEventArgs e)
+    private async void StartExtractionButton_ClickAsync(object sender, RoutedEventArgs e)
     {
         try
         {
@@ -796,7 +818,7 @@ public partial class MainWindow : IDisposable
         }
     }
 
-    private async void StartConversionButton_Click(object sender, RoutedEventArgs e)
+    private async void StartConversionButton_ClickAsync(object sender, RoutedEventArgs e)
     {
         try
         {
@@ -870,7 +892,7 @@ public partial class MainWindow : IDisposable
         }
     }
 
-    private async void StartVerificationButton_Click(object sender, RoutedEventArgs e)
+    private async void StartVerificationButton_ClickAsync(object sender, RoutedEventArgs e)
     {
         try
         {
@@ -2270,6 +2292,8 @@ public partial class MainWindow : IDisposable
 
     private void ExitMenuItem_Click(object sender, RoutedEventArgs e)
     {
+        // Ensure the window close process is initiated
+        // The Window_Closing event will handle proper cleanup and shutdown
         Close();
     }
 

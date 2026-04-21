@@ -30,7 +30,7 @@
                         <Button.Content>
                             <StackPanel Orientation="Horizontal">
                                 <Image Source="pack://application:,,,/images/about.png" Width="16" Height="16" Margin="0,0,5,0" />
-                                <TextBlock Text="About" Foreground="#121518" VerticalAlignment="Center" />
+                                <TextBlock Text="About" Foreground="{StaticResource ButtonTextDarkBrush}" VerticalAlignment="Center" />
                             </StackPanel>
                         </Button.Content>
                     </Button>
@@ -38,7 +38,7 @@
                         <Button.Content>
                             <StackPanel Orientation="Horizontal">
                                 <Image Source="pack://application:,,,/images/exit.png" Width="16" Height="16" Margin="0,0,5,0" />
-                                <TextBlock Text="Exit" Foreground="#121518" VerticalAlignment="Center" />
+                                <TextBlock Text="Exit" Foreground="{StaticResource ButtonTextDarkBrush}" VerticalAlignment="Center" />
                             </StackPanel>
                         </Button.Content>
                     </Button>
@@ -61,7 +61,7 @@
                     <ColumnDefinition Width="*" MinWidth="300" />
                 </Grid.ColumnDefinitions>
 
-                <TabControl Grid.Column="0" x:Name="MainTabControl" SelectionChanged="MainTabControl_SelectionChanged" Background="Transparent" BorderThickness="0">
+                <TabControl Grid.Column="0" x:Name="MainTabControl" SelectionChanged="MainTabControl_SelectionChanged">
                     <TabItem Header="Convert to CHD" x:Name="ConvertTab" ToolTip="Batch convert various disc image formats to CHD">
                         <Border Background="{StaticResource CardBackgroundBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="0,0,6,6" Padding="15">
                             <Grid>
@@ -123,7 +123,7 @@
                                     <Button Content="Deselect All" Click="DeselectAllConversion_Click" Style="{StaticResource ActionButtonStyle}" Margin="5,0" />
                                 </StackPanel>
 
-                                <Button Grid.Row="6" x:Name="StartConversionButton" Content="Start Conversion" Click="StartConversionButton_Click" Style="{StaticResource StartButtonStyle}" HorizontalAlignment="Stretch" ToolTip="Begin the batch conversion process" />
+                                <Button Grid.Row="6" x:Name="StartConversionButton" Content="Start Conversion" Click="StartConversionButton_ClickAsync" Style="{StaticResource StartButtonStyle}" HorizontalAlignment="Stretch" ToolTip="Begin the batch conversion process" />
                             </Grid>
                         </Border>
                     </TabItem>
@@ -173,7 +173,7 @@
                                     <Button Content="Deselect All" Click="DeselectAllVerification_Click" Style="{StaticResource ActionButtonStyle}" Margin="5,0" />
                                 </StackPanel>
 
-                                <Button Grid.Row="5" x:Name="StartVerificationButton" Content="Start Verification" Click="StartVerificationButton_Click" Style="{StaticResource StartButtonStyle}" HorizontalAlignment="Stretch" ToolTip="Begin the batch verification process" />
+                                <Button Grid.Row="5" x:Name="StartVerificationButton" Content="Start Verification" Click="StartVerificationButton_ClickAsync" Style="{StaticResource StartButtonStyle}" HorizontalAlignment="Stretch" ToolTip="Begin the batch verification process" />
                             </Grid>
                         </Border>
                     </TabItem>
@@ -256,36 +256,18 @@
                                     <Button Content="Deselect All" Click="DeselectAllExtraction_Click" Style="{StaticResource ActionButtonStyle}" Margin="5,0" />
                                 </StackPanel>
 
-                                <Button Grid.Row="6" x:Name="StartExtractionButton" Content="Start Extraction" Click="StartExtractionButton_Click" Style="{StaticResource StartButtonStyle}" HorizontalAlignment="Stretch" ToolTip="Begin the batch extraction process" />
+                                <Button Grid.Row="6" x:Name="StartExtractionButton" Content="Start Extraction" Click="StartExtractionButton_ClickAsync" Style="{StaticResource StartButtonStyle}" HorizontalAlignment="Stretch" ToolTip="Begin the batch extraction process" />
                             </Grid>
                         </Border>
                     </TabItem>
                 </TabControl>
 
-                <GridSplitter Grid.Column="1" Width="10" HorizontalAlignment="Stretch" Background="Transparent" />
+                <GridSplitter Grid.Column="1" Width="10" HorizontalAlignment="Stretch" />
 
                 <Border Grid.Column="2" BorderBrush="{StaticResource TerminalBorderBrush}" BorderThickness="2" CornerRadius="4" Background="{StaticResource TerminalBackgroundBrush}">
                     <TextBox x:Name="LogViewer"
-                             AcceptsReturn="True"
-                             VerticalScrollBarVisibility="Auto"
-                             HorizontalScrollBarVisibility="Auto"
-                             VerticalAlignment="Stretch"
-                             VerticalContentAlignment="Top"
-                             IsReadOnly="True"
-                             Padding="10"
-                             FontFamily="Consolas"
-                             FontSize="12"
-                             Background="{StaticResource TerminalBackgroundBrush}"
-                             Foreground="{StaticResource TerminalForegroundBrush}"
-                             BorderThickness="0"
-                             TextAlignment="Left"
-                             TextWrapping="NoWrap"
-                             CaretBrush="{StaticResource TerminalForegroundBrush}"
-                             ToolTip="Application activity log">
-                        <TextBox.Effect>
-                            <DropShadowEffect ShadowDepth="0" Color="#39FF14" BlurRadius="2" Opacity="0.4" />
-                        </TextBox.Effect>
-                    </TextBox>
+                             Style="{StaticResource TerminalLogTextBoxWithGlow}"
+                             ToolTip="Application activity log" />
                 </Border>
             </Grid>
 

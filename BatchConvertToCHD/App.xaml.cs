@@ -34,6 +34,10 @@ public partial class App : IDisposable
 
     protected override void OnStartup(StartupEventArgs e)
     {
+        // Set shutdown mode to close the application when the main window closes
+        // This ensures the app fully terminates when the user closes the window
+        ShutdownMode = ShutdownMode.OnMainWindowClose;
+
         // Delete old 7z DLL files if they exist
         DeleteOldDllFiles();
 
