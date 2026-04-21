@@ -1,4 +1,4 @@
-﻿using System.Diagnostics;
+using System.Diagnostics;
 using System.Net.Http;
 using System.Reflection;
 using System.Text.Json;
@@ -98,7 +98,31 @@ public class UpdateService(string applicationName)
 
                     if (result == MessageBoxResult.Yes)
                     {
-                        Process.Start(new ProcessStartInfo(latestRelease.HtmlUrl) { UseShellExecute = true });
+                        try
+                        {
+                            Process.Start(new ProcessStartInfo(latestRelease.HtmlUrl) { UseShellExecute = true });
+                        }
+                        catch (Exception urlEx)
+                        {
+                            onLog($"Failed to open browser: {urlEx.Message}");
+
+                            // Copy URL to clipboard
+                            try
+                            {
+                                Clipboard.SetText(latestRelease.HtmlUrl);
+                            }
+                            catch (Exception clipboardEx)
+                            {
+                                onLog($"Failed to copy URL to clipboard: {clipboardEx.Message}");
+                            }
+
+                            // Show URL in message box so user can manually access it
+                            MessageBox.Show(
+                                $"Unable to open browser automatically. The update URL has been copied to your clipboard.\n\nURL: {latestRelease.HtmlUrl}\n\nPlease paste it into your browser manually.",
+                                "Browser Launch Failed",
+                                MessageBoxButton.OK,
+                                MessageBoxImage.Information);
+                        }
                     }
                 });
                 onStatusUpdate($"Update available: v{remoteVersion}");
