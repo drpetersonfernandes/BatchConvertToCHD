@@ -1966,7 +1966,6 @@ public partial class MainWindow : IDisposable
             if (infoText.Contains("gd-rom", StringComparison.OrdinalIgnoreCase))
                 return "extractcd";
             if (infoText.Contains("hard disk", StringComparison.OrdinalIgnoreCase) ||
-                infoText.Contains("hd", StringComparison.OrdinalIgnoreCase) ||
                 infoText.Contains("hdd", StringComparison.OrdinalIgnoreCase))
                 return "extracthd";
 
