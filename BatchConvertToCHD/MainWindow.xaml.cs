@@ -321,6 +321,7 @@ public partial class MainWindow : IDisposable
         {
             LogMessage($"ERROR: Cannot access {exeName}. {ex.Message}");
             ShowError($"Cannot access {exeName}. Check antivirus or permissions.");
+            _ = ReportBugAsync($"Cannot access {exeName}", ex);
             return false;
         }
     }
@@ -418,6 +419,7 @@ public partial class MainWindow : IDisposable
 
             // Other errors are acceptable - at least the exe started or we have a generic error
             LogMessage($"WARNING: Could not validate chdman compatibility: {ex.Message}");
+            _ = ReportBugAsync("Could not validate chdman compatibility", ex);
             return true;
         }
     }
@@ -1423,6 +1425,7 @@ public partial class MainWindow : IDisposable
             catch (Exception ex)
             {
                 LogMessage($"Direct conversion attempt error for {originalName}: {ex.Message}");
+                _ = ReportBugAsync($"Direct conversion attempt error for {originalName}", ex);
             }
 
             // Fallback: If direct conversion failed and we haven't already extracted to temp (i.e. it was a direct file attempt),
@@ -1491,6 +1494,7 @@ public partial class MainWindow : IDisposable
                 catch (Exception ex)
                 {
                     LogMessage($"Retry via temp failed for {originalName}: {ex.Message}");
+                    _ = ReportBugAsync($"Retry via temp failed for {originalName}", ex);
                 }
             }
 
@@ -1543,6 +1547,7 @@ public partial class MainWindow : IDisposable
         catch (Exception ex)
         {
             LogMessage($"Error processing {originalName}: {ex.Message}");
+            _ = ReportBugAsync($"Error processing {originalName}", ex);
             if (!string.IsNullOrEmpty(outputChd)) await TryDeleteFileAsync(outputChd, "failed CHD", CancellationToken.None);
             return false;
         }
@@ -1667,6 +1672,7 @@ public partial class MainWindow : IDisposable
         {
             // Log error but don't fail the verification
             Debug.WriteLine($"Failed to move file {sourceFile}: {ex.Message}");
+            _ = ReportBugAsync($"Failed to move file {sourceFile}", ex);
         }
     }
 
@@ -2498,6 +2504,7 @@ public partial class MainWindow : IDisposable
         catch (Exception ex)
         {
             LogMessage($"Delete error: {ex.Message}");
+            _ = ReportBugAsync("Delete error", ex);
         }
     }
 

@@ -116,6 +116,7 @@ public class UpdateService(string applicationName)
                         catch (Exception urlEx)
                         {
                             onLog($"Failed to open browser: {urlEx.Message}");
+                            _ = onBugReport("Failed to open browser", urlEx);
 
                             // Copy URL to clipboard
                             try
@@ -125,6 +126,7 @@ public class UpdateService(string applicationName)
                             catch (Exception clipboardEx)
                             {
                                 onLog($"Failed to copy URL to clipboard: {clipboardEx.Message}");
+                                _ = onBugReport("Failed to copy URL to clipboard", clipboardEx);
                             }
 
                             // Show URL in message box so user can manually access it

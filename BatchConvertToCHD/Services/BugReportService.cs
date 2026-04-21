@@ -62,13 +62,14 @@ public class BugReportService
             // Build the formatted message with all details
             var formattedMessage = BuildFormattedReport(message, ex);
 
-            // Get environment details
+            // Get environment details for version field
             var envDetails = GetEnvironmentDetails();
 
             // Get exception stack trace
             var stackTrace = GetExceptionStackTrace(ex);
 
             // Create the request payload matching the API's BugReportRequest model
+            // Only include fields defined in BugReportRequest: Message, ApplicationName, Version, UserInfo, Environment, StackTrace
             var requestPayload = new
             {
                 message = formattedMessage,
@@ -76,14 +77,7 @@ public class BugReportService
                 version = envDetails.ApplicationVersion,
                 userInfo = Environment.UserName,
                 environment = "Production",
-                stackTrace,
-                osVersion = envDetails.OsVersion,
-                architecture = envDetails.Architecture,
-                bitness = envDetails.Bitness,
-                windowsVersion = envDetails.WindowsVersion,
-                processorCount = envDetails.ProcessorCount,
-                baseDirectory = envDetails.BaseDirectory,
-                tempPath = envDetails.TempPath
+                stackTrace
             };
 
             // Create JSON content

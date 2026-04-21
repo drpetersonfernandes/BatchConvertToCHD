@@ -188,6 +188,19 @@ public class ArchiveService : IDisposable
         }
         catch (Exception ex)
         {
+            // Report bug if service is available
+            try
+            {
+                if (App.SharedBugReportService != null)
+                {
+                    _ = App.SharedBugReportService.SendBugReportAsync("Error extracting archive", ex);
+                }
+            }
+            catch
+            {
+                // Ignore errors in bug reporting to avoid infinite loops
+            }
+
             return (false, new List<string>(), tempDirectoryRoot, $"Error extracting archive: {ex.Message}");
         }
     }
@@ -273,6 +286,18 @@ public class ArchiveService : IDisposable
         catch (Exception ex)
         {
             onLog($"Direct extraction failed ({ex.Message}). Attempting fallback with local copy...");
+            // Report bug if service is available
+            try
+            {
+                if (App.SharedBugReportService != null)
+                {
+                    _ = App.SharedBugReportService.SendBugReportAsync("Direct extraction failed", ex);
+                }
+            }
+            catch
+            {
+                // Ignore errors in bug reporting to avoid infinite loops
+            }
         }
 
         if (directExtractionSuccess)
