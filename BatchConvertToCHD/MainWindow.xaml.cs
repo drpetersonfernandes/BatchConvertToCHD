@@ -1853,39 +1853,24 @@ public partial class MainWindow : IDisposable
         var args = $"-i \"{inputFile}\" -o \"{outputFolder}\" -x";
         LogMessage($"PSXPACKAGER: Extracting {Path.GetFileName(inputFile)}");
 
+        // Use a hidden window instead of no window to provide a valid console handle
+        // This prevents PSXPackager from crashing when it tries to set Console.CursorVisible
         process.StartInfo = new ProcessStartInfo
         {
             FileName = psxPackagerPath,
             Arguments = args,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
+            RedirectStandardOutput = false,
+            RedirectStandardError = false,
             UseShellExecute = false,
-            CreateNoWindow = true,
+            CreateNoWindow = false,
+            WindowStyle = ProcessWindowStyle.Hidden,
             ErrorDialog = false
-        };
-
-        process.OutputDataReceived += (_, a) =>
-        {
-            if (!string.IsNullOrEmpty(a.Data))
-            {
-                LogMessage($"[PSXPACKAGER] {a.Data}");
-            }
-        };
-
-        process.ErrorDataReceived += (_, a) =>
-        {
-            if (!string.IsNullOrEmpty(a.Data))
-            {
-                LogMessage($"[PSXPACKAGER ERROR] {a.Data}");
-            }
         };
 
         using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(token);
         timeoutCts.CancelAfter(TimeSpan.FromHours(AppConfig.MaxConversionTimeoutHours));
 
         process.Start();
-        process.BeginOutputReadLine();
-        process.BeginErrorReadLine();
 
         try
         {
