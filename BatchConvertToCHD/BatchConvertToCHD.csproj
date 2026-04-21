@@ -8,12 +8,13 @@
     <UseWPF>true</UseWPF>
     <ApplicationIcon>icon\chd.ico</ApplicationIcon>
     <SupportedOSPlatformVersion>7.0</SupportedOSPlatformVersion>
-    <AssemblyVersion>2.5.1</AssemblyVersion>
-    <FileVersion>2.5.1</FileVersion>
+    <AssemblyVersion>2.6.0</AssemblyVersion>
+    <FileVersion>2.6.0</FileVersion>
     <IsPackable>false</IsPackable>
     <NeutralLanguage>en</NeutralLanguage>
     <DebugType>embedded</DebugType>
     <DebugSymbols>true</DebugSymbols>
+    <Company>PureLogicCode.com</Company>
   </PropertyGroup>
 
   <ItemGroup>
