@@ -9,6 +9,9 @@ using System.Net.Security;
 
 namespace BatchConvertToCHD.Services;
 
+/// <summary>
+/// Service for checking and notifying about application updates from GitHub releases.
+/// </summary>
 public class UpdateService(string applicationName)
 {
     private readonly string _applicationName = applicationName;
@@ -24,9 +27,17 @@ public class UpdateService(string applicationName)
             // SslProtocols.None allows the OS to decide, but on Win7 TLS 1.2 is often disabled by default.
             // Explicitly including Tls12 and Tls13 ensures they are available if the OS supports them.
             EnabledSslProtocols = SslProtocols.Tls12 | SslProtocols.Tls13
-        }
+        },
+        // PooledConnectionLifetime ensures DNS changes are respected by recycling connections periodically
+        PooledConnectionLifetime = TimeSpan.FromMinutes(2)
     });
 
+    /// <summary>
+    /// Checks GitHub for a newer version of the application and prompts the user to download if available.
+    /// </summary>
+    /// <param name="onLog">Callback for logging messages.</param>
+    /// <param name="onStatusUpdate">Callback for status bar updates.</param>
+    /// <param name="onBugReport">Callback for reporting errors.</param>
     public async Task CheckForNewVersionAsync(Action<string> onLog, Action<string> onStatusUpdate, Func<string, Exception?, Task> onBugReport)
     {
         try
@@ -148,7 +159,10 @@ public class UpdateService(string applicationName)
 
     private static string ParseVersionFromTag(string tagName)
     {
-        if (string.IsNullOrWhiteSpace(tagName)) return string.Empty;
+        if (string.IsNullOrWhiteSpace(tagName))
+        {
+            return string.Empty;
+        }
 
         var tag = tagName.Trim();
         var prefixes = new[] { "release", "version", "v" };

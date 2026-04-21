@@ -5,8 +5,14 @@ using System.Windows.Navigation;
 
 namespace BatchConvertToCHD;
 
+/// <summary>
+/// About window displaying application version and information.
+/// </summary>
 public partial class AboutWindow
 {
+    /// <summary>
+    /// Initializes a new instance of the <see cref="AboutWindow"/> class.
+    /// </summary>
     public AboutWindow()
     {
         InitializeComponent();

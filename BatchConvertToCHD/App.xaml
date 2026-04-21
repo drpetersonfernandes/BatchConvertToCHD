@@ -306,23 +306,6 @@
             </Setter>
         </Style>
 
-        <!-- Modern Log TextBox Style -->
-        <Style x:Key="ModernLogTextBox" TargetType="TextBox" BasedOn="{StaticResource {x:Type TextBox}}">
-            <Setter Property="FontFamily" Value="Consolas"/>
-            <Setter Property="FontSize" Value="12"/>
-            <Setter Property="Background" Value="{StaticResource TerminalBackgroundBrush}"/>
-            <Setter Property="Foreground" Value="{StaticResource TerminalForegroundBrush}"/>
-            <Setter Property="BorderThickness" Value="0"/>
-            <Setter Property="Padding" Value="10"/>
-            <Setter Property="AcceptsReturn" Value="True"/>
-            <Setter Property="VerticalScrollBarVisibility" Value="Auto"/>
-            <Setter Property="HorizontalScrollBarVisibility" Value="Auto"/>
-            <Setter Property="IsReadOnly" Value="True"/>
-            <Setter Property="TextAlignment" Value="Left"/>
-            <Setter Property="TextWrapping" Value="NoWrap"/>
-            <Setter Property="CaretBrush" Value="{StaticResource TerminalForegroundBrush}"/>
-        </Style>
-
         <!-- Default StatusBar Style -->
         <Style TargetType="StatusBar">
             <Setter Property="Background" Value="{StaticResource StatusBarBackgroundBrush}"/>

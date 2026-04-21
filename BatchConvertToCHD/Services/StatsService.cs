@@ -1,27 +1,42 @@
 using System.Net.Http;
 using System.Net.Http.Json;
 using System.Reflection;
+using System.Security.Authentication;
+using System.Net.Security;
 
 namespace BatchConvertToCHD.Services;
 
 /// <summary>
 /// Service responsible for recording application usage statistics.
 /// </summary>
-public class StatsService : IDisposable
+public class StatsService
 {
-    private readonly HttpClient _httpClient = new();
+    // Shared HttpClient handler for connection pooling across the application lifetime
+    private static readonly SocketsHttpHandler SharedHandler = new()
+    {
+        SslOptions = new SslClientAuthenticationOptions
+        {
+            EnabledSslProtocols = SslProtocols.Tls12 | SslProtocols.Tls13
+        },
+        PooledConnectionLifetime = TimeSpan.FromMinutes(2)
+    };
+
+    private static readonly HttpClient HttpClient = new(SharedHandler);
     private readonly string _apiUrl;
     private readonly string _apiKey;
     private readonly string _applicationId;
 
+    /// <summary>
+    /// Initializes a new instance of the <see cref="StatsService"/> class.
+    /// </summary>
+    /// <param name="apiUrl">The URL of the stats API endpoint.</param>
+    /// <param name="apiKey">The API key for authentication.</param>
+    /// <param name="applicationId">The unique identifier for the application.</param>
     public StatsService(string apiUrl, string apiKey, string applicationId)
     {
         _apiUrl = apiUrl;
         _apiKey = apiKey;
         _applicationId = applicationId;
-
-        // Authorization header as specified in the API documentation
-        _httpClient.DefaultRequestHeaders.Add("Authorization", $"Bearer {_apiKey}");
     }
 
     /// <summary>
@@ -38,17 +53,16 @@ public class StatsService : IDisposable
                 applicationId = _applicationId, version
             };
 
-            await _httpClient.PostAsJsonAsync(_apiUrl, payload);
+            // Send request with Authorization header
+            using var request = new HttpRequestMessage(HttpMethod.Post, _apiUrl);
+            request.Headers.Add("Authorization", $"Bearer {_apiKey}");
+            request.Content = JsonContent.Create(payload);
+
+            await HttpClient.SendAsync(request);
         }
         catch
         {
             // Silently fail to not interrupt application startup
         }
-    }
-
-    public void Dispose()
-    {
-        _httpClient.Dispose();
-        GC.SuppressFinalize(this);
     }
 }

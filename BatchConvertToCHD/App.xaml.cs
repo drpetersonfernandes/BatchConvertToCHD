@@ -5,6 +5,9 @@ using BatchConvertToCHD.Services;
 
 namespace BatchConvertToCHD;
 
+/// <summary>
+/// Application class for BatchConvertToCHD. Handles startup, exception handling, and service initialization.
+/// </summary>
 public partial class App : IDisposable
 {
     private BugReportService? _bugReportService;
@@ -15,6 +18,10 @@ public partial class App : IDisposable
     /// </summary>
     public static BugReportService? SharedBugReportService { get; private set; }
 
+    /// <summary>
+    /// Initializes a new instance of the <see cref="App"/> class.
+    /// Sets up services, exception handling, and event handlers.
+    /// </summary>
     public App()
     {
         // Initialize services
@@ -95,12 +102,9 @@ public partial class App : IDisposable
 
     private void App_Exit(object sender, ExitEventArgs e)
     {
-        // Dispose services and clear references to prevent double disposal
-        _bugReportService?.Dispose();
+        // Clear references (HttpClient instances are static and reused across the app lifetime)
         _bugReportService = null;
         SharedBugReportService = null;
-
-        _statsService?.Dispose();
         _statsService = null;
 
         // Unregister static event handlers to prevent memory leaks
@@ -152,12 +156,9 @@ public partial class App : IDisposable
     public void Dispose()
     {
         // Cleanup is primarily handled in App_Exit. This method provides a safety net
-        // for explicit disposal scenarios and prevents double disposal.
-        _bugReportService?.Dispose();
+        // for explicit disposal scenarios. HttpClient instances are static and reused.
         _bugReportService = null;
         SharedBugReportService = null;
-
-        _statsService?.Dispose();
         _statsService = null;
 
         // Unregister static event handlers to prevent them from firing after disposal

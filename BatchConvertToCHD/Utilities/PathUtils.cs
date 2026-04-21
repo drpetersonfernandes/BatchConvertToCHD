@@ -1,32 +1,67 @@
-using System.Globalization;
 using System.IO;
-using System.Text.RegularExpressions;
+using System.Text;
 
 namespace BatchConvertToCHD.Utilities;
 
+/// <summary>
+/// Provides utility methods for path manipulation and validation.
+/// </summary>
 public static class PathUtils
 {
-    // Pre-compiled regex for invalid filename characters
-    // Pattern: ([{invalidChars}]*\.+$)|([{invalidChars}]+)
-    private static readonly Regex InvalidFileNameRegex = new(
-        string.Format(
-            CultureInfo.InvariantCulture,
-            @"([{0}]*\.+$)|([{0}]+)",
-            Regex.Escape(new string(Path.GetInvalidFileNameChars()))
-        ),
-        RegexOptions.Compiled
-    );
+    // Cache invalid filename chars to avoid repeated allocation
+    private static readonly char[] InvalidFileNameChars = Path.GetInvalidFileNameChars();
 
+    /// <summary>
+    /// Sanitizes a file name by replacing invalid characters with underscores.
+    /// Also removes trailing periods which are problematic on Windows.
+    /// </summary>
+    /// <param name="name">The file name to sanitize.</param>
+    /// <returns>A sanitized file name safe for use in the file system.</returns>
     public static string SanitizeFileName(string name)
     {
-        var sanitizedName = InvalidFileNameRegex.Replace(name, "_");
+        if (string.IsNullOrEmpty(name))
+        {
+            return string.Empty;
+        }
 
-        // Further replace common problematic characters
+        var sb = new StringBuilder(name.Length);
+        foreach (var c in name)
+        {
+            // Replace invalid filename chars with underscore
+            if (Array.IndexOf(InvalidFileNameChars, c) >= 0)
+            {
+                sb.Append('_');
+            }
+            else
+            {
+                sb.Append(c);
+            }
+        }
+
+        // Remove trailing periods (problematic on Windows)
+        while (sb.Length > 0 && sb[^1] == '.')
+        {
+            sb.Length--;
+            if (sb.Length > 0)
+                sb.Append('_');
+        }
+
+        var sanitizedName = sb.ToString();
+
+        // Replace common problematic Unicode ellipsis characters
         sanitizedName = sanitizedName.Replace("…", "_ellipsis_")
             .Replace("â€¦", "_ellipsis_");
+
         return sanitizedName;
     }
 
+    /// <summary>
+    /// Generates a safe temporary file name based on the original file name.
+    /// </summary>
+    /// <param name="originalFileNameWithExtension">The original file name with extension.</param>
+    /// <param name="desiredExtensionWithoutDot">The desired extension without the dot (e.g., "iso").</param>
+    /// <param name="tempDirectory">The temporary directory path.</param>
+    /// <returns>A full path to a safe temporary file.</returns>
     public static string GetSafeTempFileName(string originalFileNameWithExtension, string desiredExtensionWithoutDot, string tempDirectory)
     {
         var sanitizedName = SanitizeFileName(Path.GetFileNameWithoutExtension(originalFileNameWithExtension));

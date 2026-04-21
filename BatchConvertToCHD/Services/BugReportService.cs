@@ -4,6 +4,8 @@ using System.Net.Http;
 using System.Net.Http.Json;
 using System.Reflection;
 using System.Runtime.InteropServices;
+using System.Security.Authentication;
+using System.Net.Security;
 using System.Text;
 
 namespace BatchConvertToCHD.Services;
@@ -11,20 +13,40 @@ namespace BatchConvertToCHD.Services;
 /// <summary>
 /// Service responsible for sending bug reports to the BugReport API
 /// </summary>
-public class BugReportService : IDisposable
+public class BugReportService
 {
-    private readonly HttpClient _httpClient = new();
+    // Shared HttpClient handler for connection pooling across the application lifetime
+    private static readonly SocketsHttpHandler SharedHandler = new()
+    {
+        SslOptions = new SslClientAuthenticationOptions
+        {
+            EnabledSslProtocols = SslProtocols.Tls12 | SslProtocols.Tls13
+        },
+        PooledConnectionLifetime = TimeSpan.FromMinutes(2)
+    };
+
+    private static readonly HttpClient HttpClient = new(SharedHandler);
     private readonly string _apiUrl;
     private readonly string _apiKey;
     private readonly string _applicationName;
 
+    static BugReportService()
+    {
+        // Set default headers that don't change across instances
+        HttpClient.DefaultRequestHeaders.Add("Accept", "application/json");
+    }
+
+    /// <summary>
+    /// Initializes a new instance of the <see cref="BugReportService"/> class.
+    /// </summary>
+    /// <param name="apiUrl">The URL of the bug report API endpoint.</param>
+    /// <param name="apiKey">The API key for authentication.</param>
+    /// <param name="applicationName">The name of the application sending reports.</param>
     public BugReportService(string apiUrl, string apiKey, string applicationName)
     {
         _apiUrl = apiUrl;
         _apiKey = apiKey;
         _applicationName = applicationName;
-        _httpClient.DefaultRequestHeaders.Add("X-API-KEY", _apiKey);
-        _httpClient.DefaultRequestHeaders.Add("Accept", "application/json");
     }
 
     /// <summary>
@@ -43,8 +65,8 @@ public class BugReportService : IDisposable
             // Get environment details
             var envDetails = GetEnvironmentDetails();
 
-            // Get exception details
-            var (exceptionType, exceptionMessage, exceptionSource, stackTrace) = GetExceptionDetails(ex);
+            // Get exception stack trace
+            var stackTrace = GetExceptionStackTrace(ex);
 
             // Create the request payload matching the API's BugReportRequest model
             var requestPayload = new
@@ -54,7 +76,7 @@ public class BugReportService : IDisposable
                 version = envDetails.ApplicationVersion,
                 userInfo = Environment.UserName,
                 environment = "Production",
-                stackTrace = stackTrace,
+                stackTrace,
                 osVersion = envDetails.OsVersion,
                 architecture = envDetails.Architecture,
                 bitness = envDetails.Bitness,
@@ -67,8 +89,12 @@ public class BugReportService : IDisposable
             // Create JSON content
             var content = JsonContent.Create(requestPayload);
 
-            // Send the request
-            var response = await _httpClient.PostAsync(_apiUrl, content);
+            // Send the request with API key header
+            using var request = new HttpRequestMessage(HttpMethod.Post, _apiUrl);
+            request.Headers.Add("X-API-KEY", _apiKey);
+            request.Content = content;
+
+            var response = await HttpClient.SendAsync(request);
 
             // Return true if successful
             return response.IsSuccessStatusCode;
@@ -157,13 +183,13 @@ public class BugReportService : IDisposable
     }
 
     /// <summary>
-    /// Gets exception details for structured API fields
+    /// Gets exception stack trace for structured API fields
     /// </summary>
-    private static (string Type, string Message, string Source, string StackTrace) GetExceptionDetails(Exception? ex)
+    private static string GetExceptionStackTrace(Exception? ex)
     {
         if (ex == null)
         {
-            return ("N/A", "No exception provided", "N/A", "N/A");
+            return "N/A";
         }
 
         var sb = new StringBuilder();
@@ -178,9 +204,9 @@ public class BugReportService : IDisposable
                 sb.AppendLine("--- Inner Exception ---");
             }
 
-            sb.AppendLine($"Type: {currentEx.GetType().FullName}");
-            sb.AppendLine($"Message: {currentEx.Message}");
-            sb.AppendLine($"Source: {currentEx.Source ?? "N/A"}");
+            sb.AppendLine(CultureInfo.InvariantCulture, $"Type: {currentEx.GetType().FullName}");
+            sb.AppendLine(CultureInfo.InvariantCulture, $"Message: {currentEx.Message}");
+            sb.AppendLine(CultureInfo.InvariantCulture, $"Source: {currentEx.Source ?? "N/A"}");
             sb.AppendLine("StackTrace:");
             if (!string.IsNullOrEmpty(currentEx.StackTrace))
             {
@@ -195,19 +221,14 @@ public class BugReportService : IDisposable
             depth++;
         }
 
-        return (
-            ex.GetType().FullName ?? "Unknown",
-            ex.Message,
-            ex.Source ?? "N/A",
-            sb.ToString()
-        );
+        return sb.ToString();
     }
 
     /// <summary>
     /// Gets environment details for structured API fields
     /// </summary>
     private static (string OsVersion, string Architecture, string Bitness, string WindowsVersion,
-                    int ProcessorCount, string BaseDirectory, string TempPath, string ApplicationVersion) GetEnvironmentDetails()
+        int ProcessorCount, string BaseDirectory, string TempPath, string ApplicationVersion) GetEnvironmentDetails()
     {
         return (
             Environment.OSVersion.ToString(),
@@ -219,11 +240,5 @@ public class BugReportService : IDisposable
             Path.GetTempPath(),
             Assembly.GetExecutingAssembly().GetName().Version?.ToString() ?? "Unknown"
         );
-    }
-
-    public void Dispose()
-    {
-        _httpClient.Dispose();
-        GC.SuppressFinalize(this);
     }
 }

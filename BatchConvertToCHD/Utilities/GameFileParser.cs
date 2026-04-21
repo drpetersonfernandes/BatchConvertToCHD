@@ -1,12 +1,23 @@
-﻿using System.IO;
+using System.IO;
+using System.Runtime.ExceptionServices;
 using System.Text;
 
 namespace BatchConvertToCHD.Utilities;
 
+/// <summary>
+/// Provides methods for parsing game file formats (CUE, GDI, TOC) to extract referenced files.
+/// </summary>
 public static class GameFileParser
 {
     private static readonly char[] Separator = [' ', '\t'];
 
+    /// <summary>
+    /// Extracts referenced file paths from a CUE sheet file.
+    /// </summary>
+    /// <param name="cuePath">Path to the CUE file to parse.</param>
+    /// <param name="onLog">Callback for logging messages.</param>
+    /// <param name="token">Cancellation token to cancel the operation.</param>
+    /// <returns>A list of file paths referenced by the CUE sheet.</returns>
     public static async Task<List<string>> GetReferencedFilesFromCueAsync(string cuePath, Action<string> onLog, CancellationToken token)
     {
         var referencedFiles = new List<string>();
@@ -18,7 +29,10 @@ public static class GameFileParser
             foreach (var line in lines)
             {
                 var trimmedLine = line.Trim();
-                if (!trimmedLine.StartsWith("FILE ", StringComparison.OrdinalIgnoreCase)) continue;
+                if (!trimmedLine.StartsWith("FILE ", StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
 
                 string fileName;
                 var firstQuote = trimmedLine.IndexOf('"');
@@ -32,7 +46,10 @@ public static class GameFileParser
                 {
                     // Unquoted fallback: split with limit to preserve filename+spaces+type
                     var parts = trimmedLine.Split(Separator, 2, StringSplitOptions.RemoveEmptyEntries);
-                    if (parts.Length < 2) continue;
+                    if (parts.Length < 2)
+                    {
+                        continue;
+                    }
 
                     // parts[1] is now "filename TYPE" — strip the trailing file type keyword
                     var rest = parts[1].TrimEnd();
@@ -70,12 +87,20 @@ public static class GameFileParser
         catch (Exception ex)
         {
             onLog($"Error parsing CUE file {Path.GetFileName(cuePath)}: {ex.Message}");
-            throw; // Re-throw to be handled by caller/bug reporter
+            ExceptionDispatchInfo.Capture(ex).Throw();
+            throw; // Unreachable, but required for compiler
         }
 
         return referencedFiles;
     }
 
+    /// <summary>
+    /// Extracts referenced file paths from a GDI (Dreamcast GD-ROM) file.
+    /// </summary>
+    /// <param name="gdiPath">Path to the GDI file to parse.</param>
+    /// <param name="onLog">Callback for logging messages.</param>
+    /// <param name="token">Cancellation token to cancel the operation.</param>
+    /// <returns>A list of file paths referenced by the GDI file.</returns>
     public static async Task<List<string>> GetReferencedFilesFromGdiAsync(string gdiPath, Action<string> onLog, CancellationToken token)
     {
         var referencedFiles = new List<string>();
@@ -87,7 +112,10 @@ public static class GameFileParser
             for (var i = 1; i < lines.Length; i++)
             {
                 var trimmedLine = lines[i].Trim();
-                if (string.IsNullOrWhiteSpace(trimmedLine)) continue;
+                if (string.IsNullOrWhiteSpace(trimmedLine))
+                {
+                    continue;
+                }
 
                 var firstQuote = trimmedLine.IndexOf('"');
                 var lastQuote = trimmedLine.LastIndexOf('"');
@@ -102,7 +130,10 @@ public static class GameFileParser
                     // GDI format: <track> <filename> <lba> <sector_size> <offset>
                     // The last 3 fields are always numeric — count backwards to isolate the filename
                     var parts = trimmedLine.Split(Separator, StringSplitOptions.RemoveEmptyEntries);
-                    if (parts.Length < 5) continue;
+                    if (parts.Length < 5)
+                    {
+                        continue;
+                    }
 
                     string fileName;
                     if (parts.Length > 5)
@@ -127,12 +158,20 @@ public static class GameFileParser
         catch (Exception ex)
         {
             onLog($"Error parsing GDI file {Path.GetFileName(gdiPath)}: {ex.Message}");
-            throw;
+            ExceptionDispatchInfo.Capture(ex).Throw();
+            throw; // Unreachable, but required for compiler
         }
 
         return referencedFiles;
     }
 
+    /// <summary>
+    /// Extracts referenced file paths from a TOC (Table of Contents) file.
+    /// </summary>
+    /// <param name="tocPath">Path to the TOC file to parse.</param>
+    /// <param name="onLog">Callback for logging messages.</param>
+    /// <param name="token">Cancellation token to cancel the operation.</param>
+    /// <returns>A list of file paths referenced by the TOC file.</returns>
     public static async Task<List<string>> GetReferencedFilesFromTocAsync(string tocPath, Action<string> onLog, CancellationToken token)
     {
         var referencedFiles = new List<string>();
@@ -144,7 +183,10 @@ public static class GameFileParser
             foreach (var line in lines)
             {
                 var trimmedLine = line.Trim();
-                if (!trimmedLine.StartsWith("FILE ", StringComparison.OrdinalIgnoreCase)) continue;
+                if (!trimmedLine.StartsWith("FILE ", StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
 
                 string fileName;
                 var firstQuote = trimmedLine.IndexOf('"');
@@ -158,7 +200,10 @@ public static class GameFileParser
                 {
                     // Unquoted fallback: split with limit to preserve filename+spaces+type
                     var parts = trimmedLine.Split(Separator, 2, StringSplitOptions.RemoveEmptyEntries);
-                    if (parts.Length < 2) continue;
+                    if (parts.Length < 2)
+                    {
+                        continue;
+                    }
 
                     // parts[1] is now "filename TYPE" — strip the trailing file type keyword
                     var rest = parts[1].TrimEnd();
@@ -196,7 +241,8 @@ public static class GameFileParser
         catch (Exception ex)
         {
             onLog($"Error parsing TOC file {Path.GetFileName(tocPath)}: {ex.Message}");
-            throw;
+            ExceptionDispatchInfo.Capture(ex).Throw();
+            throw; // Unreachable, but required for compiler
         }
 
         return referencedFiles;

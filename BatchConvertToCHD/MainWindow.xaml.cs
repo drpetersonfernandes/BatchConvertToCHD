@@ -14,6 +14,10 @@ using BatchConvertToCHD.Utilities;
 
 namespace BatchConvertToCHD;
 
+/// <summary>
+/// Main application window for BatchConvertToCHD.
+/// Provides functionality for converting, verifying, and extracting CHD files.
+/// </summary>
 public partial class MainWindow : IDisposable
 {
     private CancellationTokenSource _cts;
@@ -23,14 +27,14 @@ public partial class MainWindow : IDisposable
     private readonly string _psxPackagerPath;
     private readonly bool _isPsxPackagerAvailable;
 
-    private static readonly string[] AllSupportedInputExtensionsForConversion = [".cue", ".iso", ".img", ".cdi", ".gdi", ".toc", ".raw", ".zip", ".7z", ".rar", ".cso", ".pbp", ".ccd"];
-    private static readonly string[] ArchiveExtensions = [".zip", ".7z", ".rar"];
-
     // Statistics
     private int _totalFilesProcessed;
     private int _processedOkCount;
     private int _failedCount;
     private readonly Stopwatch _operationTimer = new();
+
+    // Operation state tracking (0 = idle, >0 = running) - using Interlocked for thread safety
+    private int _operationRunningState;
 
     // Services
     private readonly UpdateService _updateService;
@@ -46,18 +50,14 @@ public partial class MainWindow : IDisposable
 
     // Performance counter for write speed monitoring
     private const int MaxLogLength = 100000; // Maximum characters before log truncation
-    private PerformanceCounter? _writeBytesCounter;
-    private PerformanceCounter? _readBytesCounter;
+    private readonly PerformanceCounter? _writeBytesCounter;
+    private readonly PerformanceCounter? _readBytesCounter;
     private readonly object _performanceCounterLock = new();
 
-    // Result class for PBP extraction
-    private class PbpExtractionResult
-    {
-        public bool Success { get; set; }
-        public List<string> CueFilePaths { get; set; } = new();
-        public string? OutputFolder { get; set; }
-    }
-
+    /// <summary>
+    /// Initializes a new instance of the <see cref="MainWindow"/> class.
+    /// Sets up services, checks for required executables, and initializes the UI.
+    /// </summary>
     public MainWindow()
     {
         InitializeComponent();
@@ -80,6 +80,10 @@ public partial class MainWindow : IDisposable
         // Initialize Services
         _updateService = new UpdateService(AppConfig.ApplicationName);
         _archiveService = new ArchiveService(_maxCsoPath, _isMaxCsoAvailable);
+
+        // Initialize performance counters
+        _writeBytesCounter = CreateWritePerformanceCounter();
+        _readBytesCounter = CreateReadPerformanceCounter();
 
         InitializeStatusBar();
         Task.Run(static async () =>
@@ -110,13 +114,6 @@ public partial class MainWindow : IDisposable
                 SetInputFolder(inputPath);
             }
 
-            // Initialize performance counters asynchronously
-            await Task.Run(() =>
-            {
-                InitializePerformanceCounter();
-                InitializeReadPerformanceCounter();
-            });
-
             // Show speed display if counters are available
             if (_writeBytesCounter != null || _readBytesCounter != null)
             {
@@ -139,7 +136,10 @@ public partial class MainWindow : IDisposable
     private void CheckDependenciesAndNotifyUser()
     {
         var missingDeps = new List<string>();
-        if (!_isChdmanAvailable) missingDeps.Add(AppConfig.ChdmanExeName);
+        if (!_isChdmanAvailable)
+        {
+            missingDeps.Add(AppConfig.ChdmanExeName);
+        }
 
         // Critical dependency check
         if (missingDeps.Count > 0)
@@ -155,8 +155,15 @@ public partial class MainWindow : IDisposable
 
         // Optional but recommended dependencies
         var missingOptional = new List<string>();
-        if (!_isMaxCsoAvailable && !AppConfig.IsArm64) missingOptional.Add("maxcso.exe (required for .cso files)");
-        if (!_isPsxPackagerAvailable) missingOptional.Add(AppConfig.PsxPackagerExeName + " (required for .pbp files)");
+        if (!_isMaxCsoAvailable && !AppConfig.IsArm64)
+        {
+            missingOptional.Add("maxcso.exe (required for .cso files)");
+        }
+
+        if (!_isPsxPackagerAvailable)
+        {
+            missingOptional.Add(AppConfig.PsxPackagerExeName + " (required for .pbp files)");
+        }
 
         if (missingOptional.Count > 0)
         {
@@ -164,61 +171,53 @@ public partial class MainWindow : IDisposable
         }
     }
 
-    private void InitializePerformanceCounter()
+    private static PerformanceCounter? CreateWritePerformanceCounter()
     {
         try
         {
             // Check if category exists first to avoid registry errors
             if (!PerformanceCounterCategory.Exists("PhysicalDisk"))
             {
-                LogMessage("WARNING: PhysicalDisk performance counter category not available");
-                _writeBytesCounter = null;
-                return;
+                return null;
             }
 
             // Create a performance counter for disk write operations
-            _writeBytesCounter = new PerformanceCounter("PhysicalDisk", "Disk Write Bytes/sec", "_Total");
+            return new PerformanceCounter("PhysicalDisk", "Disk Write Bytes/sec", "_Total");
         }
-        catch (InvalidOperationException ex) when (ex.Message.Contains("invalid index") ||
-                                                   ex.Message.Contains("registry") ||
-                                                   ex.Message.Contains("Cannot load Counter Name"))
+        catch (InvalidOperationException)
         {
-            // System configuration issue - don't report as bug
-            LogMessage("WARNING: Performance counters unavailable due to system registry issue");
-            _writeBytesCounter = null;
+            // System configuration issue - counters unavailable
+            return null;
         }
-        catch (Exception ex)
+        catch
         {
-            LogMessage($"WARNING: Could not initialize performance counter for write speed monitoring: {ex.Message}");
-            _writeBytesCounter = null;
+            // Best effort - return null if creation fails
+            return null;
         }
     }
 
-    private void InitializeReadPerformanceCounter()
+    private static PerformanceCounter? CreateReadPerformanceCounter()
     {
         try
         {
             // Check if category exists first to avoid registry errors
             if (!PerformanceCounterCategory.Exists("PhysicalDisk"))
             {
-                _readBytesCounter = null;
-                return;
+                return null;
             }
 
             // Create a performance counter for disk read operations
-            _readBytesCounter = new PerformanceCounter("PhysicalDisk", "Disk Read Bytes/sec", "_Total");
+            return new PerformanceCounter("PhysicalDisk", "Disk Read Bytes/sec", "_Total");
         }
-        catch (InvalidOperationException ex) when (ex.Message.Contains("invalid index") ||
-                                                   ex.Message.Contains("registry") ||
-                                                   ex.Message.Contains("Cannot load Counter Name"))
+        catch (InvalidOperationException)
         {
-            // System configuration issue - don't report as bug
-            _readBytesCounter = null;
+            // System configuration issue - counters unavailable
+            return null;
         }
-        catch (Exception ex)
+        catch
         {
-            LogMessage($"WARNING: Could not initialize read performance counter: {ex.Message}");
-            _readBytesCounter = null;
+            // Best effort - return null if creation fails
+            return null;
         }
     }
 
@@ -279,16 +278,66 @@ public partial class MainWindow : IDisposable
                 return false;
             }
 
-            await using (File.OpenRead(exePath))
+            // Check if file has executable extension
+            if (!exePath.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
             {
-            } // Check read access
+                LogMessage($"ERROR: {exeName} is not an executable file.");
+                ShowError($"{exeName} is not a valid executable.");
+                return false;
+            }
+
+            // Check for read access and file locks by attempting to open with exclusive access
+            try
+            {
+                await using (File.Open(exePath, FileMode.Open, FileAccess.Read, FileShare.None))
+                {
+                    // File is not locked and we have read access
+                }
+            }
+            catch (IOException ioEx) when (ioEx.Message.Contains("being used by another process", StringComparison.OrdinalIgnoreCase))
+            {
+                LogMessage($"ERROR: {exeName} is locked by another process.");
+                ShowError($"{exeName} is currently in use by another process.");
+                return false;
+            }
+
+            // Check for execution permissions by verifying file attributes
+            var fileInfo = new FileInfo(exePath);
+            if (fileInfo.Attributes.HasFlag(FileAttributes.ReadOnly) && !IsRunningAsAdmin())
+            {
+                // Read-only files can still be executed, but log a warning
+                LogMessage($"WARNING: {exeName} is read-only.");
+            }
 
             return true;
         }
+        catch (UnauthorizedAccessException)
+        {
+            LogMessage($"PERMISSION ERROR: Cannot access {exeName}. Insufficient permissions.");
+            ShowError($"Access denied to {exeName}. Check antivirus or permissions.");
+            return false;
+        }
         catch (Exception ex)
         {
-            LogMessage($"PERMISSION ERROR: Cannot access {exeName}. {ex.Message}");
-            ShowError($"Access denied to {exeName}. Check antivirus or permissions.");
+            LogMessage($"ERROR: Cannot access {exeName}. {ex.Message}");
+            ShowError($"Cannot access {exeName}. Check antivirus or permissions.");
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Checks if the application is running with administrator privileges.
+    /// </summary>
+    private static bool IsRunningAsAdmin()
+    {
+        try
+        {
+            var identity = System.Security.Principal.WindowsIdentity.GetCurrent();
+            var principal = new System.Security.Principal.WindowsPrincipal(identity);
+            return principal.IsInRole(System.Security.Principal.WindowsBuiltInRole.Administrator);
+        }
+        catch
+        {
             return false;
         }
     }
@@ -297,11 +346,11 @@ public partial class MainWindow : IDisposable
     /// Validates that chdman.exe is compatible with the current OS platform.
     /// This catches Win32Exception (0x800700C1) when the executable is not valid for this OS.
     /// </summary>
-    private async Task<bool> ValidateChdmanCompatibilityAsync(string chdmanPath)
+    private async Task<bool> ValidateChdmanCompatibilityAsync(string chdmanPath, CancellationToken token)
     {
+        using var process = new Process();
         try
         {
-            using var process = new Process();
             process.StartInfo = new ProcessStartInfo
             {
                 FileName = chdmanPath,
@@ -314,8 +363,25 @@ public partial class MainWindow : IDisposable
             };
 
             process.Start();
-            await process.WaitForExitAsync(CancellationToken.None);
+            await process.WaitForExitAsync(token);
             return true;
+        }
+        catch (OperationCanceledException)
+        {
+            if (!process.HasExited)
+            {
+                try
+                {
+                    process.Kill(true);
+                    await Task.Run(() => process.WaitForExit(5000), CancellationToken.None);
+                }
+                catch
+                {
+                    // Best effort - ignore errors during cleanup
+                }
+            }
+
+            throw;
         }
         catch (Win32Exception ex) when (ex.NativeErrorCode == 193 || ex.Message.Contains("not a valid application"))
         {
@@ -336,6 +402,20 @@ public partial class MainWindow : IDisposable
         }
         catch (Exception ex)
         {
+            // Ensure process is terminated on any other exception
+            if (!process.HasExited)
+            {
+                try
+                {
+                    process.Kill(true);
+                    await Task.Run(() => process.WaitForExit(5000), CancellationToken.None);
+                }
+                catch
+                {
+                    // Best effort - ignore errors during cleanup
+                }
+            }
+
             // Other errors are acceptable - at least the exe started or we have a generic error
             LogMessage($"WARNING: Could not validate chdman compatibility: {ex.Message}");
             return true;
@@ -361,31 +441,58 @@ public partial class MainWindow : IDisposable
     private void DisplayConversionInstructionsInLog()
     {
         LogMessage($"Welcome to {AppConfig.ApplicationName}. (Conversion Mode)");
-        if (!_isChdmanAvailable) LogMessage("WARNING: chdman.exe not found!");
-        if (!_isMaxCsoAvailable) LogMessage("WARNING: maxcso.exe not found.");
-        if (!_isPsxPackagerAvailable) LogMessage("WARNING: psxpackager.exe not found. PBP conversion unavailable.");
+        if (!_isChdmanAvailable)
+        {
+            LogMessage("WARNING: chdman.exe not found!");
+        }
+
+        if (!_isMaxCsoAvailable)
+        {
+            LogMessage("WARNING: maxcso.exe not found.");
+        }
+
+        if (!_isPsxPackagerAvailable)
+        {
+            LogMessage("WARNING: psxpackager.exe not found. PBP conversion unavailable.");
+        }
+
         LogMessage("--- Ready for Conversion ---");
     }
 
     private void DisplayVerificationInstructionsInLog()
     {
         LogMessage($"Welcome to {AppConfig.ApplicationName}. (Verification Mode)");
-        if (!_isChdmanAvailable) LogMessage("WARNING: chdman.exe not found!");
+        if (!_isChdmanAvailable)
+        {
+            LogMessage("WARNING: chdman.exe not found!");
+        }
+
         LogMessage("--- Ready for Verification ---");
     }
 
     private void DisplayExtractionInstructionsInLog()
     {
         LogMessage($"Welcome to {AppConfig.ApplicationName}. (Extraction Mode)");
-        if (!_isChdmanAvailable) LogMessage("WARNING: chdman.exe not found!");
+        if (!_isChdmanAvailable)
+        {
+            LogMessage("WARNING: chdman.exe not found!");
+        }
+
         LogMessage("This feature extracts CHD files back to their original format (ISO/BIN/CUE etc.)");
         LogMessage("--- Ready for Extraction ---");
     }
 
     private void MainTabControl_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (e.Source is not TabControl tabControl) return;
-        if (!StartConversionButton.IsEnabled && !StartVerificationButton.IsEnabled) return;
+        if (e.Source is not TabControl tabControl)
+        {
+            return;
+        }
+
+        if (!StartConversionButton.IsEnabled && !StartVerificationButton.IsEnabled)
+        {
+            return;
+        }
 
         Application.Current.Dispatcher.InvokeAsync((Action)(() => LogViewer.Clear()));
         if (tabControl.SelectedItem is TabItem selectedTab)
@@ -414,8 +521,8 @@ public partial class MainWindow : IDisposable
 
     private void Window_Closing(object sender, CancelEventArgs e)
     {
-        // Check if any operation is currently running (buttons disabled = operation in progress)
-        bool isOperationRunning = !StartConversionButton.IsEnabled || !StartVerificationButton.IsEnabled || !StartExtractionButton.IsEnabled;
+        // Check if any operation is currently running using thread-safe Interlocked check
+        var isOperationRunning = Interlocked.CompareExchange(ref _operationRunningState, 0, 0) != 0;
 
         if (isOperationRunning)
         {
@@ -469,6 +576,10 @@ public partial class MainWindow : IDisposable
         }));
     }
 
+    /// <summary>
+    /// Sets the input folder for conversion from a command line argument.
+    /// </summary>
+    /// <param name="path">The path to the input folder.</param>
     public void SetInputFolder(string path)
     {
         if (Directory.Exists(path))
@@ -597,7 +708,10 @@ public partial class MainWindow : IDisposable
     private void HandleFolderBrowse(TextBox targetBox, string logName)
     {
         var folder = SelectFolder($"Select {logName} folder");
-        if (string.IsNullOrEmpty(folder)) return;
+        if (string.IsNullOrEmpty(folder))
+        {
+            return;
+        }
 
         var normalized = PathUtils.ValidateAndNormalizePath(folder, logName, ShowError, LogMessage);
         if (normalized != null)
@@ -631,7 +745,10 @@ public partial class MainWindow : IDisposable
     private Task LoadFilesForConversionAsync()
     {
         var inputFolder = ConversionInputFolderTextBox.Text;
-        if (string.IsNullOrEmpty(inputFolder) || !Directory.Exists(inputFolder)) return Task.CompletedTask;
+        if (string.IsNullOrEmpty(inputFolder) || !Directory.Exists(inputFolder))
+        {
+            return Task.CompletedTask;
+        }
 
         var includeSub = SearchSubfoldersConversionCheckBox.IsChecked ?? false;
 
@@ -645,7 +762,7 @@ public partial class MainWindow : IDisposable
             };
 
             var files = Directory.GetFiles(inputFolder, "*.*", options)
-                .Where(static file => AllSupportedInputExtensionsForConversion.Contains(Path.GetExtension(file).ToLowerInvariant()))
+                .Where(static file => FileExtensions.AllSupportedInputExtensionsForConversionSet.Contains(Path.GetExtension(file)))
                 .Select(f => new FileItem
                 {
                     FileName = Path.GetRelativePath(inputFolder, f),
@@ -673,7 +790,10 @@ public partial class MainWindow : IDisposable
     private Task LoadFilesForVerificationAsync()
     {
         var inputFolder = VerificationInputFolderTextBox.Text;
-        if (string.IsNullOrEmpty(inputFolder) || !Directory.Exists(inputFolder)) return Task.CompletedTask;
+        if (string.IsNullOrEmpty(inputFolder) || !Directory.Exists(inputFolder))
+        {
+            return Task.CompletedTask;
+        }
 
         var includeSub = SearchSubfoldersVerificationCheckBox.IsChecked ?? false;
 
@@ -689,7 +809,10 @@ public partial class MainWindow : IDisposable
             var files = Directory.GetFiles(inputFolder, "*.chd", options)
                 .Where(f =>
                 {
-                    if (!includeSub) return true;
+                    if (!includeSub)
+                    {
+                        return true;
+                    }
 
                     var relPath = Path.GetRelativePath(inputFolder, f);
                     var firstPart = relPath.Split(Path.DirectorySeparatorChar)[0];
@@ -723,7 +846,10 @@ public partial class MainWindow : IDisposable
     private Task LoadFilesForExtractionAsync()
     {
         var inputFolder = ExtractionInputFolderTextBox.Text;
-        if (string.IsNullOrEmpty(inputFolder) || !Directory.Exists(inputFolder)) return Task.CompletedTask;
+        if (string.IsNullOrEmpty(inputFolder) || !Directory.Exists(inputFolder))
+        {
+            return Task.CompletedTask;
+        }
 
         var includeSub = SearchSubfoldersExtractionCheckBox.IsChecked ?? false;
 
@@ -739,7 +865,10 @@ public partial class MainWindow : IDisposable
             var files = Directory.GetFiles(inputFolder, "*.chd", options)
                 .Where(f =>
                 {
-                    if (!includeSub) return true;
+                    if (!includeSub)
+                    {
+                        return true;
+                    }
 
                     var relPath = Path.GetRelativePath(inputFolder, f);
                     var firstPart = relPath.Split(Path.DirectorySeparatorChar)[0];
@@ -833,7 +962,10 @@ public partial class MainWindow : IDisposable
 
             var inputFolder = PathUtils.ValidateAndNormalizePath(ConversionInputFolderTextBox.Text, "Source Files Folder", ShowError, LogMessage);
             var outputFolder = PathUtils.ValidateAndNormalizePath(ConversionOutputFolderTextBox.Text, "Output CHD Folder", ShowError, LogMessage);
-            if (inputFolder == null || outputFolder == null) return;
+            if (inputFolder == null || outputFolder == null)
+            {
+                return;
+            }
 
             if (inputFolder.Equals(outputFolder, StringComparison.OrdinalIgnoreCase))
             {
@@ -906,7 +1038,10 @@ public partial class MainWindow : IDisposable
             }
 
             var inputFolder = PathUtils.ValidateAndNormalizePath(VerificationInputFolderTextBox.Text, "CHD Files Folder", ShowError, LogMessage);
-            if (inputFolder == null) return;
+            if (inputFolder == null)
+            {
+                return;
+            }
 
             // Cancel any existing operations before creating new CTS
             // The old CTS will be disposed after the operation completes in finally block
@@ -982,6 +1117,9 @@ public partial class MainWindow : IDisposable
 
     private void SetControlsState(bool enabled)
     {
+        // Thread-safely update operation state (0 = idle, 1 = running)
+        Interlocked.Exchange(ref _operationRunningState, enabled ? 0 : 1);
+
         ConversionInputFolderTextBox.IsEnabled = enabled;
         BrowseConversionInputButton.IsEnabled = enabled;
         ConversionOutputFolderTextBox.IsEnabled = enabled;
@@ -1049,7 +1187,7 @@ public partial class MainWindow : IDisposable
     {
         if (!await ValidateExecutableAccessAsync(chdmanPath, "chdman.exe")) return;
 
-        if (!await ValidateChdmanCompatibilityAsync(chdmanPath)) return;
+        if (!await ValidateChdmanCompatibilityAsync(chdmanPath, token)) return;
 
         var filesToConvert = selectedFiles;
 
@@ -1071,7 +1209,10 @@ public partial class MainWindow : IDisposable
         _totalFilesProcessed = filesToConvert.Length;
         UpdateStatsDisplay();
         LogMessage($"Found {_totalFilesProcessed} files to process.");
-        if (_totalFilesProcessed == 0) return;
+        if (_totalFilesProcessed == 0)
+        {
+            return;
+        }
 
         await Application.Current.Dispatcher.InvokeAsync(() => ProgressBar.Maximum = _totalFilesProcessed);
         var processedCount = 0;
@@ -1096,10 +1237,51 @@ public partial class MainWindow : IDisposable
             }
 
             processedCount++;
-            UpdateProgressDisplay(processedCount, _totalFilesProcessed, "Finishing...", "Converting");
+            UpdateProgressDisplay(processedCount, _totalFilesProcessed, Path.GetFileName(file), "Finishing");
             UpdateStatsDisplay();
             UpdateProcessingTimeDisplay();
             UpdateWriteSpeedFromPerformanceCounter();
+        }
+    }
+
+    private async Task PerformBatchExtractionAsync(string chdmanPath, string inputFolder, string outputFolder, bool deleteOriginal, string[] selectedFiles, CancellationToken token)
+    {
+        if (!await ValidateExecutableAccessAsync(chdmanPath, "chdman.exe")) return;
+        if (!await ValidateChdmanCompatibilityAsync(chdmanPath, token)) return;
+
+        _totalFilesProcessed = selectedFiles.Length;
+        UpdateStatsDisplay();
+        LogMessage($"Found {_totalFilesProcessed} CHD files to extract.");
+        if (_totalFilesProcessed == 0)
+        {
+            return;
+        }
+
+        await Application.Current.Dispatcher.InvokeAsync(() => ProgressBar.Maximum = _totalFilesProcessed);
+        var processedCount = 0;
+        ResetSpeedCounters();
+
+        foreach (var file in selectedFiles)
+        {
+            token.ThrowIfCancellationRequested();
+
+            UpdateProgressDisplay(processedCount, _totalFilesProcessed, Path.GetFileName(file), "Extracting");
+
+            var success = await ExtractChdAsync(chdmanPath, file, inputFolder, outputFolder, deleteOriginal, token);
+            if (success)
+            {
+                _processedOkCount++;
+            }
+            else
+            {
+                _failedCount++;
+            }
+
+            processedCount++;
+            UpdateProgressDisplay(processedCount, _totalFilesProcessed, Path.GetFileName(file), "Finishing");
+            UpdateStatsDisplay();
+            UpdateProcessingTimeDisplay();
+            UpdateReadSpeedFromPerformanceCounter();
         }
     }
 
@@ -1107,7 +1289,7 @@ public partial class MainWindow : IDisposable
     {
         var originalName = Path.GetFileName(inputFile);
         LogMessage($"Processing: {originalName}");
-        var ext = Path.GetExtension(inputFile).ToLowerInvariant();
+        var ext = Path.GetExtension(inputFile);
         var tempDirs = new List<string>();
         var outputChd = string.Empty;
 
@@ -1120,10 +1302,10 @@ public partial class MainWindow : IDisposable
             var relativePath = Path.GetRelativePath(inputFolder, Path.GetDirectoryName(inputFile) ?? inputFolder);
             var targetDir = relativePath == "." ? outputFolder : Path.Combine(outputFolder, relativePath);
 
-            outputChd = Path.Combine(targetDir, PathUtils.SanitizeFileName(chdBase) + ".chd");
+            outputChd = Path.Combine(targetDir, PathUtils.SanitizeFileName(chdBase) + FileExtensions.Chd);
 
             string fileToProcess;
-            if (ext == ".cso")
+            if (ext.Equals(FileExtensions.Cso, StringComparison.OrdinalIgnoreCase))
             {
                 var tempDir = Path.Combine(Path.GetTempPath(), $"{TempDirPrefix}{Guid.NewGuid():N}");
                 tempDirs.Add(tempDir);
@@ -1131,16 +1313,22 @@ public partial class MainWindow : IDisposable
                 var tempIso = PathUtils.GetSafeTempFileName(originalName, "iso", tempDir);
 
                 var result = await _archiveService.ExtractCsoAsync(inputFile, tempIso, tempDir, LogMessage, UpdateWriteSpeedDisplay, token);
-                if (!result.Success) return false;
+                if (!result.Success)
+                {
+                    return false;
+                }
 
                 fileToProcess = result.FilePath;
             }
-            else if (ArchiveExtensions.Contains(ext))
+            else if (FileExtensions.ArchiveExtensionsSet.Contains(ext))
             {
                 var tempDir = Path.Combine(Path.GetTempPath(), $"{TempDirPrefix}{Guid.NewGuid():N}");
                 tempDirs.Add(tempDir);
                 var result = await _archiveService.ExtractArchiveAsync(inputFile, tempDir, LogMessage, token);
-                if (!result.Success) return false;
+                if (!result.Success)
+                {
+                    return false;
+                }
 
                 // Convert all supported files found in the archive
                 var allSucceeded = true;
@@ -1168,7 +1356,7 @@ public partial class MainWindow : IDisposable
 
                 return allSucceeded;
             }
-            else if (ext == ".pbp")
+            else if (ext.Equals(FileExtensions.Pbp, StringComparison.OrdinalIgnoreCase))
             {
                 if (!_isPsxPackagerAvailable)
                 {
@@ -1252,21 +1440,21 @@ public partial class MainWindow : IDisposable
 
                     string tempInputFile;
 
-                    if (ext is ".cue" or ".gdi" or ".toc" or ".ccd")
+                    if (ext is FileExtensions.Cue or FileExtensions.Gdi or FileExtensions.Toc or FileExtensions.Ccd)
                     {
                         LogMessage("Copying game with dependencies to temporary directory...");
                         var filesToCopy = new List<string> { inputFile };
                         switch (ext)
                         {
-                            case ".cue":
+                            case FileExtensions.Cue:
                                 filesToCopy.AddRange(await GameFileParser.GetReferencedFilesFromCueAsync(inputFile, LogMessage, token));
                                 break;
-                            case ".gdi":
+                            case FileExtensions.Gdi:
                                 filesToCopy.AddRange(await GameFileParser.GetReferencedFilesFromGdiAsync(inputFile, LogMessage, token));
                                 break;
-                            case ".ccd":
-                                var imgFile = Path.ChangeExtension(inputFile, ".img");
-                                var subFile = Path.ChangeExtension(inputFile, ".sub");
+                            case FileExtensions.Ccd:
+                                var imgFile = Path.ChangeExtension(inputFile, FileExtensions.Img);
+                                var subFile = Path.ChangeExtension(inputFile, FileExtensions.Sub);
                                 if (File.Exists(imgFile)) filesToCopy.Add(imgFile);
                                 if (File.Exists(subFile)) filesToCopy.Add(subFile);
                                 break;
@@ -1313,9 +1501,9 @@ public partial class MainWindow : IDisposable
                 {
                     LogMessage($"Deleting source: {originalName} (Option 'Delete originals' is enabled)");
 
-                    var isImgWithCcd = ext == ".img" && File.Exists(Path.ChangeExtension(inputFile, ".ccd"));
+                    var isImgWithCcd = ext == FileExtensions.Img && File.Exists(Path.ChangeExtension(inputFile, FileExtensions.Ccd));
 
-                    if (ext is ".cue" or ".gdi" or ".toc" or ".ccd" || isImgWithCcd)
+                    if (ext is FileExtensions.Cue or FileExtensions.Gdi or FileExtensions.Toc or FileExtensions.Ccd || isImgWithCcd)
                     {
                         // Parse and delete dependencies + input file
                         await DeleteOriginalGameFilesAsync(inputFile, token);
@@ -1374,21 +1562,32 @@ public partial class MainWindow : IDisposable
         var relativePath = Path.GetRelativePath(inputFolder, Path.GetDirectoryName(originalInputFile) ?? inputFolder);
         var targetDir = relativePath == "." ? outputFolder : Path.Combine(outputFolder, relativePath);
         var chdBase = Path.GetFileNameWithoutExtension(extractedFilePath);
-        return Path.Combine(targetDir, PathUtils.SanitizeFileName(chdBase) + ".chd");
+        return Path.Combine(targetDir, PathUtils.SanitizeFileName(chdBase) + FileExtensions.Chd);
     }
 
     private async Task PerformBatchVerificationAsync(string chdmanPath, string inputFolder, bool includeSub, bool moveSuccess, string successFolder, bool moveFailed, string failedFolder, string[] selectedFiles, CancellationToken token)
     {
         if (!await ValidateExecutableAccessAsync(chdmanPath, "chdman.exe")) return;
-        if (!await ValidateChdmanCompatibilityAsync(chdmanPath)) return;
+        if (!await ValidateChdmanCompatibilityAsync(chdmanPath, token)) return;
 
         _totalFilesProcessed = selectedFiles.Length;
         UpdateStatsDisplay();
-        LogMessage($"Found {_totalFilesProcessed} CHD files.");
-        if (_totalFilesProcessed == 0) return;
+        LogMessage($"Found {_totalFilesProcessed} CHD files to verify.");
+        if (_totalFilesProcessed == 0)
+        {
+            return;
+        }
 
-        if (moveSuccess) Directory.CreateDirectory(successFolder);
-        if (moveFailed) Directory.CreateDirectory(failedFolder);
+        // Create success/failed folders if needed
+        if (moveSuccess && !string.IsNullOrEmpty(successFolder) && !Directory.Exists(successFolder))
+        {
+            Directory.CreateDirectory(successFolder);
+        }
+
+        if (moveFailed && !string.IsNullOrEmpty(failedFolder) && !Directory.Exists(failedFolder))
+        {
+            Directory.CreateDirectory(failedFolder);
+        }
 
         await Application.Current.Dispatcher.InvokeAsync(() => ProgressBar.Maximum = _totalFilesProcessed);
         var processed = 0;
@@ -1401,100 +1600,73 @@ public partial class MainWindow : IDisposable
             // Show current file in text, but bar shows 'processed' (completed) count
             UpdateProgressDisplay(processed, _totalFilesProcessed, Path.GetFileName(file), "Verifying");
 
-            var isValid = await VerifyChdAsync(chdmanPath, file, token);
-
-            if (isValid)
-            {
-                LogMessage($"✓ Verified: {Path.GetFileName(file)}");
-                _processedOkCount++;
-                if (moveSuccess) await MoveVerifiedFileAsync(file, successFolder, inputFolder, includeSub, "verified", token);
-            }
-            else
-            {
-                LogMessage($"✗ Failed: {Path.GetFileName(file)}");
-                _failedCount++;
-                if (moveFailed) await MoveVerifiedFileAsync(file, failedFolder, inputFolder, includeSub, "failed", token);
-            }
-
-            processed++;
-            UpdateProgressDisplay(processed, _totalFilesProcessed, "Finishing...", "Verifying");
-            UpdateStatsDisplay();
-            UpdateProcessingTimeDisplay();
-            UpdateReadSpeedFromPerformanceCounter();
-        }
-    }
-
-    private async Task MoveVerifiedFileAsync(string source, string destParent, string baseInput, bool maintainSub, string reason, CancellationToken token)
-    {
-        try
-        {
-            string dest;
-            if (maintainSub && Path.GetDirectoryName(source) != baseInput)
-            {
-                var rel = Path.GetRelativePath(baseInput, Path.GetDirectoryName(source) ?? string.Empty);
-                var targetDir = Path.Combine(destParent, rel);
-                Directory.CreateDirectory(targetDir);
-                dest = Path.Combine(targetDir, Path.GetFileName(source));
-            }
-            else
-            {
-                dest = Path.Combine(destParent, Path.GetFileName(source));
-            }
-
-            if (File.Exists(dest))
-            {
-                LogMessage($"Skipping move: {dest} exists.");
-                return;
-            }
-
-            await Task.Run(() => File.Move(source, dest), token);
-            LogMessage($"Moved {Path.GetFileName(source)} ({reason})");
-        }
-        catch (Exception ex)
-        {
-            LogMessage($"Move error: {ex.Message}");
-        }
-    }
-
-    private async Task PerformBatchExtractionAsync(string chdmanPath, string inputFolder, string outputFolder, bool deleteOriginal, string[] selectedFiles, CancellationToken token)
-    {
-        if (!await ValidateExecutableAccessAsync(chdmanPath, "chdman.exe")) return;
-        if (!await ValidateChdmanCompatibilityAsync(chdmanPath)) return;
-
-        _totalFilesProcessed = selectedFiles.Length;
-        UpdateStatsDisplay();
-        LogMessage($"Found {_totalFilesProcessed} CHD files.");
-        if (_totalFilesProcessed == 0) return;
-
-        await Application.Current.Dispatcher.InvokeAsync(() => ProgressBar.Maximum = _totalFilesProcessed);
-        var processed = 0;
-        ResetSpeedCounters();
-
-        foreach (var file in selectedFiles)
-        {
-            token.ThrowIfCancellationRequested();
-
-            // Show current file in text, but bar shows 'processed' (completed) count
-            UpdateProgressDisplay(processed, _totalFilesProcessed, Path.GetFileName(file), "Extracting");
-
-            var success = await ExtractChdAsync(chdmanPath, file, inputFolder, outputFolder, deleteOriginal, token);
+            var success = await VerifyChdAsync(chdmanPath, file, token);
 
             if (success)
             {
-                LogMessage($"✓ Extracted: {Path.GetFileName(file)}");
+                LogMessage($"✓ Verified: {Path.GetFileName(file)}");
                 _processedOkCount++;
+
+                // Move to success folder if option is enabled
+                if (moveSuccess && !string.IsNullOrEmpty(successFolder))
+                {
+                    await MoveVerifiedFileAsync(file, successFolder, inputFolder, includeSub, token);
+                }
             }
             else
             {
                 LogMessage($"✗ Failed: {Path.GetFileName(file)}");
                 _failedCount++;
+
+                // Move to failed folder if option is enabled
+                if (moveFailed && !string.IsNullOrEmpty(failedFolder))
+                {
+                    await MoveVerifiedFileAsync(file, failedFolder, inputFolder, includeSub, token);
+                }
             }
 
             processed++;
-            UpdateProgressDisplay(processed, _totalFilesProcessed, "Finishing...", "Extracting");
+            UpdateProgressDisplay(processed, _totalFilesProcessed, Path.GetFileName(file), "Finishing");
             UpdateStatsDisplay();
             UpdateProcessingTimeDisplay();
             UpdateReadSpeedFromPerformanceCounter();
+        }
+    }
+
+    private static async Task MoveVerifiedFileAsync(string sourceFile, string targetFolder, string inputFolder, bool includeSub, CancellationToken token)
+    {
+        try
+        {
+            string destFile;
+            if (includeSub)
+            {
+                // Maintain directory structure
+                var relativePath = Path.GetRelativePath(inputFolder, Path.GetDirectoryName(sourceFile) ?? inputFolder);
+                var targetSubDir = relativePath == "." ? targetFolder : Path.Combine(targetFolder, relativePath);
+                if (!Directory.Exists(targetSubDir))
+                {
+                    Directory.CreateDirectory(targetSubDir);
+                }
+
+                destFile = Path.Combine(targetSubDir, Path.GetFileName(sourceFile));
+            }
+            else
+            {
+                destFile = Path.Combine(targetFolder, Path.GetFileName(sourceFile));
+            }
+
+            // Delete destination if it already exists
+            if (File.Exists(destFile))
+            {
+                File.Delete(destFile);
+            }
+
+            await Task.Run(() => File.Move(sourceFile, destFile), token);
+        }
+        catch (Exception ex)
+        {
+            // Log error but don't fail the verification
+            Debug.WriteLine($"Failed to move file {sourceFile}: {ex.Message}");
         }
     }
 
@@ -1511,31 +1683,31 @@ public partial class MainWindow : IDisposable
         var extractCommand = await GetSelectedExtractCommandAsync(chdmanPath, chdFile, token);
 
         // Determine output extension based on selection or detected command
-        var outputExt = ".cue"; // Default for extractcd
+        var outputExt = FileExtensions.Cue; // Default for extractcd
         if (ExtractGdiRadioButton.IsChecked == true)
         {
-            outputExt = ".gdi";
+            outputExt = FileExtensions.Gdi;
         }
         else if (ExtractDvdRadioButton.IsChecked == true)
         {
-            outputExt = ".iso";
+            outputExt = FileExtensions.Iso;
         }
         else if (ExtractHdRadioButton.IsChecked == true)
         {
-            outputExt = ".img";
+            outputExt = FileExtensions.Img;
         }
         else if (ExtractAutoRadioButton.IsChecked == true)
         {
             outputExt = extractCommand switch
             {
-                "extractdvd" => ".iso",
-                "extracthd" => ".img",
-                _ => ".cue"
+                "extractdvd" => FileExtensions.Iso,
+                "extracthd" => FileExtensions.Img,
+                _ => FileExtensions.Cue
             };
 
             if (extractCommand == "extractcd" && await IsGdiChdAsync(chdmanPath, chdFile, token))
             {
-                outputExt = ".gdi";
+                outputExt = FileExtensions.Gdi;
             }
         }
 
@@ -1634,10 +1806,24 @@ public partial class MainWindow : IDisposable
             await TryDeleteFileAsync(outputFile, "partially extracted file", CancellationToken.None);
             throw;
         }
+        catch (Exception)
+        {
+            // Ensure process is terminated on any other exception
+            if (!process.HasExited)
+            {
+                process.Kill(true);
+                await Task.Run(() => process.WaitForExit(5000), CancellationToken.None);
+            }
+
+            throw;
+        }
         finally
         {
             ctsSpeed.Cancel();
             await Task.WhenAny(readSpeedTask, Task.Delay(500, CancellationToken.None));
+            // Ensure output streams are properly drained before disposal
+            process.CancelOutputRead();
+            process.CancelErrorRead();
         }
 
         var success = process.ExitCode == 0 && !token.IsCancellationRequested;
@@ -1690,9 +1876,52 @@ public partial class MainWindow : IDisposable
 
             return output.ToString().Contains("gd-rom", StringComparison.OrdinalIgnoreCase);
         }
+        catch (OperationCanceledException)
+        {
+            if (!process.HasExited)
+            {
+                try
+                {
+                    process.Kill(true);
+                    await Task.Run(() => process.WaitForExit(5000), CancellationToken.None);
+                }
+                catch
+                {
+                    // Best effort - ignore errors during cleanup
+                }
+            }
+
+            throw;
+        }
         catch
         {
+            // Ensure process is terminated on any other exception before returning false
+            if (!process.HasExited)
+            {
+                try
+                {
+                    process.Kill(true);
+                    await Task.Run(() => process.WaitForExit(5000), CancellationToken.None);
+                }
+                catch
+                {
+                    // Best effort - ignore errors during cleanup
+                }
+            }
+
             return false;
+        }
+        finally
+        {
+            // Ensure output streams are properly drained before disposal
+            try
+            {
+                process.CancelOutputRead();
+            }
+            catch
+            {
+                // Best effort - ignore errors during cleanup
+            }
         }
     }
 
@@ -1729,14 +1958,16 @@ public partial class MainWindow : IDisposable
             process.BeginErrorReadLine();
             await process.WaitForExitAsync(token);
 
-            var infoText = output.ToString().ToLowerInvariant();
+            var infoText = output.ToString();
 
             // Determine extraction command based on CHD metadata
-            if (infoText.Contains("dvd"))
+            if (infoText.Contains("dvd", StringComparison.OrdinalIgnoreCase))
                 return "extractdvd";
-            if (infoText.Contains("gd-rom"))
+            if (infoText.Contains("gd-rom", StringComparison.OrdinalIgnoreCase))
                 return "extractcd";
-            if (infoText.Contains("hard disk") || infoText.Contains("hd") || infoText.Contains("hdd"))
+            if (infoText.Contains("hard disk", StringComparison.OrdinalIgnoreCase) ||
+                infoText.Contains("hd", StringComparison.OrdinalIgnoreCase) ||
+                infoText.Contains("hdd", StringComparison.OrdinalIgnoreCase))
                 return "extracthd";
 
             // Default to CD extraction (most common)
@@ -1744,13 +1975,45 @@ public partial class MainWindow : IDisposable
         }
         catch (OperationCanceledException)
         {
-            if (!process.HasExited) process.Kill(true);
+            if (!process.HasExited)
+            {
+                process.Kill(true);
+            }
+
+            await Task.Run(() => process.WaitForExit(5000), CancellationToken.None);
             throw;
         }
         catch
         {
+            // Ensure process is terminated on any other exception before returning default
+            if (!process.HasExited)
+            {
+                try
+                {
+                    process.Kill(true);
+                    await Task.Run(() => process.WaitForExit(5000), CancellationToken.None);
+                }
+                catch
+                {
+                    // Best effort - ignore errors during cleanup
+                }
+            }
+
             // Default to extractcd if detection fails
             return "extractcd";
+        }
+        finally
+        {
+            // Ensure output streams are properly drained before disposal
+            try
+            {
+                process.CancelOutputRead();
+                process.CancelErrorRead();
+            }
+            catch
+            {
+                // Best effort - ignore errors during cleanup
+            }
         }
     }
 
@@ -1758,11 +2021,11 @@ public partial class MainWindow : IDisposable
     {
         using var process = new Process();
 
-        var isImg = inputFile.EndsWith(".img", StringComparison.OrdinalIgnoreCase);
-        var isCcd = inputFile.EndsWith(".ccd", StringComparison.OrdinalIgnoreCase);
-        var hasCcd = isImg && File.Exists(Path.ChangeExtension(inputFile, ".ccd"));
+        var isImg = inputFile.EndsWith(FileExtensions.Img, StringComparison.OrdinalIgnoreCase);
+        var isCcd = inputFile.EndsWith(FileExtensions.Ccd, StringComparison.OrdinalIgnoreCase);
+        var hasCcd = isImg && File.Exists(Path.ChangeExtension(inputFile, FileExtensions.Ccd));
 
-        var command = forceCd || isCcd || hasCcd || (!forceDvd && !inputFile.EndsWith(".iso", StringComparison.OrdinalIgnoreCase) && !isImg && !inputFile.EndsWith(".raw", StringComparison.OrdinalIgnoreCase))
+        var command = forceCd || isCcd || hasCcd || (!forceDvd && !inputFile.EndsWith(FileExtensions.Iso, StringComparison.OrdinalIgnoreCase) && !isImg && !inputFile.EndsWith(FileExtensions.Raw, StringComparison.OrdinalIgnoreCase))
             ? "createcd"
             : forceDvd || inputFile.EndsWith(".iso", StringComparison.OrdinalIgnoreCase)
                 ? "createdvd"
@@ -1838,12 +2101,13 @@ public partial class MainWindow : IDisposable
             {
                 while (!speedToken.IsCancellationRequested)
                 {
-                    await Task.Delay(AppConfig.WriteSpeedUpdateIntervalMs, speedToken);
                     UpdateWriteSpeedFromPerformanceCounter();
+                    await Task.Delay(AppConfig.WriteSpeedUpdateIntervalMs, speedToken);
                 }
             }
             catch (OperationCanceledException)
             {
+                // Task was cancelled, exit gracefully
             }
         }, speedToken);
 
@@ -1853,17 +2117,37 @@ public partial class MainWindow : IDisposable
             if (token.IsCancellationRequested && !process.HasExited)
             {
                 process.Kill(true);
+                await Task.Run(() => process.WaitForExit(5000), CancellationToken.None);
             }
         }
         catch (OperationCanceledException)
         {
-            if (!process.HasExited) process.Kill(true);
+            if (!process.HasExited)
+            {
+                process.Kill(true);
+            }
+
+            await Task.Run(() => process.WaitForExit(5000), CancellationToken.None);
+            throw;
+        }
+        catch (Exception)
+        {
+            // Ensure process is terminated on any other exception
+            if (!process.HasExited)
+            {
+                process.Kill(true);
+                await Task.Run(() => process.WaitForExit(5000), CancellationToken.None);
+            }
+
             throw;
         }
         finally
         {
             ctsSpeed.Cancel();
             await Task.WhenAny(speedMonitoringTask, Task.Delay(500, CancellationToken.None));
+            // Ensure output streams are properly drained before disposal
+            process.CancelOutputRead();
+            process.CancelErrorRead();
         }
 
         return process.ExitCode == 0 && !token.IsCancellationRequested;
@@ -1900,12 +2184,29 @@ public partial class MainWindow : IDisposable
             if (token.IsCancellationRequested && !process.HasExited)
             {
                 process.Kill(true);
+                await Task.Run(() => process.WaitForExit(5000), CancellationToken.None);
                 throw new OperationCanceledException();
             }
         }
         catch (OperationCanceledException)
         {
-            if (!process.HasExited) process.Kill(true);
+            if (!process.HasExited)
+            {
+                process.Kill(true);
+            }
+
+            await Task.Run(() => process.WaitForExit(5000), CancellationToken.None);
+            throw;
+        }
+        catch (Exception)
+        {
+            // Ensure process is terminated on any other exception
+            if (!process.HasExited)
+            {
+                process.Kill(true);
+                await Task.Run(() => process.WaitForExit(5000), CancellationToken.None);
+            }
+
             throw;
         }
 
@@ -1938,14 +2239,14 @@ public partial class MainWindow : IDisposable
     {
         try
         {
-            if (_writeBytesCounter != null)
+            double writeBytesPerSec;
+            lock (_performanceCounterLock)
             {
-                double writeBytesPerSec;
-                lock (_performanceCounterLock)
-                {
-                    writeBytesPerSec = _writeBytesCounter.NextValue();
-                }
+                writeBytesPerSec = _writeBytesCounter?.NextValue() ?? 0;
+            }
 
+            if (writeBytesPerSec > 0)
+            {
                 UpdateWriteSpeedDisplay(writeBytesPerSec / 1048576.0); // Convert to MB/s
             }
         }
@@ -1959,14 +2260,14 @@ public partial class MainWindow : IDisposable
     {
         try
         {
-            if (_readBytesCounter != null)
+            double readBytesPerSec;
+            lock (_performanceCounterLock)
             {
-                double readBytesPerSec;
-                lock (_performanceCounterLock)
-                {
-                    readBytesPerSec = _readBytesCounter.NextValue();
-                }
+                readBytesPerSec = _readBytesCounter?.NextValue() ?? 0;
+            }
 
+            if (readBytesPerSec > 0)
+            {
                 UpdateReadSpeedDisplay(readBytesPerSec / 1048576.0); // Convert to MB/s
             }
         }
@@ -2051,13 +2352,32 @@ public partial class MainWindow : IDisposable
         }
         catch (OperationCanceledException)
         {
-            if (!process.HasExited) process.Kill(true);
+            if (!process.HasExited)
+            {
+                process.Kill(true);
+            }
+
+            await Task.Run(() => process.WaitForExit(5000), CancellationToken.None);
+            throw;
+        }
+        catch (Exception)
+        {
+            // Ensure process is terminated on any other exception
+            if (!process.HasExited)
+            {
+                process.Kill(true);
+                await Task.Run(() => process.WaitForExit(5000), CancellationToken.None);
+            }
+
             throw;
         }
         finally
         {
             ctsSpeed.Cancel();
             await Task.WhenAny(readSpeedTask, Task.Delay(500, CancellationToken.None));
+            // Ensure output streams are properly drained before disposal
+            process.CancelOutputRead();
+            process.CancelErrorRead();
         }
 
         return process.ExitCode == 0;
@@ -2152,25 +2472,26 @@ public partial class MainWindow : IDisposable
         try
         {
             var files = new List<string> { inputFile };
-            var ext = Path.GetExtension(inputFile).ToLowerInvariant();
-            switch (ext)
+            var ext = Path.GetExtension(inputFile);
+            if (ext.Equals(FileExtensions.Cue, StringComparison.OrdinalIgnoreCase))
             {
-                case ".cue":
-                    files.AddRange(await GameFileParser.GetReferencedFilesFromCueAsync(inputFile, LogMessage, token));
-                    break;
-                case ".gdi":
-                    files.AddRange(await GameFileParser.GetReferencedFilesFromGdiAsync(inputFile, LogMessage, token));
-                    break;
-                case ".toc":
-                    files.AddRange(await GameFileParser.GetReferencedFilesFromTocAsync(inputFile, LogMessage, token));
-                    break;
-                case ".ccd":
-                    // CloneCD references: .img, .sub
-                    var imgFile = Path.ChangeExtension(inputFile, ".img");
-                    var subFile = Path.ChangeExtension(inputFile, ".sub");
-                    if (File.Exists(imgFile)) files.Add(imgFile);
-                    if (File.Exists(subFile)) files.Add(subFile);
-                    break;
+                files.AddRange(await GameFileParser.GetReferencedFilesFromCueAsync(inputFile, LogMessage, token));
+            }
+            else if (ext.Equals(FileExtensions.Gdi, StringComparison.OrdinalIgnoreCase))
+            {
+                files.AddRange(await GameFileParser.GetReferencedFilesFromGdiAsync(inputFile, LogMessage, token));
+            }
+            else if (ext.Equals(FileExtensions.Toc, StringComparison.OrdinalIgnoreCase))
+            {
+                files.AddRange(await GameFileParser.GetReferencedFilesFromTocAsync(inputFile, LogMessage, token));
+            }
+            else if (ext.Equals(FileExtensions.Ccd, StringComparison.OrdinalIgnoreCase))
+            {
+                // CloneCD references: .img, .sub
+                var imgFile = Path.ChangeExtension(inputFile, FileExtensions.Img);
+                var subFile = Path.ChangeExtension(inputFile, FileExtensions.Sub);
+                if (File.Exists(imgFile)) files.Add(imgFile);
+                if (File.Exists(subFile)) files.Add(subFile);
             }
 
             foreach (var f in files.Distinct()) await TryDeleteFileAsync(f, "game file", token);
@@ -2238,7 +2559,10 @@ public partial class MainWindow : IDisposable
 
     private void SearchSubfoldersCheckBox_Changed(object sender, RoutedEventArgs e)
     {
-        if (IsLoaded) RefreshFileListForActiveTab();
+        if (IsLoaded)
+        {
+            RefreshFileListForActiveTab();
+        }
     }
 
     private void ForceCreateCdCheckBox_Checked(object sender, RoutedEventArgs e)
@@ -2272,7 +2596,10 @@ public partial class MainWindow : IDisposable
     {
         try
         {
-            if (App.SharedBugReportService != null) await App.SharedBugReportService.SendBugReportAsync(msg, ex);
+            if (App.SharedBugReportService != null)
+            {
+                await App.SharedBugReportService.SendBugReportAsync(msg, ex);
+            }
         }
         catch
         {
@@ -2302,6 +2629,10 @@ public partial class MainWindow : IDisposable
         new AboutWindow { Owner = this }.ShowDialog();
     }
 
+    /// <summary>
+    /// Releases all resources used by the <see cref="MainWindow"/>.
+    /// Cancels ongoing operations and disposes managed resources.
+    /// </summary>
     public void Dispose()
     {
         _cts.Cancel();

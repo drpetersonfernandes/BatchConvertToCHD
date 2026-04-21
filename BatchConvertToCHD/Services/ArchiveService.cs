@@ -3,24 +3,42 @@ using System.IO;
 using System.IO.Compression;
 using System.Text;
 using System.Security;
+using BatchConvertToCHD.Utilities;
 using SharpCompress.Archives;
 using SharpCompress.Archives.SevenZip;
 using SharpCompress.Archives.Rar;
 
 namespace BatchConvertToCHD.Services;
 
+/// <summary>
+/// Service for extracting various archive formats (ZIP, 7Z, RAR, CSO) used in the conversion process.
+/// </summary>
 public class ArchiveService : IDisposable
 {
     private readonly string _maxCsoPath;
     private readonly bool _isMaxCsoAvailable;
-    private static readonly string[] PrimaryTargetExtensions = [".cue", ".iso", ".img", ".cdi", ".gdi", ".toc", ".raw"];
 
+    /// <summary>
+    /// Initializes a new instance of the <see cref="ArchiveService"/> class.
+    /// </summary>
+    /// <param name="maxCsoPath">The path to the maxcso executable for CSO decompression.</param>
+    /// <param name="isMaxCsoAvailable">Whether maxcso is available on the system.</param>
     public ArchiveService(string maxCsoPath, bool isMaxCsoAvailable)
     {
         _maxCsoPath = maxCsoPath;
         _isMaxCsoAvailable = isMaxCsoAvailable;
     }
 
+    /// <summary>
+    /// Extracts a CSO (Compressed ISO) file to a temporary ISO file.
+    /// </summary>
+    /// <param name="originalCsoPath">The path to the CSO file to extract.</param>
+    /// <param name="tempOutputIsoPath">The path where the extracted ISO should be saved.</param>
+    /// <param name="tempDirectoryRoot">The root temporary directory for extraction.</param>
+    /// <param name="onLog">Callback for logging messages.</param>
+    /// <param name="onSpeedUpdate">Callback for speed updates during extraction.</param>
+    /// <param name="token">Cancellation token to cancel the operation.</param>
+    /// <returns>A tuple containing success status, file path, temp directory, and error message.</returns>
     public async Task<(bool Success, string FilePath, string TempDir, string ErrorMessage)> ExtractCsoAsync(
         string originalCsoPath,
         string tempOutputIsoPath,
@@ -56,11 +74,17 @@ public class ArchiveService : IDisposable
             var outputBuilder = new StringBuilder();
             process.OutputDataReceived += (_, args) =>
             {
-                if (args.Data != null) outputBuilder.AppendLine(args.Data);
+                if (args.Data != null)
+                {
+                    outputBuilder.AppendLine(args.Data);
+                }
             };
             process.ErrorDataReceived += (_, args) =>
             {
-                if (args.Data == null) return;
+                if (args.Data == null)
+                {
+                    return;
+                }
 
                 outputBuilder.AppendLine(args.Data);
                 onLog($"[MAXCSO STDERR] {args.Data}");
@@ -85,7 +109,10 @@ public class ArchiveService : IDisposable
         {
             try
             {
-                if (!process.HasExited) process.Kill(true);
+                if (!process.HasExited)
+                {
+                    process.Kill(true);
+                }
             }
             catch
             {
@@ -96,13 +123,21 @@ public class ArchiveService : IDisposable
         }
     }
 
+    /// <summary>
+    /// Extracts an archive file (ZIP, 7Z, or RAR) to a temporary directory.
+    /// </summary>
+    /// <param name="originalArchivePath">The path to the archive file to extract.</param>
+    /// <param name="tempDirectoryRoot">The root temporary directory for extraction.</param>
+    /// <param name="onLog">Callback for logging messages.</param>
+    /// <param name="token">Cancellation token to cancel the operation.</param>
+    /// <returns>A tuple containing success status, list of extracted file paths, temp directory, and error message.</returns>
     public async Task<(bool Success, List<string> FilePaths, string TempDir, string ErrorMessage)> ExtractArchiveAsync(
         string originalArchivePath,
         string tempDirectoryRoot,
         Action<string> onLog,
         CancellationToken token)
     {
-        var extension = Path.GetExtension(originalArchivePath).ToLowerInvariant();
+        var extension = Path.GetExtension(originalArchivePath);
         var archiveFileName = Path.GetFileName(originalArchivePath);
 
         try
@@ -111,19 +146,21 @@ public class ArchiveService : IDisposable
             Directory.CreateDirectory(tempDirectoryRoot);
             onLog($"Extracting {archiveFileName} to: {tempDirectoryRoot}");
 
-            switch (extension)
+            if (extension.Equals(FileExtensions.Zip, StringComparison.OrdinalIgnoreCase))
             {
-                case ".zip":
-                    await Task.Run(() => ExtractZipArchive(originalArchivePath, tempDirectoryRoot, token), token);
-                    break;
-                case ".7z":
-                    await Task.Run(() => ExtractSevenZipArchive(originalArchivePath, tempDirectoryRoot, onLog, token), token);
-                    break;
-                case ".rar":
-                    await Task.Run(() => ExtractRarArchive(originalArchivePath, tempDirectoryRoot, onLog, token), token);
-                    break;
-                default:
-                    return (false, new List<string>(), tempDirectoryRoot, $"Unsupported archive type: {extension}");
+                await Task.Run(() => ExtractZipArchive(originalArchivePath, tempDirectoryRoot, token), token);
+            }
+            else if (extension.Equals(FileExtensions.SevenZip, StringComparison.OrdinalIgnoreCase))
+            {
+                await Task.Run(() => ExtractSevenZipArchive(originalArchivePath, tempDirectoryRoot, onLog, token), token);
+            }
+            else if (extension.Equals(FileExtensions.Rar, StringComparison.OrdinalIgnoreCase))
+            {
+                await Task.Run(() => ExtractRarArchive(originalArchivePath, tempDirectoryRoot, onLog, token), token);
+            }
+            else
+            {
+                return (false, new List<string>(), tempDirectoryRoot, $"Unsupported archive type: {extension}");
             }
 
             token.ThrowIfCancellationRequested();
@@ -137,7 +174,7 @@ public class ArchiveService : IDisposable
                 };
 
                 return Directory.GetFiles(tempDirectoryRoot, "*.*", options)
-                    .Where(static f => PrimaryTargetExtensions.Contains(Path.GetExtension(f).ToLowerInvariant()))
+                    .Where(static f => FileExtensions.PrimaryTargetExtensionsSet.Contains(Path.GetExtension(f)))
                     .ToList();
             }, token);
 
@@ -164,7 +201,10 @@ public class ArchiveService : IDisposable
         {
             token.ThrowIfCancellationRequested();
 
-            if (string.IsNullOrEmpty(entry.Name)) continue; // Skip directories
+            if (string.IsNullOrEmpty(entry.Name))
+            {
+                continue; // Skip directories
+            }
 
             var destinationPath = Path.Combine(outputDirectory, entry.FullName);
             var directory = Path.GetDirectoryName(destinationPath);
@@ -184,120 +224,46 @@ public class ArchiveService : IDisposable
 
     private static void ExtractSevenZipArchive(string archivePath, string outputDirectory, Action<string> onLog, CancellationToken token)
     {
-        var fullOutputDirectory = Path.GetFullPath(outputDirectory).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar) + Path.DirectorySeparatorChar;
-        var directExtractionSuccess = false;
-        try
-        {
-            using var stream = File.OpenRead(archivePath);
-            using var archive = SevenZipArchive.OpenArchive(stream);
-            foreach (var entry in archive.Entries.Where(static e => !e.IsDirectory))
-            {
-                token.ThrowIfCancellationRequested();
-
-                if (entry.Key != null)
-                {
-                    var destinationPath = Path.Combine(outputDirectory, entry.Key);
-                    var directory = Path.GetDirectoryName(destinationPath);
-                    if (!string.IsNullOrEmpty(directory))
-                    {
-                        Directory.CreateDirectory(directory);
-                    }
-
-                    if (!Path.GetFullPath(destinationPath).StartsWith(fullOutputDirectory, StringComparison.OrdinalIgnoreCase))
-                    {
-                        throw new SecurityException("Attempted to extract file outside of the target directory.");
-                    }
-
-                    entry.WriteToFile(destinationPath);
-                }
-            }
-
-            directExtractionSuccess = true;
-        }
-        catch (OperationCanceledException)
-        {
-            throw;
-        }
-        catch (Exception ex)
-        {
-            onLog($"Direct extraction failed ({ex.Message}). Attempting fallback with local copy...");
-        }
-
-        if (!directExtractionSuccess)
-        {
-            // Sanitize path for extraction
-            var sanitizedArchivePath = Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}.7z");
-            try
-            {
-                File.Copy(archivePath, sanitizedArchivePath, true);
-                using var stream = File.OpenRead(sanitizedArchivePath);
-                using var archive = SevenZipArchive.OpenArchive(stream);
-                foreach (var entry in archive.Entries.Where(static e => !e.IsDirectory))
-                {
-                    token.ThrowIfCancellationRequested();
-
-                    if (entry.Key != null)
-                    {
-                        var destinationPath = Path.Combine(outputDirectory, entry.Key);
-                        var directory = Path.GetDirectoryName(destinationPath);
-                        if (!string.IsNullOrEmpty(directory))
-                        {
-                            Directory.CreateDirectory(directory);
-                        }
-
-                        if (!Path.GetFullPath(destinationPath).StartsWith(fullOutputDirectory, StringComparison.OrdinalIgnoreCase))
-                        {
-                            throw new SecurityException("Attempted to extract file outside of the target directory.");
-                        }
-
-                        entry.WriteToFile(destinationPath);
-                    }
-                }
-            }
-            finally
-            {
-                try
-                {
-                    File.Delete(sanitizedArchivePath);
-                }
-                catch
-                {
-                    /* ignore */
-                }
-            }
-        }
+        ExtractArchiveWithFallback(
+            archivePath,
+            outputDirectory,
+            onLog,
+            FileExtensions.SevenZip,
+            static stream => SevenZipArchive.OpenArchive(stream),
+            token);
     }
 
     private static void ExtractRarArchive(string archivePath, string outputDirectory, Action<string> onLog, CancellationToken token)
     {
+        ExtractArchiveWithFallback(
+            archivePath,
+            outputDirectory,
+            onLog,
+            FileExtensions.Rar,
+            static stream => RarArchive.OpenArchive(stream),
+            token);
+    }
+
+    /// <summary>
+    /// Extracts an archive with fallback logic for handling extraction failures.
+    /// If direct extraction fails, copies the archive to a temp location and retries.
+    /// </summary>
+    private static void ExtractArchiveWithFallback<TArchive>(
+        string archivePath,
+        string outputDirectory,
+        Action<string> onLog,
+        string tempExtension,
+        Func<Stream, TArchive> openArchive,
+        CancellationToken token) where TArchive : IArchive, IDisposable
+    {
         var fullOutputDirectory = Path.GetFullPath(outputDirectory).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar) + Path.DirectorySeparatorChar;
         var directExtractionSuccess = false;
+
         try
         {
             using var stream = File.OpenRead(archivePath);
-            using var archive = RarArchive.OpenArchive(stream);
-            foreach (var entry in archive.Entries.Where(static e => !e.IsDirectory))
-            {
-                token.ThrowIfCancellationRequested();
-
-                if (entry.Key != null)
-                {
-                    var destinationPath = Path.Combine(outputDirectory, entry.Key);
-                    var directory = Path.GetDirectoryName(destinationPath);
-                    if (!string.IsNullOrEmpty(directory))
-                    {
-                        Directory.CreateDirectory(directory);
-                    }
-
-                    if (!Path.GetFullPath(destinationPath).StartsWith(fullOutputDirectory, StringComparison.OrdinalIgnoreCase))
-                    {
-                        throw new SecurityException("Attempted to extract file outside of the target directory.");
-                    }
-
-                    entry.WriteToFile(destinationPath);
-                }
-            }
-
+            using var archive = openArchive(stream);
+            ExtractArchiveEntries(archive, outputDirectory, fullOutputDirectory, token);
             directExtractionSuccess = true;
         }
         catch (OperationCanceledException)
@@ -309,51 +275,74 @@ public class ArchiveService : IDisposable
             onLog($"Direct extraction failed ({ex.Message}). Attempting fallback with local copy...");
         }
 
-        if (!directExtractionSuccess)
+        if (directExtractionSuccess)
         {
-            // Sanitize path for extraction
-            var sanitizedArchivePath = Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}.rar");
-            try
-            {
-                File.Copy(archivePath, sanitizedArchivePath, true);
-                using var stream = File.OpenRead(sanitizedArchivePath);
-                using var archive = RarArchive.OpenArchive(stream);
-                foreach (var entry in archive.Entries.Where(static e => !e.IsDirectory))
-                {
-                    token.ThrowIfCancellationRequested();
+            return;
+        }
 
-                    if (entry.Key != null)
-                    {
-                        var destinationPath = Path.Combine(outputDirectory, entry.Key);
-                        var directory = Path.GetDirectoryName(destinationPath);
-                        if (!string.IsNullOrEmpty(directory))
-                        {
-                            Directory.CreateDirectory(directory);
-                        }
-
-                        if (!Path.GetFullPath(destinationPath).StartsWith(fullOutputDirectory, StringComparison.OrdinalIgnoreCase))
-                        {
-                            throw new SecurityException("Attempted to extract file outside of the target directory.");
-                        }
-
-                        entry.WriteToFile(destinationPath);
-                    }
-                }
-            }
-            finally
-            {
-                try
-                {
-                    File.Delete(sanitizedArchivePath);
-                }
-                catch
-                {
-                    /* ignore */
-                }
-            }
+        // Fallback: Copy to temp location and extract from there
+        var sanitizedArchivePath = Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}{tempExtension}");
+        try
+        {
+            File.Copy(archivePath, sanitizedArchivePath, true);
+            using var stream = File.OpenRead(sanitizedArchivePath);
+            using var archive = openArchive(stream);
+            ExtractArchiveEntries(archive, outputDirectory, fullOutputDirectory, token);
+        }
+        finally
+        {
+            TryDeleteFile(sanitizedArchivePath);
         }
     }
 
+    /// <summary>
+    /// Extracts entries from an archive with security checks.
+    /// </summary>
+    private static void ExtractArchiveEntries(IArchive archive, string outputDirectory, string fullOutputDirectory, CancellationToken token)
+    {
+        foreach (var entry in archive.Entries.Where(static e => !e.IsDirectory))
+        {
+            token.ThrowIfCancellationRequested();
+
+            if (entry.Key == null)
+            {
+                continue;
+            }
+
+            var destinationPath = Path.Combine(outputDirectory, entry.Key);
+            var directory = Path.GetDirectoryName(destinationPath);
+            if (!string.IsNullOrEmpty(directory))
+            {
+                Directory.CreateDirectory(directory);
+            }
+
+            if (!Path.GetFullPath(destinationPath).StartsWith(fullOutputDirectory, StringComparison.OrdinalIgnoreCase))
+            {
+                throw new SecurityException("Attempted to extract file outside of the target directory.");
+            }
+
+            entry.WriteToFile(destinationPath);
+        }
+    }
+
+    /// <summary>
+    /// Attempts to delete a file, ignoring any errors.
+    /// </summary>
+    private static void TryDeleteFile(string filePath)
+    {
+        try
+        {
+            File.Delete(filePath);
+        }
+        catch
+        {
+            /* ignore */
+        }
+    }
+
+    /// <summary>
+    /// Releases all resources used by the <see cref="ArchiveService"/>.
+    /// </summary>
     public void Dispose()
     {
         // No unmanaged resources to dispose

@@ -101,7 +101,7 @@
                                     <StackPanel>
                                         <CheckBox x:Name="SearchSubfoldersConversionCheckBox" Content="Search subfolders (recursive search)" Margin="0,2" HorizontalAlignment="Left" ToolTip="Recursively search for files in all subfolders"
                                                   Checked="SearchSubfoldersCheckBox_Changed" Unchecked="SearchSubfoldersCheckBox_Changed" />
-                                        <CheckBox x:Name="DeleteOriginalsCheckBox" Content="Delete originals after a successfull conversion" Margin="0,2" HorizontalAlignment="Left" VerticalAlignment="Top" ToolTip="Automatically delete source files once they are successfully converted to CHD" />
+                                        <CheckBox x:Name="DeleteOriginalsCheckBox" Content="Delete originals after a successful conversion" Margin="0,2" HorizontalAlignment="Left" VerticalAlignment="Top" ToolTip="Automatically delete source files once they are successfully converted to CHD" />
                                         <CheckBox x:Name="ProcessSmallerFirstCheckBox" Content="Process smaller files first" Margin="0,2" HorizontalAlignment="Left" ToolTip="Sort files by size and process the smallest ones first" />
                                         <StackPanel Orientation="Horizontal" Margin="0,2">
                                             <CheckBox x:Name="ForceCreateCdCheckBox" Content="Force CD" Margin="0,0,10,0" Checked="ForceCreateCdCheckBox_Checked" ToolTip="Force CHDMAN to use the 'createcd' command" />
@@ -238,7 +238,7 @@
                                         <StackPanel>
                                             <CheckBox x:Name="SearchSubfoldersExtractionCheckBox" Content="Search subfolders (recursive search)" Margin="0,2" HorizontalAlignment="Left" ToolTip="Recursively search for files in all subfolders"
                                                       Checked="SearchSubfoldersCheckBox_Changed" Unchecked="SearchSubfoldersCheckBox_Changed" />
-                                            <CheckBox x:Name="DeleteOriginalChdCheckBox" Content="Delete original CHD after a successfull extraction" Margin="0,2" HorizontalAlignment="Left" VerticalAlignment="Top" ToolTip="Delete original CHD after a successfull extraction" />
+                                            <CheckBox x:Name="DeleteOriginalChdCheckBox" Content="Delete original CHD after a successful extraction" Margin="0,2" HorizontalAlignment="Left" VerticalAlignment="Top" ToolTip="Delete original CHD after a successfull extraction" />
                                         </StackPanel>
                                     </GroupBox>
                                 </Grid>
