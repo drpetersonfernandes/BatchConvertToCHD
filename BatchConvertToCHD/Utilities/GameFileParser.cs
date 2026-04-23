@@ -136,10 +136,10 @@ public static class GameFileParser
                     }
 
                     string fileName;
-                    if (parts.Length > 5)
+                    if (parts.Length > 6)
                     {
-                        // Filename contains spaces; reconstruct from parts[4..^3]
-                        var fileNameParts = parts[4..^3];
+                        // Filename contains spaces; reconstruct from parts[4..^1] (exclude trailing offset)
+                        var fileNameParts = parts[4..^1];
                         fileName = string.Join(' ', fileNameParts);
                     }
                     else

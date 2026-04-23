@@ -140,6 +140,12 @@ public class ArchiveService : IDisposable
         var extension = Path.GetExtension(originalArchivePath);
         var archiveFileName = Path.GetFileName(originalArchivePath);
 
+        if (!File.Exists(originalArchivePath))
+        {
+            onLog($"WARNING: File not found, skipping extraction: {originalArchivePath}");
+            return (false, new List<string>(), tempDirectoryRoot, $"File not found: {originalArchivePath}");
+        }
+
         try
         {
             token.ThrowIfCancellationRequested();
@@ -281,6 +287,11 @@ public class ArchiveService : IDisposable
         }
         catch (OperationCanceledException)
         {
+            throw;
+        }
+        catch (Exception ex) when (ex is FileNotFoundException or DirectoryNotFoundException)
+        {
+            onLog($"Direct extraction failed ({ex.Message}). Skipping fallback because source file is missing.");
             throw;
         }
         catch (Exception ex)

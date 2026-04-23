@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using System.Globalization;
 using System.Runtime.CompilerServices;
 
 namespace BatchConvertToCHD.Models;
@@ -126,6 +127,6 @@ public class FileItem : INotifyPropertyChanged
             dblSByte = bytes / 1024.0;
         }
 
-        return $"{dblSByte:0.##} {suffix[i]}";
+        return string.Create(CultureInfo.InvariantCulture, $"{dblSByte:0.##} {suffix[i]}");
     }
 }

@@ -1291,6 +1291,13 @@ public partial class MainWindow : IDisposable
     {
         var originalName = Path.GetFileName(inputFile);
         LogMessage($"Processing: {originalName}");
+
+        if (!File.Exists(inputFile))
+        {
+            LogMessage($"WARNING: File not found, skipping: {inputFile}");
+            return false;
+        }
+
         var ext = Path.GetExtension(inputFile);
         var tempDirs = new List<string>();
         var outputChd = string.Empty;
