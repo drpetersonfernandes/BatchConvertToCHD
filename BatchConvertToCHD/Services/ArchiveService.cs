@@ -192,6 +192,18 @@ public class ArchiveService : IDisposable
         {
             throw;
         }
+        catch (InvalidDataException ex)
+        {
+            return (false, new List<string>(), tempDirectoryRoot, $"Archive appears to be corrupt or incomplete: {ex.Message}");
+        }
+        catch (SharpCompress.Common.IncompleteArchiveException ex)
+        {
+            return (false, new List<string>(), tempDirectoryRoot, $"Archive appears to be incomplete: {ex.Message}");
+        }
+        catch (Exception ex) when (ex.GetType().FullName == "SharpCompress.Compressors.LZMA.DataErrorException")
+        {
+            return (false, new List<string>(), tempDirectoryRoot, $"Archive data is corrupt: {ex.Message}");
+        }
         catch (Exception ex)
         {
             // Report bug if service is available
@@ -297,17 +309,24 @@ public class ArchiveService : IDisposable
         catch (Exception ex)
         {
             onLog($"Direct extraction failed ({ex.Message}). Attempting fallback with local copy...");
-            // Report bug if service is available
-            try
+
+            // Only report unexpected errors; skip bug reports for known corrupt archive exceptions
+            if (ex is not InvalidDataException &&
+                ex is not SharpCompress.Common.IncompleteArchiveException &&
+                ex.GetType().FullName != "SharpCompress.Compressors.LZMA.DataErrorException")
             {
-                if (App.SharedBugReportService != null)
+                // Report bug if service is available
+                try
                 {
-                    _ = App.SharedBugReportService.SendBugReportAsync("Direct extraction failed", ex);
+                    if (App.SharedBugReportService != null)
+                    {
+                        _ = App.SharedBugReportService.SendBugReportAsync("Direct extraction failed", ex);
+                    }
                 }
-            }
-            catch
-            {
-                // Ignore errors in bug reporting to avoid infinite loops
+                catch
+                {
+                    // Ignore errors in bug reporting to avoid infinite loops
+                }
             }
         }
 

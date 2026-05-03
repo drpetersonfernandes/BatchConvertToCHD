@@ -1429,6 +1429,10 @@ public partial class MainWindow : IDisposable
             {
                 success = await ConvertToChdAsync(chdmanPath, fileToProcess, outputChd, cores, forceCd, forceDvd, token);
             }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
             catch (Exception ex)
             {
                 LogMessage($"Direct conversion attempt error for {originalName}: {ex.Message}");
@@ -1497,6 +1501,10 @@ public partial class MainWindow : IDisposable
 
                     fileToProcess = tempInputFile;
                     success = await ConvertToChdAsync(chdmanPath, fileToProcess, outputChd, cores, forceCd, forceDvd, token);
+                }
+                catch (OperationCanceledException)
+                {
+                    throw;
                 }
                 catch (Exception ex)
                 {
@@ -2031,6 +2039,12 @@ public partial class MainWindow : IDisposable
 
     private async Task<bool> ConvertToChdAsync(string chdmanPath, string inputFile, string outputFile, int cores, bool forceCd, bool forceDvd, CancellationToken token)
     {
+        if (!File.Exists(chdmanPath))
+        {
+            LogMessage($"ERROR: chdman.exe not found at '{chdmanPath}'. Please verify the path in settings.");
+            return false;
+        }
+
         using var process = new Process();
 
         var isImg = inputFile.EndsWith(FileExtensions.Img, StringComparison.OrdinalIgnoreCase);
