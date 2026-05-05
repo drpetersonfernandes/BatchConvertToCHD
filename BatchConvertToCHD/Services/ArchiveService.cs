@@ -204,6 +204,10 @@ public class ArchiveService : IDisposable
         {
             return (false, new List<string>(), tempDirectoryRoot, $"Archive data is corrupt: {ex.Message}");
         }
+        catch (SharpCompress.Common.CryptographicException ex)
+        {
+            return (false, new List<string>(), tempDirectoryRoot, $"Archive is encrypted/password-protected: {ex.Message}");
+        }
         catch (Exception ex)
         {
             // Report bug if service is available
@@ -310,9 +314,10 @@ public class ArchiveService : IDisposable
         {
             onLog($"Direct extraction failed ({ex.Message}). Attempting fallback with local copy...");
 
-            // Only report unexpected errors; skip bug reports for known corrupt archive exceptions
+            // Only report unexpected errors; skip bug reports for known corrupt or encrypted archive exceptions
             if (ex is not InvalidDataException &&
                 ex is not SharpCompress.Common.IncompleteArchiveException &&
+                ex is not SharpCompress.Common.CryptographicException &&
                 ex.GetType().FullName != "SharpCompress.Compressors.LZMA.DataErrorException")
             {
                 // Report bug if service is available
