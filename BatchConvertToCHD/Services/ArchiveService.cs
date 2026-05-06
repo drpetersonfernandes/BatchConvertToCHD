@@ -208,6 +208,10 @@ public class ArchiveService : IDisposable
         {
             return (false, new List<string>(), tempDirectoryRoot, $"Archive is encrypted/password-protected: {ex.Message}");
         }
+        catch (SharpCompress.Common.ArchiveOperationException ex)
+        {
+            return (false, [], tempDirectoryRoot, $"Archive appears to be corrupt or unsupported: {ex.Message}");
+        }
         catch (Exception ex)
         {
             // Report bug if service is available
@@ -318,6 +322,7 @@ public class ArchiveService : IDisposable
             if (ex is not InvalidDataException &&
                 ex is not SharpCompress.Common.IncompleteArchiveException &&
                 ex is not SharpCompress.Common.CryptographicException &&
+                ex is not SharpCompress.Common.ArchiveOperationException &&
                 ex.GetType().FullName != "SharpCompress.Compressors.LZMA.DataErrorException")
             {
                 // Report bug if service is available
