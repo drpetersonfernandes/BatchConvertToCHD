@@ -85,7 +85,7 @@ The application implements priority-based logic to ensure compatibility:
     *   `maxcso.exe` (CSO Decompression - x64 only)
     *   `psxpackager.exe` (PBP Extraction)
 *   **NuGet Dependencies**:
-* [SharpCompress](https://github.com/adamhathcock/sharpcompress) (v0.47.4) - Archive extraction support
+* [SharpCompress](https://github.com/adamhathcock/sharpcompress) (v0.48.0) - Archive extraction support
 
 ---
 
@@ -104,8 +104,9 @@ The application implements priority-based logic to ensure compatibility:
 1.  Navigate to the **Convert to CHD** tab.
 2.  Select your **Source Folder** (containing images or archives).
 3.  Select your **Output Folder**.
-4.  *(Optional)* Enable "Delete original files" to clean up source data after a successful conversion.
-5.  Click **Start Conversion**.
+4.  *(Optional)* Set a time limit per file to abort conversions that exceed the specified duration.
+5.  *(Optional)* Enable "Delete original files" to clean up source data after a successful conversion.
+6.  Click **Start Conversion**.
 
 ### Verification Workflow
 1.  Navigate to the **Verify CHD Files** tab.

@@ -120,7 +120,7 @@ public class FileItem : INotifyPropertyChanged
     private static string FormatSize(long bytes)
     {
         string[] suffix = ["B", "KB", "MB", "GB", "TB"];
-        int i = 0;
+        var i = 0;
         double size = bytes;
         while (size >= 1024 && i < suffix.Length - 1)
         {

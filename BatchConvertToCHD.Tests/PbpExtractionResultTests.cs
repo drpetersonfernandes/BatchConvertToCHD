@@ -44,7 +44,7 @@ public class PbpExtractionResultTests
         var result = new PbpExtractionResult
         {
             Success = true,
-            CueFilePaths = new List<string> { "game.cue" },
+            CueFilePaths = ["game.cue"],
             OutputFolder = @"C:\extracted"
         };
         Assert.True(result.Success);

@@ -5,6 +5,8 @@ namespace BatchConvertToCHD.Tests;
 
 public class GitHubReleaseTests
 {
+    private static readonly JsonSerializerOptions JsonOptions = new() { PropertyNameCaseInsensitive = true };
+
     [Fact]
     public void DefaultValuesAreEmpty()
     {
@@ -51,7 +53,7 @@ public class GitHubReleaseTests
         }
         """;
 
-        var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+        var options = JsonOptions;
         var release = JsonSerializer.Deserialize<GitHubRelease>(json, options);
 
         Assert.NotNull(release);
@@ -77,7 +79,7 @@ public class GitHubReleaseTests
         }
         """;
 
-        var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+        var options = JsonOptions;
         var release = JsonSerializer.Deserialize<GitHubRelease>(json, options);
 
         Assert.NotNull(release);
@@ -90,7 +92,7 @@ public class GitHubReleaseTests
     {
         const string json = "{}";
 
-        var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+        var options = JsonOptions;
         var release = JsonSerializer.Deserialize<GitHubRelease>(json, options);
 
         Assert.NotNull(release);

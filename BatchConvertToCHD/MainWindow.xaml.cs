@@ -20,7 +20,7 @@ namespace BatchConvertToCHD;
 public partial class MainWindow : IDisposable
 {
     private CancellationTokenSource _cts;
-    private readonly object _ctsLock = new object();
+    private readonly object _ctsLock = new();
     private readonly string _maxCsoPath;
     private readonly bool _isMaxCsoAvailable;
     private readonly bool _isChdmanAvailable;
@@ -499,7 +499,7 @@ public partial class MainWindow : IDisposable
 
     private void MainTabControl_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (e.Source is not TabControl)
+        if (e.Source is not TabControl control)
         {
             return;
         }
@@ -510,7 +510,7 @@ public partial class MainWindow : IDisposable
         }
 
         Application.Current.Dispatcher.InvokeAsync((Action)(() => LogViewer.Clear()));
-        if (((TabControl)e.Source).SelectedItem is TabItem selectedTab)
+        if (control.SelectedItem is TabItem selectedTab)
         {
             switch (selectedTab.Name)
             {
@@ -691,8 +691,14 @@ public partial class MainWindow : IDisposable
 
             try
             {
+                CancellationToken token;
+                lock (_ctsLock)
+                {
+                    token = _cts.Token;
+                }
+
                 await PerformBatchExtractionAsync(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, AppConfig.ChdmanExeName),
-                    inputFolder, outputFolder, deleteOriginal, selectedFiles, _cts.Token);
+                    inputFolder, outputFolder, deleteOriginal, selectedFiles, token);
             }
             catch (OperationCanceledException)
             {
@@ -1011,8 +1017,14 @@ public partial class MainWindow : IDisposable
 
             try
             {
+                CancellationToken token;
+                lock (_ctsLock)
+                {
+                    token = _cts.Token;
+                }
+
                 await PerformBatchConversionAsync(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, AppConfig.ChdmanExeName),
-                    inputFolder, outputFolder, deleteFiles, processSmallerFirst, forceCd, forceDvd, timeoutMinutes, selectedFiles, _cts.Token);
+                    inputFolder, outputFolder, deleteFiles, processSmallerFirst, forceCd, forceDvd, timeoutMinutes, selectedFiles, token);
             }
             catch (OperationCanceledException)
             {
@@ -1078,8 +1090,14 @@ public partial class MainWindow : IDisposable
 
             try
             {
+                CancellationToken token;
+                lock (_ctsLock)
+                {
+                    token = _cts.Token;
+                }
+
                 await PerformBatchVerificationAsync(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, AppConfig.ChdmanExeName),
-                    inputFolder, includeSubfolders, moveSuccess, successFolder, moveFailed, failedFolder, selectedFiles, _cts.Token);
+                    inputFolder, includeSubfolders, moveSuccess, successFolder, moveFailed, failedFolder, selectedFiles, token);
             }
             catch (OperationCanceledException)
             {
@@ -1130,6 +1148,7 @@ public partial class MainWindow : IDisposable
         {
             _cts.Cancel();
         }
+
         LogMessage("Cancellation requested...");
         UpdateStatusBarMessage("Cancelling...");
     }
@@ -1496,7 +1515,7 @@ public partial class MainWindow : IDisposable
                                 break;
                         }
 
-                        var missingFiles = filesToCopy.Distinct().Where(f => !File.Exists(f)).ToList();
+                        var missingFiles = filesToCopy.Distinct().Where(static f => !File.Exists(f)).ToList();
                         if (missingFiles.Count > 0)
                         {
                             var missingNames = string.Join(", ", missingFiles.Select(Path.GetFileName));
@@ -2715,6 +2734,7 @@ public partial class MainWindow : IDisposable
             _cts.Cancel();
             _cts.Dispose();
         }
+
         _writeBytesCounter?.Dispose();
         _readBytesCounter?.Dispose();
         _archiveService.Dispose();

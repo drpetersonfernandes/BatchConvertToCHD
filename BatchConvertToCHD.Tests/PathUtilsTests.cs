@@ -79,7 +79,7 @@ public class PathUtilsTests
     public void ValidateAndNormalizePathNullPathReturnsNull()
     {
         string? capturedError = null;
-        var result = PathUtils.ValidateAndNormalizePath(null!, "test folder", msg => { capturedError = msg; }, static _ => { });
+        var result = PathUtils.ValidateAndNormalizePath(null, "test folder", msg => { capturedError = msg; }, static _ => { });
         Assert.Null(result);
         Assert.NotNull(capturedError);
     }
@@ -148,7 +148,7 @@ public class PathUtilsTests
     [Fact]
     public void SanitizeFileNameAllInvalidCharsReplaced()
     {
-        var input = "a<b>c:d\"e/f\\g|h?i*j";
+        const string input = "a<b>c:d\"e/f\\g|h?i*j";
         var result = PathUtils.SanitizeFileName(input);
         Assert.DoesNotContain("<", result, StringComparison.Ordinal);
         Assert.DoesNotContain(">", result, StringComparison.Ordinal);

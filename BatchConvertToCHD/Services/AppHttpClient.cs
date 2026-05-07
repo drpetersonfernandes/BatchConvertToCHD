@@ -8,7 +8,7 @@ public static class AppHttpClient
 {
     private static SocketsHttpHandler? _handler;
     private static HttpClient? _client;
-    private static readonly object _lock = new();
+    private static readonly object Lock = new();
 
     public static HttpClient Client
     {
@@ -16,7 +16,7 @@ public static class AppHttpClient
         {
             if (_client == null)
             {
-                lock (_lock)
+                lock (Lock)
                 {
                     if (_client == null)
                     {
@@ -34,13 +34,16 @@ public static class AppHttpClient
                 }
             }
 
-            return _client;
+            lock (Lock)
+            {
+                return _client;
+            }
         }
     }
 
     public static void Dispose()
     {
-        lock (_lock)
+        lock (Lock)
         {
             _client?.Dispose();
             _client = null;

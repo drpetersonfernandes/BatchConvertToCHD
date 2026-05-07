@@ -24,8 +24,8 @@ public class FileExtensionsTests
     public void ConstantHasCorrectValue(string expected, string constantName)
     {
         var actual = typeof(FileExtensions)
-            .GetField(constantName)!
-            .GetValue(null) as string;
+            .GetField(constantName)
+            ?.GetValue(null) as string;
 
         Assert.Equal(expected, actual);
     }

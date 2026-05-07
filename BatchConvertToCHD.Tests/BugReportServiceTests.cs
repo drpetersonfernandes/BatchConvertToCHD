@@ -115,11 +115,11 @@ public class BugReportServiceTests
         var method = typeof(BugReportService).GetMethod("GetExceptionStackTrace", BindingFlags.NonPublic | BindingFlags.Static);
         Assert.NotNull(method);
 
-        var inner = new Exception("deepest");
+        var inner = new InvalidOperationException("deepest");
         var current = inner;
         for (var i = 0; i < 10; i++)
         {
-            current = new Exception($"level {i}", current);
+            current = new InvalidOperationException($"level {i}", current);
         }
 
         var result = method.Invoke(null, [current]) as string;
@@ -154,7 +154,7 @@ public class BugReportServiceTests
         Assert.NotNull(method);
 
         var sb = new StringBuilder();
-        var ex = new Exception("No stack") { };
+        var ex = new InvalidOperationException("No stack");
         var record = Record.Exception(() => method.Invoke(null, [sb, ex, 0]));
         Assert.Null(record);
         Assert.Contains("No stack", sb.ToString(), StringComparison.Ordinal);

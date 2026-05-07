@@ -89,13 +89,14 @@ public static class PathUtils
         {
             // If GetPathRoot or GetRelativePath itself throws for any reason
         }
+
         return ".";
     }
 
     /// <summary>
     /// Validates and normalizes a directory path. Returns null if invalid.
     /// </summary>
-    public static string? ValidateAndNormalizePath(string path, string pathName, Action<string> onError, Action<string> onLog)
+    public static string? ValidateAndNormalizePath(string? path, string pathName, Action<string> onError, Action<string> onLog)
     {
         try
         {

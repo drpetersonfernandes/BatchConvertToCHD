@@ -30,7 +30,7 @@ public class StatsServiceTests
     public async Task RecordUsageAsyncDoesNotThrowOnNetworkError()
     {
         var service = new StatsService("https://invalid.example.invalid/api", TestApiKey, TestAppId);
-        var exception = await Record.ExceptionAsync(async () => await service.RecordUsageAsync());
+        var exception = await Record.ExceptionAsync(service.RecordUsageAsync);
         Assert.Null(exception);
     }
 }

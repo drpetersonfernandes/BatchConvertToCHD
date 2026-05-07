@@ -1,5 +1,4 @@
 using System.IO;
-using System.Threading;
 using System.Windows;
 using System.Windows.Threading;
 using BatchConvertToCHD.Services;
@@ -43,7 +42,7 @@ public partial class App
 
     protected override void OnStartup(StartupEventArgs e)
     {
-        _singleInstanceMutex = new Mutex(true, $"Global\\{AppConfig.ApplicationName}_SingleInstance", out bool createdNew);
+        _singleInstanceMutex = new Mutex(true, $"Global\\{AppConfig.ApplicationName}_SingleInstance", out var createdNew);
         if (!createdNew)
         {
             _singleInstanceMutex.Dispose();
@@ -170,6 +169,4 @@ public partial class App
             // Silently ignore any errors in the reporting process
         }
     }
-
-
 }

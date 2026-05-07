@@ -53,7 +53,7 @@ public class UpdateServiceTests
         var method = typeof(UpdateService).GetMethod("ParseVersionFromTag", BindingFlags.NonPublic | BindingFlags.Static);
         Assert.NotNull(method);
 
-        var result = method.Invoke(null, [null!]) as string;
+        var result = method.Invoke(null, [null]) as string;
         Assert.Equal(string.Empty, result);
     }
 }
