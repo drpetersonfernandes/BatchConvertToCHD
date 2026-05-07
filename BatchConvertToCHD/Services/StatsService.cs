@@ -26,6 +26,12 @@ public class StatsService
     private readonly string _apiKey;
     private readonly string _applicationId;
 
+    public static void DisposeHttpClient()
+    {
+        HttpClient.Dispose();
+        SharedHandler.Dispose();
+    }
+
     /// <summary>
     /// Initializes a new instance of the <see cref="StatsService"/> class.
     /// </summary>

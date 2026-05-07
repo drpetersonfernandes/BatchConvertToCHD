@@ -5,7 +5,6 @@ using System.IO;
 using System.Text;
 using System.Windows;
 using System.Windows.Controls;
-using System.Windows.Media;
 using Microsoft.Win32;
 using System.Collections.ObjectModel;
 using BatchConvertToCHD.Models;
@@ -226,11 +225,17 @@ public partial class MainWindow : IDisposable
         Application.Current.Dispatcher.InvokeAsync(() =>
         {
             StatusBarChdman.Text = " CHDMAN ";
-            StatusBarChdman.Foreground = _isChdmanAvailable ? new SolidColorBrush(Colors.Green) : new SolidColorBrush(Colors.Red);
+            StatusBarChdman.Foreground = _isChdmanAvailable
+                ? (System.Windows.Media.Brush?)Application.Current.FindResource("SuccessTextBrush") ?? System.Windows.Media.Brushes.Gray
+                : (System.Windows.Media.Brush?)Application.Current.FindResource("FailedTextBrush") ?? System.Windows.Media.Brushes.Gray;
             StatusBarMaxcso.Text = " MAXCSO ";
-            StatusBarMaxcso.Foreground = _isMaxCsoAvailable ? new SolidColorBrush(Colors.Green) : new SolidColorBrush(Colors.Orange);
+            StatusBarMaxcso.Foreground = _isMaxCsoAvailable
+                ? (System.Windows.Media.Brush?)Application.Current.FindResource("SuccessTextBrush") ?? System.Windows.Media.Brushes.Gray
+                : (System.Windows.Media.Brush?)Application.Current.FindResource("SkippedTextBrush") ?? System.Windows.Media.Brushes.Gray;
             StatusBarPsxPackager.Text = " PSXPACKAGER ";
-            StatusBarPsxPackager.Foreground = _isPsxPackagerAvailable ? new SolidColorBrush(Colors.Green) : new SolidColorBrush(Colors.Orange);
+            StatusBarPsxPackager.Foreground = _isPsxPackagerAvailable
+                ? (System.Windows.Media.Brush?)Application.Current.FindResource("SuccessTextBrush") ?? System.Windows.Media.Brushes.Gray
+                : (System.Windows.Media.Brush?)Application.Current.FindResource("SkippedTextBrush") ?? System.Windows.Media.Brushes.Gray;
             StatusBarMessage.Text = "Ready";
             SpeedValue.Text = "0.0 MB/s";
         });
@@ -541,12 +546,11 @@ public partial class MainWindow : IDisposable
             // because background tasks might be stuck
         }
 
-        // Perform cleanup of resources
         Dispose();
 
-        // Ensure the application shuts down completely
-        // This is necessary because background tasks/threads might keep the app alive
         Application.Current.Shutdown();
+
+        Environment.Exit(0);
     }
 
     private void LogMessage(string message)
@@ -992,6 +996,11 @@ public partial class MainWindow : IDisposable
             var forceCd = ForceCreateCdCheckBox.IsChecked ?? false;
             var forceDvd = ForceCreateDvdCheckBox.IsChecked ?? false;
 
+            var timeoutEnabled = EnableConversionTimeoutCheckBox.IsChecked ?? false;
+            var timeoutMinutes = timeoutEnabled && int.TryParse(ConversionTimeoutTextBox.Text, out var mins) && mins > 0
+                ? (int?)mins
+                : null;
+
             var selectedFiles = _conversionFiles.Where(static f => f.IsSelected).Select(static f => f.FullPath).ToArray();
             if (selectedFiles.Length == 0)
             {
@@ -1004,7 +1013,7 @@ public partial class MainWindow : IDisposable
             try
             {
                 await PerformBatchConversionAsync(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, AppConfig.ChdmanExeName),
-                    inputFolder, outputFolder, deleteFiles, processSmallerFirst, forceCd, forceDvd, selectedFiles, _cts.Token);
+                    inputFolder, outputFolder, deleteFiles, processSmallerFirst, forceCd, forceDvd, timeoutMinutes, selectedFiles, _cts.Token);
             }
             catch (OperationCanceledException)
             {
@@ -1185,7 +1194,7 @@ public partial class MainWindow : IDisposable
         return dialog.ShowDialog() == true ? dialog.FolderName : null;
     }
 
-    private async Task PerformBatchConversionAsync(string chdmanPath, string inputFolder, string outputFolder, bool deleteFiles, bool processSmallerFirst, bool forceCd, bool forceDvd, string[] selectedFiles, CancellationToken token)
+    private async Task PerformBatchConversionAsync(string chdmanPath, string inputFolder, string outputFolder, bool deleteFiles, bool processSmallerFirst, bool forceCd, bool forceDvd, int? timeoutMinutes, string[] selectedFiles, CancellationToken token)
     {
         if (!await ValidateExecutableAccessAsync(chdmanPath, "chdman.exe")) return;
 
@@ -1228,7 +1237,7 @@ public partial class MainWindow : IDisposable
             // Update text to show we are starting this file, but bar stays at 'processedCount'
             UpdateProgressDisplay(processedCount, _totalFilesProcessed, Path.GetFileName(file), "Converting");
 
-            var success = await ProcessSingleFileForConversionAsync(chdmanPath, file, inputFolder, outputFolder, deleteFiles, cores, forceCd, forceDvd, token);
+            var success = await ProcessSingleFileForConversionAsync(chdmanPath, file, inputFolder, outputFolder, deleteFiles, cores, forceCd, forceDvd, timeoutMinutes, token);
             if (success)
             {
                 _processedOkCount++;
@@ -1287,7 +1296,7 @@ public partial class MainWindow : IDisposable
         }
     }
 
-    private async Task<bool> ProcessSingleFileForConversionAsync(string chdmanPath, string inputFile, string inputFolder, string outputFolder, bool deleteOriginal, int cores, bool forceCd, bool forceDvd, CancellationToken token)
+    private async Task<bool> ProcessSingleFileForConversionAsync(string chdmanPath, string inputFile, string inputFolder, string outputFolder, bool deleteOriginal, int cores, bool forceCd, bool forceDvd, int? timeoutMinutes, CancellationToken token)
     {
         inputFile = Path.GetFullPath(inputFile);
         var originalName = Path.GetFileName(inputFile);
@@ -1350,7 +1359,7 @@ public partial class MainWindow : IDisposable
                     if (!Directory.Exists(extractedOutputDir)) Directory.CreateDirectory(extractedOutputDir);
 
                     LogMessage($"Converting extracted file: {Path.GetFileName(extractedFile)}");
-                    var converted = await ConvertToChdAsync(chdmanPath, extractedFile, extractedFileOutputChd, cores, forceCd, forceDvd, token);
+                    var converted = await ConvertToChdAsync(chdmanPath, extractedFile, extractedFileOutputChd, cores, forceCd, forceDvd, timeoutMinutes, token);
                     if (!converted)
                     {
                         LogMessage($"Failed to convert: {Path.GetFileName(extractedFile)}");
@@ -1399,7 +1408,7 @@ public partial class MainWindow : IDisposable
                         LogMessage($"Converting disc: {Path.GetFileName(cueFile)}");
                     }
 
-                    var converted = await ConvertToChdAsync(chdmanPath, cueFile, cueFileOutputChd, cores, forceCd, forceDvd, token);
+                    var converted = await ConvertToChdAsync(chdmanPath, cueFile, cueFileOutputChd, cores, forceCd, forceDvd, timeoutMinutes, token);
                     if (!converted)
                     {
                         LogMessage($"Failed to convert: {Path.GetFileName(cueFile)}");
@@ -1428,7 +1437,7 @@ public partial class MainWindow : IDisposable
             var success = false;
             try
             {
-                success = await ConvertToChdAsync(chdmanPath, fileToProcess, outputChd, cores, forceCd, forceDvd, token);
+                success = await ConvertToChdAsync(chdmanPath, fileToProcess, outputChd, cores, forceCd, forceDvd, timeoutMinutes, token);
             }
             catch (OperationCanceledException)
             {
@@ -1501,7 +1510,7 @@ public partial class MainWindow : IDisposable
                     }
 
                     fileToProcess = tempInputFile;
-                    success = await ConvertToChdAsync(chdmanPath, fileToProcess, outputChd, cores, forceCd, forceDvd, token);
+                    success = await ConvertToChdAsync(chdmanPath, fileToProcess, outputChd, cores, forceCd, forceDvd, timeoutMinutes, token);
                 }
                 catch (OperationCanceledException)
                 {
@@ -2038,7 +2047,7 @@ public partial class MainWindow : IDisposable
         }
     }
 
-    private async Task<bool> ConvertToChdAsync(string chdmanPath, string inputFile, string outputFile, int cores, bool forceCd, bool forceDvd, CancellationToken token)
+    private async Task<bool> ConvertToChdAsync(string chdmanPath, string inputFile, string outputFile, int cores, bool forceCd, bool forceDvd, int? timeoutMinutes, CancellationToken token)
     {
         if (!File.Exists(chdmanPath))
         {
@@ -2078,12 +2087,10 @@ public partial class MainWindow : IDisposable
         {
             if (string.IsNullOrEmpty(a.Data)) return;
 
-            // Check for completion messages (these are good news!)
             if (a.Data.Contains("Compression complete") || a.Data.Contains("final ratio"))
             {
                 LogMessage($"[CHDMAN ✓] {a.Data}");
             }
-            // Filter out progress updates but keep actual errors
             else if (!a.Data.Contains("% complete") &&
                      !a.Data.Contains("Compressing") &&
                      !a.Data.Contains("Output bytes") &&
@@ -2097,12 +2104,10 @@ public partial class MainWindow : IDisposable
         {
             if (string.IsNullOrEmpty(a.Data)) return;
 
-            // Check for completion messages (these are good news!)
             if (a.Data.Contains("Compression complete") || a.Data.Contains("final ratio"))
             {
                 LogMessage($"[CHDMAN ✓] {a.Data}");
             }
-            // Filter out progress updates but keep actual errors
             else if (!a.Data.Contains("% complete") &&
                      !a.Data.Contains("Compressing") &&
                      !a.Data.Contains("Output bytes") &&
@@ -2113,8 +2118,6 @@ public partial class MainWindow : IDisposable
         };
 
         using var ctsSpeed = CancellationTokenSource.CreateLinkedTokenSource(token);
-        using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(token);
-        timeoutCts.CancelAfter(TimeSpan.FromHours(AppConfig.MaxConversionTimeoutHours));
 
         process.Start();
         process.BeginOutputReadLine();
@@ -2134,13 +2137,24 @@ public partial class MainWindow : IDisposable
             }
             catch (OperationCanceledException)
             {
-                // Task was cancelled, exit gracefully
             }
         }, speedToken);
 
         try
         {
-            await process.WaitForExitAsync(timeoutCts.Token);
+            if (timeoutMinutes is > 0)
+            {
+                using var timeoutCts = new CancellationTokenSource();
+                timeoutCts.CancelAfter(TimeSpan.FromMinutes(timeoutMinutes.Value));
+                using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(token, timeoutCts.Token);
+
+                await process.WaitForExitAsync(linkedCts.Token);
+            }
+            else
+            {
+                await process.WaitForExitAsync(token);
+            }
+
             if (token.IsCancellationRequested && !process.HasExited)
             {
                 process.Kill(true);
@@ -2152,14 +2166,17 @@ public partial class MainWindow : IDisposable
             if (!process.HasExited)
             {
                 process.Kill(true);
+                await Task.Run(() => process.WaitForExit(5000), CancellationToken.None);
             }
 
-            await Task.Run(() => process.WaitForExit(5000), CancellationToken.None);
-            throw;
+            if (token.IsCancellationRequested)
+                throw;
+
+            if (timeoutMinutes != null) LogMessage($"TIMEOUT: Conversion of '{Path.GetFileName(inputFile)}' exceeded {timeoutMinutes.Value} minute(s). Marking as failed.");
+            return false;
         }
         catch (Exception)
         {
-            // Ensure process is terminated on any other exception
             if (!process.HasExited)
             {
                 process.Kill(true);
@@ -2172,7 +2189,6 @@ public partial class MainWindow : IDisposable
         {
             ctsSpeed.Cancel();
             await Task.WhenAny(speedMonitoringTask, Task.Delay(500, CancellationToken.None));
-            // Ensure output streams are properly drained before disposal
             process.CancelOutputRead();
             process.CancelErrorRead();
         }
@@ -2530,7 +2546,7 @@ public partial class MainWindow : IDisposable
         }
     }
 
-    private async Task CopyFileWithRetryAsync(string source, string dest, CancellationToken token)
+    private static async Task CopyFileWithRetryAsync(string source, string dest, CancellationToken token)
     {
         const int maxRetries = 3;
         const int baseDelayMs = 500;
@@ -2690,6 +2706,50 @@ public partial class MainWindow : IDisposable
         _readBytesCounter?.Dispose();
         _archiveService.Dispose();
         _operationTimer.Stop();
+
+        KillOrphanedProcesses();
+
         GC.SuppressFinalize(this);
+    }
+
+    private static void KillOrphanedProcesses()
+    {
+        try
+        {
+            var currentProcessId = Environment.ProcessId;
+            var toolNames = new[] { "chdman", "maxcso", AppConfig.PsxPackagerExeName };
+
+            foreach (var toolName in toolNames)
+            {
+                try
+                {
+                    var processes = Process.GetProcessesByName(
+                        Path.GetFileNameWithoutExtension(toolName));
+                    foreach (var process in processes)
+                    {
+                        try
+                        {
+                            if (process.Id != currentProcessId)
+                            {
+                                process.Kill(true);
+                                process.WaitForExit(3000);
+                            }
+                        }
+                        catch
+                        {
+                            // Process already exited or access denied
+                        }
+                    }
+                }
+                catch
+                {
+                    // Process name not found or access denied
+                }
+            }
+        }
+        catch
+        {
+            // Best-effort cleanup
+        }
     }
 }

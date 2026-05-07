@@ -36,6 +36,12 @@ public class BugReportService
         HttpClient.DefaultRequestHeaders.Add("Accept", "application/json");
     }
 
+    public static void DisposeHttpClient()
+    {
+        HttpClient.Dispose();
+        SharedHandler.Dispose();
+    }
+
     /// <summary>
     /// Initializes a new instance of the <see cref="BugReportService"/> class.
     /// </summary>

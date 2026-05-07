@@ -22,7 +22,7 @@
                     <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
                 <StackPanel Grid.Column="0" Orientation="Horizontal">
-                    <TextBlock Text="Batch Convert to CHD" FontSize="20" FontWeight="Bold" Foreground="{StaticResource HeaderTextBrush}" VerticalAlignment="Center" Margin="0,0,30,0" />
+                    <TextBlock Text="Batch Convert to CHD" Style="{StaticResource HeaderTitleStyle}" Margin="0,0,30,0" ToolTip="Batch process disc image files to CHD format" />
                 </StackPanel>
 
                 <StackPanel Grid.Column="2" Orientation="Horizontal">
@@ -30,7 +30,7 @@
                         <Button.Content>
                             <StackPanel Orientation="Horizontal">
                                 <Image Source="pack://application:,,,/images/about.png" Width="16" Height="16" Margin="0,0,5,0" />
-                                <TextBlock Text="About" Foreground="{StaticResource ButtonTextDarkBrush}" VerticalAlignment="Center" />
+                                <TextBlock Text="About" Style="{StaticResource ButtonContentTextStyle}" />
                             </StackPanel>
                         </Button.Content>
                     </Button>
@@ -38,7 +38,7 @@
                         <Button.Content>
                             <StackPanel Orientation="Horizontal">
                                 <Image Source="pack://application:,,,/images/exit.png" Width="16" Height="16" Margin="0,0,5,0" />
-                                <TextBlock Text="Exit" Foreground="{StaticResource ButtonTextDarkBrush}" VerticalAlignment="Center" />
+                                <TextBlock Text="Exit" Style="{StaticResource ButtonContentTextStyle}" />
                             </StackPanel>
                         </Button.Content>
                     </Button>
@@ -97,12 +97,18 @@
                                     <Button x:Name="BrowseConversionOutputButton" Grid.Column="2" Content="Browse" Click="BrowseConversionOutputButton_Click" Style="{StaticResource ActionButtonStyle}" ToolTip="Browse" />
                                 </Grid>
 
-                                <GroupBox Grid.Row="2" Header="Options" Margin="0,5,0,10" Padding="10">
+                                <GroupBox Grid.Row="2" Header="Options" Margin="0,5,0,10" Padding="10" ToolTip="Configure conversion settings">
                                     <StackPanel>
                                         <CheckBox x:Name="SearchSubfoldersConversionCheckBox" Content="Search subfolders (recursive search)" Margin="0,2" HorizontalAlignment="Left" ToolTip="Recursively search for files in all subfolders"
                                                   Checked="SearchSubfoldersCheckBox_Changed" Unchecked="SearchSubfoldersCheckBox_Changed" />
-                                        <CheckBox x:Name="DeleteOriginalsCheckBox" Content="Delete originals after a successful conversion" Margin="0,2" HorizontalAlignment="Left" VerticalAlignment="Top" ToolTip="Automatically delete source files once they are successfully converted to CHD" />
+                                        <CheckBox x:Name="DeleteOriginalsCheckBox" Content="Delete originals after a successful conversion" Margin="0,2" HorizontalAlignment="Left" VerticalAlignment="Top"
+                                                  ToolTip="Automatically delete source files once they are successfully converted to CHD" />
                                         <CheckBox x:Name="ProcessSmallerFirstCheckBox" Content="Process smaller files first" Margin="0,2" HorizontalAlignment="Left" ToolTip="Sort files by size and process the smallest ones first" />
+                                        <StackPanel Orientation="Horizontal" Margin="0,2">
+                                            <CheckBox x:Name="EnableConversionTimeoutCheckBox" Content="Time limit per file:" ToolTip="Abort conversion of a file if it exceeds the specified time limit" VerticalAlignment="Center" VerticalContentAlignment="Center"/>
+                                            <TextBox x:Name="ConversionTimeoutTextBox" Width="60" Text="15" Margin="5,0,0,0" ToolTip="Timeout in minutes per file (default: 15)" VerticalAlignment="Center" VerticalContentAlignment="Center"/>
+                                            <TextBlock Text="minutes" Margin="5,0,0,0" Foreground="{StaticResource TextPrimaryBrush}" VerticalAlignment="Center" ToolTip="Time limit unit in minutes"/>
+                                        </StackPanel>
                                         <StackPanel Orientation="Horizontal" Margin="0,2">
                                             <CheckBox x:Name="ForceCreateCdCheckBox" Content="Force CD" Margin="0,0,10,0" Checked="ForceCreateCdCheckBox_Checked" ToolTip="Force CHDMAN to use the 'createcd' command" />
                                             <CheckBox x:Name="ForceCreateDvdCheckBox" Content="Force DVD" Checked="ForceCreateDvdCheckBox_Checked" ToolTip="Force CHDMAN to use the 'createdvd' command" />
@@ -110,17 +116,35 @@
                                     </StackPanel>
                                 </GroupBox>
 
-                                <Label Grid.Row="3" Content="Select Files to Convert:" Margin="0,5,0,0" FontWeight="Bold" />
+                                <Label Grid.Row="3" Content="Select Files to Convert:" Margin="0,5,0,0" Style="{StaticResource SectionLabelStyle}" ToolTip="Mark or unmark files to include in the batch conversion" />
                                 <DataGrid Grid.Row="4" x:Name="ConversionFilesDataGrid" Margin="0,5" AutoGenerateColumns="False">
                                     <DataGrid.Columns>
-                                        <DataGridCheckBoxColumn Header="Select" Binding="{Binding IsSelected, UpdateSourceTrigger=PropertyChanged}" Width="80" />
-                                        <DataGridTextColumn Header="File Name" Binding="{Binding FileName}" Width="*" IsReadOnly="True" />
-                                        <DataGridTextColumn Header="Size" Binding="{Binding DisplaySize}" Width="130" IsReadOnly="True" />
+                                        <DataGridCheckBoxColumn Header="Select" Binding="{Binding IsSelected, UpdateSourceTrigger=PropertyChanged}" Width="80">
+                                            <DataGridCheckBoxColumn.HeaderStyle>
+                                                <Style TargetType="DataGridColumnHeader">
+                                                    <Setter Property="ToolTip" Value="Check or uncheck to select files for processing" />
+                                                </Style>
+                                            </DataGridCheckBoxColumn.HeaderStyle>
+                                        </DataGridCheckBoxColumn>
+                                        <DataGridTextColumn Header="File Name" Binding="{Binding FileName}" Width="*" IsReadOnly="True">
+                                            <DataGridTextColumn.HeaderStyle>
+                                                <Style TargetType="DataGridColumnHeader">
+                                                    <Setter Property="ToolTip" Value="Name of the file" />
+                                                </Style>
+                                            </DataGridTextColumn.HeaderStyle>
+                                        </DataGridTextColumn>
+                                        <DataGridTextColumn Header="Size" Binding="{Binding DisplaySize}" Width="130" IsReadOnly="True">
+                                            <DataGridTextColumn.HeaderStyle>
+                                                <Style TargetType="DataGridColumnHeader">
+                                                    <Setter Property="ToolTip" Value="File size" />
+                                                </Style>
+                                            </DataGridTextColumn.HeaderStyle>
+                                        </DataGridTextColumn>
                                     </DataGrid.Columns>
                                 </DataGrid>
                                 <StackPanel Grid.Row="5" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,0,0,10">
-                                    <Button Content="Select All" Click="SelectAllConversion_Click" Style="{StaticResource ActionButtonStyle}" Margin="5,0" />
-                                    <Button Content="Deselect All" Click="DeselectAllConversion_Click" Style="{StaticResource ActionButtonStyle}" Margin="5,0" />
+                                    <Button Content="Select All" Click="SelectAllConversion_Click" Style="{StaticResource ActionButtonStyle}" Margin="5,0" ToolTip="Select all files in the list" />
+                                    <Button Content="Deselect All" Click="DeselectAllConversion_Click" Style="{StaticResource ActionButtonStyle}" Margin="5,0" ToolTip="Deselect all files in the list" />
                                 </StackPanel>
 
                                 <Button Grid.Row="6" x:Name="StartConversionButton" Content="Start Conversion" Click="StartConversionButton_ClickAsync" Style="{StaticResource StartButtonStyle}" HorizontalAlignment="Stretch" ToolTip="Begin the batch conversion process" />
@@ -151,7 +175,7 @@
                                     <Button x:Name="BrowseVerificationInputButton" Grid.Column="2" Content="Browse" Click="BrowseVerificationInputButton_Click" Style="{StaticResource ActionButtonStyle}" ToolTip="Browse" />
                                 </Grid>
 
-                                <GroupBox Grid.Row="1" Header="Options" Margin="0,5,0,10" Padding="10">
+                                <GroupBox Grid.Row="1" Header="Options" Margin="0,5,0,10" Padding="10" ToolTip="Configure verification settings">
                                     <StackPanel>
                                         <CheckBox x:Name="SearchSubfoldersVerificationCheckBox" Content="Search subfolders (recursive search)" Margin="0,2" HorizontalAlignment="Left" ToolTip="Recursively search for files in all subfolders"
                                                   Checked="SearchSubfoldersCheckBox_Changed" Unchecked="SearchSubfoldersCheckBox_Changed" />
@@ -160,17 +184,35 @@
                                     </StackPanel>
                                 </GroupBox>
 
-                                <Label Grid.Row="2" Content="Select Files to Verify:" Margin="0,5,0,0" FontWeight="Bold" />
+                                <Label Grid.Row="2" Content="Select Files to Verify:" Margin="0,5,0,0" Style="{StaticResource SectionLabelStyle}" ToolTip="Mark or unmark files to include in the batch verification" />
                                 <DataGrid Grid.Row="3" x:Name="VerificationFilesDataGrid" Margin="0,5" AutoGenerateColumns="False">
                                     <DataGrid.Columns>
-                                        <DataGridCheckBoxColumn Header="Select" Binding="{Binding IsSelected, UpdateSourceTrigger=PropertyChanged}" Width="80" />
-                                        <DataGridTextColumn Header="File Name" Binding="{Binding FileName}" Width="*" IsReadOnly="True" />
-                                        <DataGridTextColumn Header="Size" Binding="{Binding DisplaySize}" Width="130" IsReadOnly="True" />
+                                        <DataGridCheckBoxColumn Header="Select" Binding="{Binding IsSelected, UpdateSourceTrigger=PropertyChanged}" Width="80">
+                                            <DataGridCheckBoxColumn.HeaderStyle>
+                                                <Style TargetType="DataGridColumnHeader">
+                                                    <Setter Property="ToolTip" Value="Check or uncheck to select files for processing" />
+                                                </Style>
+                                            </DataGridCheckBoxColumn.HeaderStyle>
+                                        </DataGridCheckBoxColumn>
+                                        <DataGridTextColumn Header="File Name" Binding="{Binding FileName}" Width="*" IsReadOnly="True">
+                                            <DataGridTextColumn.HeaderStyle>
+                                                <Style TargetType="DataGridColumnHeader">
+                                                    <Setter Property="ToolTip" Value="Name of the file" />
+                                                </Style>
+                                            </DataGridTextColumn.HeaderStyle>
+                                        </DataGridTextColumn>
+                                        <DataGridTextColumn Header="Size" Binding="{Binding DisplaySize}" Width="130" IsReadOnly="True">
+                                            <DataGridTextColumn.HeaderStyle>
+                                                <Style TargetType="DataGridColumnHeader">
+                                                    <Setter Property="ToolTip" Value="File size" />
+                                                </Style>
+                                            </DataGridTextColumn.HeaderStyle>
+                                        </DataGridTextColumn>
                                     </DataGrid.Columns>
                                 </DataGrid>
                                 <StackPanel Grid.Row="4" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,0,0,10">
-                                    <Button Content="Select All" Click="SelectAllVerification_Click" Style="{StaticResource ActionButtonStyle}" Margin="5,0" />
-                                    <Button Content="Deselect All" Click="DeselectAllVerification_Click" Style="{StaticResource ActionButtonStyle}" Margin="5,0" />
+                                    <Button Content="Select All" Click="SelectAllVerification_Click" Style="{StaticResource ActionButtonStyle}" Margin="5,0" ToolTip="Select all files in the list" />
+                                    <Button Content="Deselect All" Click="DeselectAllVerification_Click" Style="{StaticResource ActionButtonStyle}" Margin="5,0" ToolTip="Deselect all files in the list" />
                                 </StackPanel>
 
                                 <Button Grid.Row="5" x:Name="StartVerificationButton" Content="Start Verification" Click="StartVerificationButton_ClickAsync" Style="{StaticResource StartButtonStyle}" HorizontalAlignment="Stretch" ToolTip="Begin the batch verification process" />
@@ -223,7 +265,7 @@
                                         <ColumnDefinition Width="*" />
                                         <ColumnDefinition Width="*" />
                                     </Grid.ColumnDefinitions>
-                                    <GroupBox Grid.Row="0" Grid.Column="0" Header="Format" Margin="0,5,5,10" Padding="10">
+                                    <GroupBox Grid.Row="0" Grid.Column="0" Header="Format" Margin="0,5,5,10" Padding="10" ToolTip="Select the output format for extracted files">
                                         <StackPanel Orientation="Vertical">
                                             <RadioButton x:Name="ExtractAutoRadioButton" Content="Auto" IsChecked="True" Margin="0,1" ToolTip="Detect automatically" GroupName="ExtractFormat" />
                                             <RadioButton x:Name="ExtractCdRadioButton" Content="CD (.cue)" Margin="0,1" ToolTip="Force CD image extraction" GroupName="ExtractFormat" />
@@ -234,7 +276,7 @@
                                     </GroupBox>
 
 
-                                    <GroupBox Grid.Row="0" Grid.Column="1" Header="Options" Margin="5,5,0,10" Padding="10">
+                                    <GroupBox Grid.Row="0" Grid.Column="1" Header="Options" Margin="5,5,0,10" Padding="10" ToolTip="Configure extraction settings">
                                         <StackPanel>
                                             <CheckBox x:Name="SearchSubfoldersExtractionCheckBox" Content="Search subfolders (recursive search)" Margin="0,2" HorizontalAlignment="Left" ToolTip="Recursively search for files in all subfolders"
                                                       Checked="SearchSubfoldersCheckBox_Changed" Unchecked="SearchSubfoldersCheckBox_Changed" />
@@ -243,17 +285,35 @@
                                     </GroupBox>
                                 </Grid>
 
-                                <Label Grid.Row="3" Content="Select Files to Extract:" Margin="0,5,0,0" FontWeight="Bold" />
+                                <Label Grid.Row="3" Content="Select Files to Extract:" Margin="0,5,0,0" Style="{StaticResource SectionLabelStyle}" ToolTip="Mark or unmark files to include in the batch extraction" />
                                 <DataGrid Grid.Row="4" x:Name="ExtractionFilesDataGrid" Margin="0,5" AutoGenerateColumns="False">
                                     <DataGrid.Columns>
-                                        <DataGridCheckBoxColumn Header="Select" Binding="{Binding IsSelected, UpdateSourceTrigger=PropertyChanged}" Width="80" />
-                                        <DataGridTextColumn Header="File Name" Binding="{Binding FileName}" Width="*" IsReadOnly="True" />
-                                        <DataGridTextColumn Header="Size" Binding="{Binding DisplaySize}" Width="130" IsReadOnly="True" />
+                                        <DataGridCheckBoxColumn Header="Select" Binding="{Binding IsSelected, UpdateSourceTrigger=PropertyChanged}" Width="80">
+                                            <DataGridCheckBoxColumn.HeaderStyle>
+                                                <Style TargetType="DataGridColumnHeader">
+                                                    <Setter Property="ToolTip" Value="Check or uncheck to select files for processing" />
+                                                </Style>
+                                            </DataGridCheckBoxColumn.HeaderStyle>
+                                        </DataGridCheckBoxColumn>
+                                        <DataGridTextColumn Header="File Name" Binding="{Binding FileName}" Width="*" IsReadOnly="True">
+                                            <DataGridTextColumn.HeaderStyle>
+                                                <Style TargetType="DataGridColumnHeader">
+                                                    <Setter Property="ToolTip" Value="Name of the file" />
+                                                </Style>
+                                            </DataGridTextColumn.HeaderStyle>
+                                        </DataGridTextColumn>
+                                        <DataGridTextColumn Header="Size" Binding="{Binding DisplaySize}" Width="130" IsReadOnly="True">
+                                            <DataGridTextColumn.HeaderStyle>
+                                                <Style TargetType="DataGridColumnHeader">
+                                                    <Setter Property="ToolTip" Value="File size" />
+                                                </Style>
+                                            </DataGridTextColumn.HeaderStyle>
+                                        </DataGridTextColumn>
                                     </DataGrid.Columns>
                                 </DataGrid>
                                 <StackPanel Grid.Row="5" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,0,0,10">
-                                    <Button Content="Select All" Click="SelectAllExtraction_Click" Style="{StaticResource ActionButtonStyle}" Margin="5,0" />
-                                    <Button Content="Deselect All" Click="DeselectAllExtraction_Click" Style="{StaticResource ActionButtonStyle}" Margin="5,0" />
+                                    <Button Content="Select All" Click="SelectAllExtraction_Click" Style="{StaticResource ActionButtonStyle}" Margin="5,0" ToolTip="Select all files in the list" />
+                                    <Button Content="Deselect All" Click="DeselectAllExtraction_Click" Style="{StaticResource ActionButtonStyle}" Margin="5,0" ToolTip="Deselect all files in the list" />
                                 </StackPanel>
 
                                 <Button Grid.Row="6" x:Name="StartExtractionButton" Content="Start Extraction" Click="StartExtractionButton_ClickAsync" Style="{StaticResource StartButtonStyle}" HorizontalAlignment="Stretch" ToolTip="Begin the batch extraction process" />
@@ -262,7 +322,7 @@
                     </TabItem>
                 </TabControl>
 
-                <GridSplitter Grid.Column="1" Width="10" HorizontalAlignment="Stretch" />
+                <GridSplitter Grid.Column="1" Width="10" HorizontalAlignment="Stretch" ToolTip="Drag to resize the log panel" />
 
                 <Border Grid.Column="2" BorderBrush="{StaticResource TerminalBorderBrush}" BorderThickness="2" CornerRadius="4" Background="{StaticResource TerminalBackgroundBrush}">
                     <TextBox x:Name="LogViewer"
@@ -280,38 +340,38 @@
                     <ColumnDefinition Width="*" />
                 </Grid.ColumnDefinitions>
 
-                <Border Grid.Column="0" Style="{StaticResource StatCard}">
+                <Border Grid.Column="0" Style="{StaticResource StatCard}" ToolTip="Total number of files to process">
                     <StackPanel Orientation="Vertical" HorizontalAlignment="Center">
-                        <TextBlock Text="TOTAL FILES" FontSize="10" Foreground="{StaticResource TextSecondaryBrush}" FontWeight="Bold" HorizontalAlignment="Center" />
-                        <TextBlock x:Name="TotalFilesValue" Text="0" FontSize="18" FontWeight="Bold" HorizontalAlignment="Center" Foreground="{StaticResource TextPrimaryBrush}" />
+                        <TextBlock Text="TOTAL FILES" Style="{StaticResource StatLabelStyle}" Foreground="{StaticResource TextSecondaryBrush}" />
+                        <TextBlock x:Name="TotalFilesValue" Text="0" Style="{StaticResource StatValueStyle}" Foreground="{StaticResource TextPrimaryBrush}" />
                     </StackPanel>
                 </Border>
 
-                <Border Grid.Column="1" Style="{StaticResource StatCard}">
+                <Border Grid.Column="1" Style="{StaticResource StatCard}" ToolTip="Number of successfully processed files">
                     <StackPanel Orientation="Vertical" HorizontalAlignment="Center">
-                        <TextBlock Text="SUCCESS" FontSize="10" Foreground="{StaticResource SuccessTextBrush}" FontWeight="Bold" HorizontalAlignment="Center" />
-                        <TextBlock x:Name="SuccessValue" Text="0" FontSize="18" FontWeight="Bold" Foreground="{StaticResource SuccessTextBrush}" HorizontalAlignment="Center" />
+                        <TextBlock Text="SUCCESS" Style="{StaticResource StatLabelSuccessStyle}" />
+                        <TextBlock x:Name="SuccessValue" Text="0" Style="{StaticResource StatValueSuccessStyle}" />
                     </StackPanel>
                 </Border>
 
-                <Border Grid.Column="2" Style="{StaticResource StatCard}">
+                <Border Grid.Column="2" Style="{StaticResource StatCard}" ToolTip="Number of files that failed processing">
                     <StackPanel Orientation="Vertical" HorizontalAlignment="Center">
-                        <TextBlock Text="FAILED" FontSize="10" Foreground="{StaticResource FailedTextBrush}" FontWeight="Bold" HorizontalAlignment="Center" />
-                        <TextBlock x:Name="FailedValue" Text="0" FontSize="18" FontWeight="Bold" Foreground="{StaticResource FailedTextBrush}" HorizontalAlignment="Center" />
+                        <TextBlock Text="FAILED" Style="{StaticResource StatLabelFailedStyle}" />
+                        <TextBlock x:Name="FailedValue" Text="0" Style="{StaticResource StatValueFailedStyle}" />
                     </StackPanel>
                 </Border>
 
-                <Border Grid.Column="3" Style="{StaticResource StatCard}">
+                <Border Grid.Column="3" Style="{StaticResource StatCard}" ToolTip="Total processing time">
                     <StackPanel Orientation="Vertical" HorizontalAlignment="Center">
-                        <TextBlock Text="ELAPSED" FontSize="10" Foreground="{StaticResource TextSecondaryBrush}" FontWeight="Bold" HorizontalAlignment="Center" />
-                        <TextBlock x:Name="ProcessingTimeValue" Text="00:00:00" FontSize="18" FontWeight="Bold" HorizontalAlignment="Center" Foreground="{StaticResource TextPrimaryBrush}" />
+                        <TextBlock Text="ELAPSED" Style="{StaticResource StatLabelStyle}" Foreground="{StaticResource TextSecondaryBrush}" />
+                        <TextBlock x:Name="ProcessingTimeValue" Text="00:00:00" Style="{StaticResource StatValueStyle}" Foreground="{StaticResource TextPrimaryBrush}" />
                     </StackPanel>
                 </Border>
 
-                <Border x:Name="SpeedStatCard" Grid.Column="4" Style="{StaticResource StatCard}">
+                <Border x:Name="SpeedStatCard" Grid.Column="4" Style="{StaticResource StatCard}" ToolTip="Average processing speed">
                     <StackPanel Orientation="Vertical" HorizontalAlignment="Center">
-                        <TextBlock Text="SPEED" FontSize="10" Foreground="{StaticResource TextSecondaryBrush}" FontWeight="Bold" HorizontalAlignment="Center" />
-                        <TextBlock x:Name="SpeedValue" Text="0.0 MB/s" FontSize="18" FontWeight="Bold" HorizontalAlignment="Center" Foreground="{StaticResource TextPrimaryBrush}" />
+                        <TextBlock Text="SPEED" Style="{StaticResource StatLabelStyle}" Foreground="{StaticResource TextSecondaryBrush}" />
+                        <TextBlock x:Name="SpeedValue" Text="0.0 MB/s" Style="{StaticResource StatValueStyle}" Foreground="{StaticResource TextPrimaryBrush}" />
                     </StackPanel>
                 </Border>
             </Grid>
@@ -321,13 +381,13 @@
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
-                <Border BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="4" Padding="1" Background="{StaticResource CardBackgroundBrush}">
+                <Border BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="4" Padding="1" Background="{StaticResource CardBackgroundBrush}" ToolTip="Processing progress indicator">
                     <Grid>
-                        <ProgressBar x:Name="ProgressBar" Height="28" Foreground="{StaticResource ProgressForegroundBrush}" Background="{StaticResource ProgressBackgroundBrush}" BorderThickness="0" />
-                        <TextBlock x:Name="ProgressText" HorizontalAlignment="Center" VerticalAlignment="Center" FontWeight="SemiBold" Foreground="{StaticResource TextPrimaryBrush}" />
+                        <ProgressBar x:Name="ProgressBar" Height="28" Foreground="{StaticResource ProgressForegroundBrush}" Background="{StaticResource ProgressBackgroundBrush}" BorderThickness="0" ToolTip="Overall processing progress" />
+                        <TextBlock x:Name="ProgressText" HorizontalAlignment="Center" VerticalAlignment="Center" FontWeight="SemiBold" Foreground="{StaticResource TextPrimaryBrush}" ToolTip="Currently processing file details" />
                     </Grid>
                 </Border>
-                <Button x:Name="CancelButton" Grid.Column="1" Content="Cancel" Style="{StaticResource CancelButtonStyle}" Margin="10,0,0,0" Click="CancelButton_Click" />
+                <Button x:Name="CancelButton" Grid.Column="1" Content="Cancel" Style="{StaticResource CancelButtonStyle}" Margin="10,0,0,0" Click="CancelButton_Click" ToolTip="Stop the current operation" />
             </Grid>
         </Grid>
 
@@ -350,7 +410,7 @@
 
             <StatusBarItem Grid.Column="1" ToolTip="Status of required external tools">
                 <StackPanel Orientation="Horizontal">
-                    <TextBlock Text="Dependencies:" Margin="0,0,5,0" Foreground="{StaticResource TextSecondaryBrush}" />
+                    <TextBlock Text="Dependencies:" Margin="0,0,5,0" Foreground="{StaticResource TextSecondaryBrush}" ToolTip="External tools required for processing" />
                     <TextBlock x:Name="StatusBarChdman" Text="CHDMAN" Foreground="{StaticResource SuccessTextBrush}" Margin="0,0,5,0" ToolTip="Status of chdman.exe" />
                     <TextBlock Text="|" Margin="0,0,5,0" Foreground="{StaticResource TextMutedBrush}" />
                     <TextBlock x:Name="StatusBarMaxcso" Text="MAXCSO" Foreground="{StaticResource SuccessTextBrush}" Margin="0,0,5,0" ToolTip="Status of maxcso.exe" />

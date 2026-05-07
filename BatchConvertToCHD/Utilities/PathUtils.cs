@@ -98,6 +98,12 @@ public static class PathUtils
         {
             onLog($"ERROR: Invalid path for {pathName}: {path}. {ex.Message}");
             onError($"The {pathName} path is invalid:\n\n{path}\n\nError: {ex.Message}");
+
+            if (App.SharedBugReportService != null)
+            {
+                _ = App.SharedBugReportService.SendBugReportAsync($"Invalid path for {pathName}", ex);
+            }
+
             return null;
         }
     }

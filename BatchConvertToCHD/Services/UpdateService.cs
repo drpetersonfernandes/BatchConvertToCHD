@@ -32,6 +32,11 @@ public class UpdateService(string applicationName)
         PooledConnectionLifetime = TimeSpan.FromMinutes(2)
     });
 
+    public static void DisposeHttpClient()
+    {
+        HttpClient.Dispose();
+    }
+
     /// <summary>
     /// Checks GitHub for a newer version of the application and prompts the user to download if available.
     /// </summary>
@@ -150,6 +155,7 @@ public class UpdateService(string applicationName)
         {
             onLog($"Update check failed (Network/SSL): {ex.Message}");
             onStatusUpdate("Update check failed (network)");
+            await onBugReport("Update check failed (Network/SSL)", ex);
         }
         catch (Exception ex)
         {

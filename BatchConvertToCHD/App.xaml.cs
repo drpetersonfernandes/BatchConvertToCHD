@@ -102,12 +102,14 @@ public partial class App : IDisposable
 
     private void App_Exit(object sender, ExitEventArgs e)
     {
-        // Clear references (HttpClient instances are static and reused across the app lifetime)
+        BugReportService.DisposeHttpClient();
+        StatsService.DisposeHttpClient();
+        UpdateService.DisposeHttpClient();
+
         _bugReportService = null;
         SharedBugReportService = null;
         _statsService = null;
 
-        // Unregister static event handlers to prevent memory leaks
         AppDomain.CurrentDomain.UnhandledException -= CurrentDomain_UnhandledException;
         DispatcherUnhandledException -= App_DispatcherUnhandledException;
         TaskScheduler.UnobservedTaskException -= TaskScheduler_UnobservedTaskException;
@@ -155,18 +157,18 @@ public partial class App : IDisposable
     /// </summary>
     public void Dispose()
     {
-        // Cleanup is primarily handled in App_Exit. This method provides a safety net
-        // for explicit disposal scenarios. HttpClient instances are static and reused.
+        BugReportService.DisposeHttpClient();
+        StatsService.DisposeHttpClient();
+        UpdateService.DisposeHttpClient();
+
         _bugReportService = null;
         SharedBugReportService = null;
         _statsService = null;
 
-        // Unregister static event handlers to prevent them from firing after disposal
         AppDomain.CurrentDomain.UnhandledException -= CurrentDomain_UnhandledException;
         DispatcherUnhandledException -= App_DispatcherUnhandledException;
         TaskScheduler.UnobservedTaskException -= TaskScheduler_UnobservedTaskException;
 
-        // Suppress finalization
         GC.SuppressFinalize(this);
     }
 }

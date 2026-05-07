@@ -19,23 +19,23 @@
         <!-- Logo Section -->
         <Border Grid.Row="0" Style="{StaticResource CardBorder}" ToolTip="Application Logo">
             <StackPanel HorizontalAlignment="Center">
-                <Image Width="130" Height="130" Source="pack://application:,,,/images/logo.png" />
+                <Image Width="130" Height="130" Source="pack://application:,,,/images/logo.png" ToolTip="Batch Convert to CHD application icon" />
             </StackPanel>
         </Border>
 
         <!-- Title & Version Section -->
         <Border Grid.Row="1" Style="{StaticResource CardBorder}" ToolTip="Application name and version">
             <StackPanel>
-                <TextBlock FontWeight="Bold" FontSize="20" Foreground="{StaticResource HeaderTextBrush}" Text="Batch Convert to CHD" HorizontalAlignment="Center" />
-                <TextBlock Name="AppVersionTextBlock" Margin="0,8,0,0" Text="" HorizontalAlignment="Center" Foreground="{StaticResource PrimaryAccentBrush}" FontWeight="SemiBold" FontSize="14" />
+                <TextBlock Style="{StaticResource AboutTitleStyle}" Text="Batch Convert to CHD" ToolTip="Batch Convert to CHD" />
+                <TextBlock Name="AppVersionTextBlock" Margin="0,8,0,0" Text="" Style="{StaticResource AboutSubtitleStyle}" Foreground="{StaticResource PrimaryAccentBrush}" ToolTip="Current application version" />
             </StackPanel>
         </Border>
 
         <!-- Description Section -->
         <Border Grid.Row="2" Style="{StaticResource CardBorder}" ToolTip="Brief overview of the application purpose">
             <StackPanel>
-                <TextBlock FontWeight="Bold" FontSize="14" Foreground="{StaticResource TextPrimaryBrush}" Text="Description" Margin="0,0,0,10" />
-                <TextBlock x:Name="DescriptionTextBlock" TextWrapping="Wrap" Text="A utility for batch converting various disc image formats to CHD and for verifying the integrity of CHD files." Foreground="{StaticResource TextSecondaryBrush}" LineHeight="20" />
+                <TextBlock Style="{StaticResource AboutSectionHeaderStyle}" Text="Description" Margin="0,0,0,10" ToolTip="What this application does" />
+                <TextBlock x:Name="DescriptionTextBlock" Style="{StaticResource AboutBodyTextStyle}" Text="A utility for batch converting various disc image formats to CHD and for verifying the integrity of CHD files." LineHeight="20" ToolTip="Brief overview of the application and its capabilities" />
                 <TextBlock Margin="0,10,0,0">
                     <Hyperlink NavigateUri="https://github.com/drpetersonfernandes/BatchConvertToCHD" RequestNavigate="Hyperlink_RequestNavigate" Foreground="{StaticResource LinkTextBrush}" TextDecorations="Underline" ToolTip="Visit the project repository">
                         https://github.com/drpetersonfernandes/BatchConvertToCHD
@@ -52,20 +52,20 @@
         <!-- Acknowledgements Section -->
         <Border Grid.Row="3" Style="{StaticResource CardBorder}" ToolTip="Credits and third-party tools used">
             <StackPanel>
-                <TextBlock FontWeight="Bold" FontSize="14" Foreground="{StaticResource TextPrimaryBrush}" Text="Acknowledgements" Margin="0,0,0,10" />
-                <TextBlock Margin="0,0,0,8" TextWrapping="Wrap" Foreground="{StaticResource TextSecondaryBrush}">
+                <TextBlock Style="{StaticResource AboutSectionHeaderStyle}" Text="Acknowledgements" Margin="0,0,0,10" ToolTip="Credits and attributions for third-party tools used in this project" />
+                <TextBlock Margin="0,0,0,8" Style="{StaticResource AboutBodyTextStyle}" ToolTip="Uses the CHDMAN tool from the MAME project for disc image conversion and verification">
                     <Run Text="• Uses " />
-                    <Hyperlink NavigateUri="https://github.com/mamedev/mame/" RequestNavigate="Hyperlink_RequestNavigate" Foreground="{StaticResource PrimaryAccentBrush}" FontWeight="Bold" TextDecorations="None">CHDMAN</Hyperlink>
+                    <Hyperlink NavigateUri="https://github.com/mamedev/mame/" RequestNavigate="Hyperlink_RequestNavigate" Foreground="{StaticResource PrimaryAccentBrush}" FontWeight="Bold" TextDecorations="None" ToolTip="Visit the MAME/CHDMAN project on GitHub">CHDMAN</Hyperlink>
                     <Run Text=" from the MAME project for conversions and verifications." />
                 </TextBlock>
-                <TextBlock Margin="0,0,0,8" TextWrapping="Wrap" Foreground="{StaticResource TextSecondaryBrush}">
+                <TextBlock Margin="0,0,0,8" Style="{StaticResource AboutBodyTextStyle}" ToolTip="Uses maxcso for CSO compression format decompression during conversion">
                     <Run Text="• Uses " />
-                    <Hyperlink NavigateUri="https://github.com/unknownbrackets/maxcso" RequestNavigate="Hyperlink_RequestNavigate" Foreground="{StaticResource PrimaryAccentBrush}" FontWeight="Bold" TextDecorations="None">maxcso</Hyperlink>
+                    <Hyperlink NavigateUri="https://github.com/unknownbrackets/maxcso" RequestNavigate="Hyperlink_RequestNavigate" Foreground="{StaticResource PrimaryAccentBrush}" FontWeight="Bold" TextDecorations="None" ToolTip="Visit the maxcso project on GitHub">maxcso</Hyperlink>
                     <Run Text=" for .cso decompression during conversion." />
                 </TextBlock>
-                <TextBlock Margin="0,0,0,8" TextWrapping="Wrap" Foreground="{StaticResource TextSecondaryBrush}">
+                <TextBlock Margin="0,0,0,8" Style="{StaticResource AboutBodyTextStyle}" ToolTip="Uses psxpackager for PlayStation PKG and PBP file handling">
                     <Run Text="• Uses " />
-                    <Hyperlink NavigateUri="https://github.com/RupertAvery/PSXPackager" RequestNavigate="Hyperlink_RequestNavigate" Foreground="{StaticResource PrimaryAccentBrush}" FontWeight="Bold" TextDecorations="None">psxpackager</Hyperlink>
+                    <Hyperlink NavigateUri="https://github.com/RupertAvery/PSXPackager" RequestNavigate="Hyperlink_RequestNavigate" Foreground="{StaticResource PrimaryAccentBrush}" FontWeight="Bold" TextDecorations="None" ToolTip="Visit the PSXPackager project on GitHub">psxpackager</Hyperlink>
                     <Run Text=" for PlayStation .pkg and .pbp file handling." />
                 </TextBlock>
 

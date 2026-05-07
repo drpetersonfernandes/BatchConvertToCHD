@@ -17,6 +17,5 @@ internal static class AppConfig
     public const string ApplicationName = "BatchConvertToCHD";
     public const int WriteSpeedUpdateIntervalMs = 1000;
 
-    // Timeout configurations
     public const int MaxConversionTimeoutHours = 4;
 }

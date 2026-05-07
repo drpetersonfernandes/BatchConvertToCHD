@@ -606,5 +606,90 @@
             <Setter Property="Background" Value="Transparent"/>
         </Style>
 
+        <!-- ==================== APPLICATION-SPECIFIC NAMED STYLES ==================== -->
+
+        <!-- Header Title TextBlock (main window title) -->
+        <Style x:Key="HeaderTitleStyle" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="20"/>
+            <Setter Property="FontWeight" Value="Bold"/>
+            <Setter Property="Foreground" Value="{StaticResource HeaderTextBrush}"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+        </Style>
+
+        <!-- Section Label (bold labels like "Select Files to Convert:") -->
+        <Style x:Key="SectionLabelStyle" TargetType="Label">
+            <Setter Property="FontWeight" Value="Bold"/>
+            <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+        </Style>
+
+        <!-- Stat Card Label (e.g., "TOTAL FILES", "SUCCESS", "ELAPSED") -->
+        <Style x:Key="StatLabelStyle" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="10"/>
+            <Setter Property="FontWeight" Value="Bold"/>
+            <Setter Property="HorizontalAlignment" Value="Center"/>
+        </Style>
+
+        <!-- Stat Card Label - Success variant -->
+        <Style x:Key="StatLabelSuccessStyle" TargetType="TextBlock" BasedOn="{StaticResource StatLabelStyle}">
+            <Setter Property="Foreground" Value="{StaticResource SuccessTextBrush}"/>
+        </Style>
+
+        <!-- Stat Card Label - Failed variant -->
+        <Style x:Key="StatLabelFailedStyle" TargetType="TextBlock" BasedOn="{StaticResource StatLabelStyle}">
+            <Setter Property="Foreground" Value="{StaticResource FailedTextBrush}"/>
+        </Style>
+
+        <!-- Stat Card Value (the numeric value in stat cards) -->
+        <Style x:Key="StatValueStyle" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="18"/>
+            <Setter Property="FontWeight" Value="Bold"/>
+            <Setter Property="HorizontalAlignment" Value="Center"/>
+        </Style>
+
+        <!-- Stat Card Value - Success variant -->
+        <Style x:Key="StatValueSuccessStyle" TargetType="TextBlock" BasedOn="{StaticResource StatValueStyle}">
+            <Setter Property="Foreground" Value="{StaticResource SuccessTextBrush}"/>
+        </Style>
+
+        <!-- Stat Card Value - Failed variant -->
+        <Style x:Key="StatValueFailedStyle" TargetType="TextBlock" BasedOn="{StaticResource StatValueStyle}">
+            <Setter Property="Foreground" Value="{StaticResource FailedTextBrush}"/>
+        </Style>
+
+        <!-- About Window Title -->
+        <Style x:Key="AboutTitleStyle" TargetType="TextBlock">
+            <Setter Property="FontWeight" Value="Bold"/>
+            <Setter Property="FontSize" Value="20"/>
+            <Setter Property="Foreground" Value="{StaticResource HeaderTextBrush}"/>
+            <Setter Property="HorizontalAlignment" Value="Center"/>
+        </Style>
+
+        <!-- About Window Subtitle (version) -->
+        <Style x:Key="AboutSubtitleStyle" TargetType="TextBlock">
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="FontSize" Value="14"/>
+            <Setter Property="HorizontalAlignment" Value="Center"/>
+        </Style>
+
+        <!-- About Window Section Header -->
+        <Style x:Key="AboutSectionHeaderStyle" TargetType="TextBlock">
+            <Setter Property="FontWeight" Value="Bold"/>
+            <Setter Property="FontSize" Value="14"/>
+            <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}"/>
+        </Style>
+
+        <!-- About Window Body Text -->
+        <Style x:Key="AboutBodyTextStyle" TargetType="TextBlock">
+            <Setter Property="TextWrapping" Value="Wrap"/>
+            <Setter Property="Foreground" Value="{StaticResource TextSecondaryBrush}"/>
+        </Style>
+
+        <!-- Button Content TextBlock (dark text on light buttons) -->
+        <Style x:Key="ButtonContentTextStyle" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="{StaticResource ButtonTextDarkBrush}"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+        </Style>
+
     </Application.Resources>
 </Application>
