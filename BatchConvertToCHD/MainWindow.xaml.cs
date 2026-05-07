@@ -1289,6 +1289,7 @@ public partial class MainWindow : IDisposable
 
     private async Task<bool> ProcessSingleFileForConversionAsync(string chdmanPath, string inputFile, string inputFolder, string outputFolder, bool deleteOriginal, int cores, bool forceCd, bool forceDvd, CancellationToken token)
     {
+        inputFile = Path.GetFullPath(inputFile);
         var originalName = Path.GetFileName(inputFile);
         LogMessage($"Processing: {originalName}");
 
@@ -1487,7 +1488,7 @@ public partial class MainWindow : IDisposable
                             }
 
                             var destPath = Path.Combine(tempDir, Path.GetFileName(file));
-                            await Task.Run(() => File.Copy(file, destPath, true), token);
+                            await CopyFileWithRetryAsync(file, destPath, token);
                         }
 
                         tempInputFile = Path.Combine(tempDir, Path.GetFileName(inputFile));
@@ -1496,7 +1497,7 @@ public partial class MainWindow : IDisposable
                     {
                         // Original logic for single, non-dependent files
                         tempInputFile = Path.Combine(tempDir, originalName);
-                        await Task.Run(() => File.Copy(inputFile, tempInputFile, true), token);
+                        await CopyFileWithRetryAsync(inputFile, tempInputFile, token);
                     }
 
                     fileToProcess = tempInputFile;
@@ -1508,7 +1509,7 @@ public partial class MainWindow : IDisposable
                 }
                 catch (Exception ex)
                 {
-                    LogMessage($"Retry via temp failed for {originalName}: {ex.Message}");
+                    LogMessage($"Retry via temp failed for {originalName} ({inputFile}): {ex.Message}");
                     _ = ReportBugAsync($"Retry via temp failed for {originalName}", ex);
                 }
             }
@@ -2526,6 +2527,27 @@ public partial class MainWindow : IDisposable
         {
             LogMessage($"Delete error: {ex.Message}");
             _ = ReportBugAsync("Delete error", ex);
+        }
+    }
+
+    private async Task CopyFileWithRetryAsync(string source, string dest, CancellationToken token)
+    {
+        const int maxRetries = 3;
+        const int baseDelayMs = 500;
+
+        for (var attempt = 0; attempt < maxRetries; attempt++)
+        {
+            token.ThrowIfCancellationRequested();
+
+            try
+            {
+                await Task.Run(() => File.Copy(source, dest, true), token);
+                return;
+            }
+            catch (IOException) when (attempt < maxRetries - 1)
+            {
+                await Task.Delay(baseDelayMs * (1 << attempt), token);
+            }
         }
     }
 
