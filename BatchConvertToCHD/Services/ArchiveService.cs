@@ -36,7 +36,6 @@ public class ArchiveService : IDisposable
     /// <param name="tempOutputIsoPath">The path where the extracted ISO should be saved.</param>
     /// <param name="tempDirectoryRoot">The root temporary directory for extraction.</param>
     /// <param name="onLog">Callback for logging messages.</param>
-    /// <param name="onSpeedUpdate">Callback for speed updates during extraction.</param>
     /// <param name="token">Cancellation token to cancel the operation.</param>
     /// <returns>A tuple containing success status, file path, temp directory, and error message.</returns>
     public async Task<(bool Success, string FilePath, string TempDir, string ErrorMessage)> ExtractCsoAsync(
@@ -44,7 +43,6 @@ public class ArchiveService : IDisposable
         string tempOutputIsoPath,
         string tempDirectoryRoot,
         Action<string> onLog,
-        Action<double> onSpeedUpdate,
         CancellationToken token)
     {
         if (!_isMaxCsoAvailable)
@@ -287,7 +285,7 @@ public class ArchiveService : IDisposable
     /// Extracts an archive with fallback logic for handling extraction failures.
     /// If direct extraction fails, copies the archive to a temp location and retries.
     /// </summary>
-    private static void ExtractArchiveWithFallback<TArchive>(
+    internal static void ExtractArchiveWithFallback<TArchive>(
         string archivePath,
         string outputDirectory,
         Action<string> onLog,

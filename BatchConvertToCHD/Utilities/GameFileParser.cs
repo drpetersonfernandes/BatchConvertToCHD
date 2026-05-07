@@ -88,7 +88,6 @@ public static class GameFileParser
         {
             onLog($"Error parsing CUE file {Path.GetFileName(cuePath)}: {ex.Message}");
             ExceptionDispatchInfo.Capture(ex).Throw();
-            throw; // Unreachable, but required for compiler
         }
 
         return referencedFiles;
@@ -159,7 +158,6 @@ public static class GameFileParser
         {
             onLog($"Error parsing GDI file {Path.GetFileName(gdiPath)}: {ex.Message}");
             ExceptionDispatchInfo.Capture(ex).Throw();
-            throw; // Unreachable, but required for compiler
         }
 
         return referencedFiles;
@@ -242,7 +240,6 @@ public static class GameFileParser
         {
             onLog($"Error parsing TOC file {Path.GetFileName(tocPath)}: {ex.Message}");
             ExceptionDispatchInfo.Capture(ex).Throw();
-            throw; // Unreachable, but required for compiler
         }
 
         return referencedFiles;

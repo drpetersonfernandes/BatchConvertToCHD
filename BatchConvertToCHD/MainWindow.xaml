@@ -280,7 +280,7 @@
                                         <StackPanel>
                                             <CheckBox x:Name="SearchSubfoldersExtractionCheckBox" Content="Search subfolders (recursive search)" Margin="0,2" HorizontalAlignment="Left" ToolTip="Recursively search for files in all subfolders"
                                                       Checked="SearchSubfoldersCheckBox_Changed" Unchecked="SearchSubfoldersCheckBox_Changed" />
-                                            <CheckBox x:Name="DeleteOriginalChdCheckBox" Content="Delete original CHD after a successful extraction" Margin="0,2" HorizontalAlignment="Left" VerticalAlignment="Top" ToolTip="Delete original CHD after a successfull extraction" />
+                                            <CheckBox x:Name="DeleteOriginalChdCheckBox" Content="Delete original CHD after a successful extraction" Margin="0,2" HorizontalAlignment="Left" VerticalAlignment="Top" ToolTip="Delete original CHD after a successful extraction" />
                                         </StackPanel>
                                     </GroupBox>
                                 </Grid>

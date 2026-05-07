@@ -120,13 +120,14 @@ public class FileItem : INotifyPropertyChanged
     private static string FormatSize(long bytes)
     {
         string[] suffix = ["B", "KB", "MB", "GB", "TB"];
-        int i;
-        double dblSByte = bytes;
-        for (i = 0; i < suffix.Length && bytes >= 1024; i++, bytes /= 1024)
+        int i = 0;
+        double size = bytes;
+        while (size >= 1024 && i < suffix.Length - 1)
         {
-            dblSByte = bytes / 1024.0;
+            size /= 1024;
+            i++;
         }
 
-        return string.Create(CultureInfo.InvariantCulture, $"{dblSByte:0.##} {suffix[i]}");
+        return string.Create(CultureInfo.InvariantCulture, $"{size:0.##} {suffix[i]}");
     }
 }

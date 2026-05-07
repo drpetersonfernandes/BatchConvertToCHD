@@ -20,6 +20,7 @@ namespace BatchConvertToCHD;
 public partial class MainWindow : IDisposable
 {
     private CancellationTokenSource _cts;
+    private readonly object _ctsLock = new object();
     private readonly string _maxCsoPath;
     private readonly bool _isMaxCsoAvailable;
     private readonly bool _isChdmanAvailable;
@@ -87,8 +88,15 @@ public partial class MainWindow : IDisposable
         InitializeStatusBar();
         Task.Run(static async () =>
         {
-            await Task.Delay(2000);
-            CleanupLeftoverTempDirectories();
+            try
+            {
+                await Task.Delay(2000);
+                CleanupLeftoverTempDirectories();
+            }
+            catch
+            {
+                /* ignore */
+            }
         });
         DisplayConversionInstructionsInLog();
         ResetOperationStats();
@@ -491,7 +499,7 @@ public partial class MainWindow : IDisposable
 
     private void MainTabControl_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (e.Source is not TabControl tabControl)
+        if (e.Source is not TabControl)
         {
             return;
         }
@@ -502,7 +510,7 @@ public partial class MainWindow : IDisposable
         }
 
         Application.Current.Dispatcher.InvokeAsync((Action)(() => LogViewer.Clear()));
-        if (tabControl.SelectedItem is TabItem selectedTab)
+        if (((TabControl)e.Source).SelectedItem is TabItem selectedTab)
         {
             switch (selectedTab.Name)
             {
@@ -533,24 +541,22 @@ public partial class MainWindow : IDisposable
 
         if (isOperationRunning)
         {
-            if (!_cts.IsCancellationRequested)
+            lock (_ctsLock)
             {
-                // First close attempt - cancel operations but keep window open momentarily
-                _cts.Cancel();
-                LogMessage("Cancelling operations before closing...");
-                UpdateStatusBarMessage("Cancelling...");
-                e.Cancel = true;
-                return;
+                if (!_cts.IsCancellationRequested)
+                {
+                    _cts.Cancel();
+                    LogMessage("Cancelling operations before closing...");
+                    UpdateStatusBarMessage("Cancelling...");
+                    e.Cancel = true;
+                    return;
+                }
             }
-            // else: Cancellation already requested, allow close but force termination
-            // because background tasks might be stuck
         }
 
         Dispose();
 
         Application.Current.Shutdown();
-
-        Environment.Exit(0);
     }
 
     private void LogMessage(string message)
@@ -566,9 +572,9 @@ public partial class MainWindow : IDisposable
                 // but at minimum, check length directly
                 if (LogViewer.Text.Length > MaxLogLength)
                 {
-                    // Select first half and replace with truncation message
+                    var excess = LogViewer.Text.Length - MaxLogLength / 2;
                     LogViewer.SelectionStart = 0;
-                    LogViewer.SelectionLength = MaxLogLength / 2;
+                    LogViewer.SelectionLength = excess;
                     LogViewer.SelectedText = $"[{DateTime.Now:HH:mm:ss.fff}] --- Log truncated to keep app responsive ---{Environment.NewLine}";
                 }
 
@@ -671,10 +677,7 @@ public partial class MainWindow : IDisposable
                 return;
             }
 
-            // Cancel any existing operations before creating new CTS
-            _cts.Cancel();
-            _cts.Dispose();
-            _cts = new CancellationTokenSource();
+            RenewCancellationTokenSource();
 
             ResetOperationStats();
             SetControlsState(false);
@@ -979,11 +982,7 @@ public partial class MainWindow : IDisposable
                 return;
             }
 
-            // Cancel any existing operations before creating new CTS
-            // The old CTS will be disposed after the operation completes in finally block
-            _cts.Cancel();
-            _cts.Dispose();
-            _cts = new CancellationTokenSource();
+            RenewCancellationTokenSource();
 
             ResetOperationStats();
             SetControlsState(false);
@@ -1054,11 +1053,7 @@ public partial class MainWindow : IDisposable
                 return;
             }
 
-            // Cancel any existing operations before creating new CTS
-            // The old CTS will be disposed after the operation completes in finally block
-            _cts.Cancel();
-            _cts.Dispose();
-            _cts = new CancellationTokenSource();
+            RenewCancellationTokenSource();
 
             ResetOperationStats();
             SetControlsState(false);
@@ -1119,9 +1114,22 @@ public partial class MainWindow : IDisposable
         ClearProgressDisplay();
     }
 
+    private void RenewCancellationTokenSource()
+    {
+        lock (_ctsLock)
+        {
+            _cts.Cancel();
+            _cts.Dispose();
+            _cts = new CancellationTokenSource();
+        }
+    }
+
     private void CancelButton_Click(object sender, RoutedEventArgs e)
     {
-        _cts.Cancel();
+        lock (_ctsLock)
+        {
+            _cts.Cancel();
+        }
         LogMessage("Cancellation requested...");
         UpdateStatusBarMessage("Cancelling...");
     }
@@ -1318,7 +1326,7 @@ public partial class MainWindow : IDisposable
             var chdBase = Path.GetFileNameWithoutExtension(originalName);
 
             // Maintain directory structure if searching subfolders
-            var relativePath = Path.GetRelativePath(inputFolder, Path.GetDirectoryName(inputFile) ?? inputFolder);
+            var relativePath = PathUtils.GetSafeRelativePath(inputFolder, Path.GetDirectoryName(inputFile) ?? inputFolder);
             var targetDir = relativePath == "." ? outputFolder : Path.Combine(outputFolder, relativePath);
 
             outputChd = Path.Combine(targetDir, PathUtils.SanitizeFileName(chdBase) + FileExtensions.Chd);
@@ -1331,7 +1339,7 @@ public partial class MainWindow : IDisposable
                 await Task.Run(() => Directory.CreateDirectory(tempDir), token);
                 var tempIso = PathUtils.GetSafeTempFileName(originalName, "iso", tempDir);
 
-                var result = await _archiveService.ExtractCsoAsync(inputFile, tempIso, tempDir, LogMessage, UpdateWriteSpeedDisplay, token);
+                var result = await _archiveService.ExtractCsoAsync(inputFile, tempIso, tempDir, LogMessage, token);
                 if (!result.Success)
                 {
                     return false;
@@ -1488,14 +1496,16 @@ public partial class MainWindow : IDisposable
                                 break;
                         }
 
+                        var missingFiles = filesToCopy.Distinct().Where(f => !File.Exists(f)).ToList();
+                        if (missingFiles.Count > 0)
+                        {
+                            var missingNames = string.Join(", ", missingFiles.Select(Path.GetFileName));
+                            LogMessage($"WARNING: Skipping temp retry for {originalName} because referenced files are missing: {missingNames}");
+                            throw new InvalidOperationException($"Referenced files are missing: {missingNames}");
+                        }
+
                         foreach (var file in filesToCopy.Distinct())
                         {
-                            if (!File.Exists(file))
-                            {
-                                LogMessage($"WARNING: Referenced file not found, skipping copy: {Path.GetFileName(file)}");
-                                continue;
-                            }
-
                             var destPath = Path.Combine(tempDir, Path.GetFileName(file));
                             await CopyFileWithRetryAsync(file, destPath, token);
                         }
@@ -1589,7 +1599,7 @@ public partial class MainWindow : IDisposable
     private static string ComputeOutputChdPathForExtractedFile(string extractedFilePath, string originalInputFile, string inputFolder, string outputFolder)
     {
         // Use the original input file (e.g. the archive) to determine the relative path
-        var relativePath = Path.GetRelativePath(inputFolder, Path.GetDirectoryName(originalInputFile) ?? inputFolder);
+        var relativePath = PathUtils.GetSafeRelativePath(inputFolder, Path.GetDirectoryName(originalInputFile) ?? inputFolder);
         var targetDir = relativePath == "." ? outputFolder : Path.Combine(outputFolder, relativePath);
         var chdBase = Path.GetFileNameWithoutExtension(extractedFilePath);
         return Path.Combine(targetDir, PathUtils.SanitizeFileName(chdBase) + FileExtensions.Chd);
@@ -1671,7 +1681,7 @@ public partial class MainWindow : IDisposable
             if (includeSub)
             {
                 // Maintain directory structure
-                var relativePath = Path.GetRelativePath(inputFolder, Path.GetDirectoryName(sourceFile) ?? inputFolder);
+                var relativePath = PathUtils.GetSafeRelativePath(inputFolder, Path.GetDirectoryName(sourceFile) ?? inputFolder);
                 var targetSubDir = relativePath == "." ? targetFolder : Path.Combine(targetFolder, relativePath);
                 if (!Directory.Exists(targetSubDir))
                 {
@@ -1706,7 +1716,7 @@ public partial class MainWindow : IDisposable
         var fileName = Path.GetFileNameWithoutExtension(chdFile);
 
         // Maintain directory structure if searching subfolders
-        var relativePath = Path.GetRelativePath(inputFolder, Path.GetDirectoryName(chdFile) ?? inputFolder);
+        var relativePath = PathUtils.GetSafeRelativePath(inputFolder, Path.GetDirectoryName(chdFile) ?? inputFolder);
         var targetDir = relativePath == "." ? outputFolder : Path.Combine(outputFolder, relativePath);
         if (!Directory.Exists(targetDir)) Directory.CreateDirectory(targetDir);
 
@@ -2063,7 +2073,7 @@ public partial class MainWindow : IDisposable
 
         var command = forceCd || isCcd || hasCcd || (!forceDvd && !inputFile.EndsWith(FileExtensions.Iso, StringComparison.OrdinalIgnoreCase) && !isImg && !inputFile.EndsWith(FileExtensions.Raw, StringComparison.OrdinalIgnoreCase))
             ? "createcd"
-            : forceDvd || inputFile.EndsWith(".iso", StringComparison.OrdinalIgnoreCase)
+            : forceDvd || inputFile.EndsWith(FileExtensions.Iso, StringComparison.OrdinalIgnoreCase)
                 ? "createdvd"
                 : isImg
                     ? "createhd"
@@ -2632,12 +2642,12 @@ public partial class MainWindow : IDisposable
 
     private void ForceCreateCdCheckBox_Checked(object sender, RoutedEventArgs e)
     {
-        ForceCreateDvdCheckBox?.IsChecked = false;
+        ForceCreateDvdCheckBox.IsChecked = false;
     }
 
     private void ForceCreateDvdCheckBox_Checked(object sender, RoutedEventArgs e)
     {
-        ForceCreateCdCheckBox?.IsChecked = false;
+        ForceCreateCdCheckBox.IsChecked = false;
     }
 
     private void LogOperationSummary(string op)
@@ -2700,8 +2710,11 @@ public partial class MainWindow : IDisposable
     /// </summary>
     public void Dispose()
     {
-        _cts.Cancel();
-        _cts.Dispose();
+        lock (_ctsLock)
+        {
+            _cts.Cancel();
+            _cts.Dispose();
+        }
         _writeBytesCounter?.Dispose();
         _readBytesCounter?.Dispose();
         _archiveService.Dispose();

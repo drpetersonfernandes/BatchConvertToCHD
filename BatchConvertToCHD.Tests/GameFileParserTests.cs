@@ -127,4 +127,126 @@ public class GameFileParserTests : IDisposable
             await GameFileParser.GetReferencedFilesFromTocAsync(tocPath, static _ => { }, CancellationToken.None);
         });
     }
+
+    [Fact]
+    public async Task GetReferencedFilesFromCueAsyncEmptyFileReturnsNoFiles()
+    {
+        var cuePath = Path.Combine(_tempDir, "empty.cue");
+        await File.WriteAllTextAsync(cuePath, string.Empty);
+
+        var result = await GameFileParser.GetReferencedFilesFromCueAsync(cuePath, static _ => { }, CancellationToken.None);
+        Assert.Empty(result);
+    }
+
+    [Fact]
+    public async Task GetReferencedFilesFromCueAsyncNoFileLinesReturnsNoFiles()
+    {
+        var cuePath = Path.Combine(_tempDir, "game.cue");
+        const string content = "TITLE \"Game\"\nPERFORMER \"Artist\"\n  TRACK 01 MODE2/2352\n    INDEX 01 00:00:00";
+        await File.WriteAllTextAsync(cuePath, content);
+
+        var result = await GameFileParser.GetReferencedFilesFromCueAsync(cuePath, static _ => { }, CancellationToken.None);
+        Assert.Empty(result);
+    }
+
+    [Fact]
+    public async Task GetReferencedFilesFromCueAsyncMultipleFileLinesReturnsAll()
+    {
+        var cuePath = Path.Combine(_tempDir, "game.cue");
+        const string content = "FILE \"track1.bin\" BINARY\n  TRACK 01 MODE2/2352\n    INDEX 01 00:00:00\nFILE \"track2.bin\" WAVE\n  TRACK 02 AUDIO\n    INDEX 01 00:00:00";
+        await File.WriteAllTextAsync(cuePath, content);
+
+        var result = await GameFileParser.GetReferencedFilesFromCueAsync(cuePath, static _ => { }, CancellationToken.None);
+        Assert.Equal(2, result.Count);
+        Assert.Contains(Path.Combine(_tempDir, "track1.bin"), result);
+        Assert.Contains(Path.Combine(_tempDir, "track2.bin"), result);
+    }
+
+    [Fact]
+    public async Task GetReferencedFilesFromCueAsyncFileLineWithoutTypeSkips()
+    {
+        var cuePath = Path.Combine(_tempDir, "game.cue");
+        const string content = "FILE ";
+        await File.WriteAllTextAsync(cuePath, content);
+
+        var result = await GameFileParser.GetReferencedFilesFromCueAsync(cuePath, static _ => { }, CancellationToken.None);
+        Assert.Empty(result);
+    }
+
+    [Fact]
+    public async Task GetReferencedFilesFromCueAsyncUnquotedMp3Format()
+    {
+        var cuePath = Path.Combine(_tempDir, "game.cue");
+        const string content = "FILE track1.mp3 MP3\n  TRACK 01 AUDIO\n    INDEX 01 00:00:00";
+        await File.WriteAllTextAsync(cuePath, content);
+
+        var result = await GameFileParser.GetReferencedFilesFromCueAsync(cuePath, static _ => { }, CancellationToken.None);
+        Assert.Single(result);
+        Assert.Equal(Path.Combine(_tempDir, "track1.mp3"), result[0]);
+    }
+
+    [Fact]
+    public async Task GetReferencedFilesFromGdiAsyncInvalidHeaderLineHandled()
+    {
+        var gdiPath = Path.Combine(_tempDir, "game.gdi");
+        const string content = "invalid\nnot enough fields";
+        await File.WriteAllTextAsync(gdiPath, content, Encoding.UTF8);
+
+        var result = await GameFileParser.GetReferencedFilesFromGdiAsync(gdiPath, static _ => { }, CancellationToken.None);
+        Assert.Empty(result);
+    }
+
+    [Fact]
+    public async Task GetReferencedFilesFromGdiAsyncSkipLessThan5Parts()
+    {
+        var gdiPath = Path.Combine(_tempDir, "game.gdi");
+        const string content = "2\n1 0 4\n2 45000 4 2352 track2.bin 0";
+        await File.WriteAllTextAsync(gdiPath, content, Encoding.UTF8);
+
+        var result = await GameFileParser.GetReferencedFilesFromGdiAsync(gdiPath, static _ => { }, CancellationToken.None);
+        Assert.Single(result);
+        Assert.Equal(Path.Combine(_tempDir, "track2.bin"), result[0]);
+    }
+
+    [Fact]
+    public async Task GetReferencedFilesFromGdiAsyncEmptyFileReturnsNoFiles()
+    {
+        var gdiPath = Path.Combine(_tempDir, "game.gdi");
+        await File.WriteAllTextAsync(gdiPath, string.Empty, Encoding.UTF8);
+
+        var result = await GameFileParser.GetReferencedFilesFromGdiAsync(gdiPath, static _ => { }, CancellationToken.None);
+        Assert.Empty(result);
+    }
+
+    [Fact]
+    public async Task GetReferencedFilesFromTocAsyncEmptyFileReturnsNoFiles()
+    {
+        var tocPath = Path.Combine(_tempDir, "empty.toc");
+        await File.WriteAllTextAsync(tocPath, string.Empty);
+
+        var result = await GameFileParser.GetReferencedFilesFromTocAsync(tocPath, static _ => { }, CancellationToken.None);
+        Assert.Empty(result);
+    }
+
+    [Fact]
+    public async Task GetReferencedFilesFromTocAsyncNoFileLinesReturnsNoFiles()
+    {
+        var tocPath = Path.Combine(_tempDir, "game.toc");
+        const string content = "CATALOG \"12345\"\n  TRACK 01 MODE2/2352\n    INDEX 01 00:00:00";
+        await File.WriteAllTextAsync(tocPath, content);
+
+        var result = await GameFileParser.GetReferencedFilesFromTocAsync(tocPath, static _ => { }, CancellationToken.None);
+        Assert.Empty(result);
+    }
+
+    [Fact]
+    public async Task GetReferencedFilesFromTocAsyncFileLineWithoutTypeSkips()
+    {
+        var tocPath = Path.Combine(_tempDir, "game.toc");
+        const string content = "FILE ";
+        await File.WriteAllTextAsync(tocPath, content);
+
+        var result = await GameFileParser.GetReferencedFilesFromTocAsync(tocPath, static _ => { }, CancellationToken.None);
+        Assert.Empty(result);
+    }
 }

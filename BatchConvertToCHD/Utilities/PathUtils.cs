@@ -70,6 +70,29 @@ public static class PathUtils
     }
 
     /// <summary>
+    /// Computes a relative path from <paramref name="relativeTo"/> to <paramref name="path"/>,
+    /// falling back to "." when the paths are on different drives/roots (which
+    /// <see cref="Path.GetRelativePath"/> does not support and will throw for).
+    /// </summary>
+    public static string GetSafeRelativePath(string relativeTo, string path)
+    {
+        try
+        {
+            var root1 = Path.GetPathRoot(relativeTo);
+            var root2 = Path.GetPathRoot(path);
+            if (string.Equals(root1, root2, StringComparison.OrdinalIgnoreCase))
+            {
+                return Path.GetRelativePath(relativeTo, path);
+            }
+        }
+        catch
+        {
+            // If GetPathRoot or GetRelativePath itself throws for any reason
+        }
+        return ".";
+    }
+
+    /// <summary>
     /// Validates and normalizes a directory path. Returns null if invalid.
     /// </summary>
     public static string? ValidateAndNormalizePath(string path, string pathName, Action<string> onError, Action<string> onLog)

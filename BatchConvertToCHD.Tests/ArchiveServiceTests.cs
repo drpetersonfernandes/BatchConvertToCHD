@@ -1,6 +1,6 @@
 using System.IO.Compression;
-using System.Reflection;
 using BatchConvertToCHD.Services;
+using SharpCompressZipArchive = SharpCompress.Archives.Zip.ZipArchive;
 
 namespace BatchConvertToCHD.Tests;
 
@@ -115,7 +115,7 @@ public class ArchiveServiceTests : IDisposable
         var service = new ArchiveService("maxcso.exe", false);
         var tempIso = Path.Combine(_tempDir, "out.iso");
 
-        var result = await service.ExtractCsoAsync("input.cso", tempIso, _tempDir, static _ => { }, static _ => { }, CancellationToken.None);
+        var result = await service.ExtractCsoAsync("input.cso", tempIso, _tempDir, static _ => { }, CancellationToken.None);
 
         Assert.False(result.Success);
         Assert.Contains("maxcso.exe is not available", result.ErrorMessage);
@@ -132,12 +132,6 @@ public class ArchiveServiceTests : IDisposable
     [Fact]
     public void ExtractArchiveWithFallbackMissingFileThrowsFileNotFoundWithoutFallback()
     {
-        var method = typeof(ArchiveService).GetMethod("ExtractArchiveWithFallback", BindingFlags.NonPublic | BindingFlags.Static);
-        Assert.NotNull(method);
-
-        // Construct the generic method with a concrete archive type that satisfies the constraints
-        var genericMethod = method.MakeGenericMethod(typeof(SharpCompress.Archives.Zip.ZipArchive));
-
         var missingPath = Path.Combine(_tempDir, $"missing_{Guid.NewGuid():N}.7z");
         var outputDir = Path.Combine(_tempDir, "out");
         Directory.CreateDirectory(outputDir);
@@ -145,21 +139,43 @@ public class ArchiveServiceTests : IDisposable
 
         var ex = Record.Exception(() =>
         {
-            genericMethod.Invoke(
-                null,
-                [
-                    missingPath,
-                    outputDir,
-                    (Action<string>)(logs.Add),
-                    ".7z",
-                    (Func<Stream, SharpCompress.Archives.Zip.ZipArchive>)(static _ => throw new InvalidOperationException("Should not reach here")),
-                    CancellationToken.None
-                ]);
+            ArchiveService.ExtractArchiveWithFallback<SharpCompressZipArchive>(
+                missingPath,
+                outputDir,
+                logs.Add,
+                ".7z",
+                static _ => throw new InvalidOperationException("Should not reach here"),
+                CancellationToken.None);
         });
 
         Assert.NotNull(ex);
-        var inner = ex is TargetInvocationException tie ? tie.InnerException : ex;
-        Assert.IsType<FileNotFoundException>(inner);
+        Assert.IsType<FileNotFoundException>(ex);
         Assert.Contains(logs, static msg => msg.Contains("Skipping fallback", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public async Task ExtractArchiveAsyncInvalidSevenZipReturnsFailure()
+    {
+        var service = new ArchiveService("maxcso.exe", false);
+        var sevenZPath = Path.Combine(_tempDir, "invalid.7z");
+        File.WriteAllText(sevenZPath, "not a valid 7z archive");
+        var tempDir = Path.Combine(_tempDir, "extract");
+
+        var result = await service.ExtractArchiveAsync(sevenZPath, tempDir, static _ => { }, CancellationToken.None);
+
+        Assert.False(result.Success);
+    }
+
+    [Fact]
+    public async Task ExtractArchiveAsyncInvalidRarReturnsFailure()
+    {
+        var service = new ArchiveService("maxcso.exe", false);
+        var rarPath = Path.Combine(_tempDir, "invalid.rar");
+        File.WriteAllText(rarPath, "not a valid rar archive");
+        var tempDir = Path.Combine(_tempDir, "extract");
+
+        var result = await service.ExtractArchiveAsync(rarPath, tempDir, static _ => { }, CancellationToken.None);
+
+        Assert.False(result.Success);
     }
 }

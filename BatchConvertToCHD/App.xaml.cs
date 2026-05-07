@@ -1,4 +1,5 @@
 using System.IO;
+using System.Threading;
 using System.Windows;
 using System.Windows.Threading;
 using BatchConvertToCHD.Services;
@@ -8,8 +9,9 @@ namespace BatchConvertToCHD;
 /// <summary>
 /// Application class for BatchConvertToCHD. Handles startup, exception handling, and service initialization.
 /// </summary>
-public partial class App : IDisposable
+public partial class App
 {
+    private Mutex? _singleInstanceMutex;
     private BugReportService? _bugReportService;
     private StatsService? _statsService;
 
@@ -41,6 +43,22 @@ public partial class App : IDisposable
 
     protected override void OnStartup(StartupEventArgs e)
     {
+        _singleInstanceMutex = new Mutex(true, $"Global\\{AppConfig.ApplicationName}_SingleInstance", out bool createdNew);
+        if (!createdNew)
+        {
+            _singleInstanceMutex.Dispose();
+            _singleInstanceMutex = null;
+
+            MessageBox.Show(
+                $"Another instance of {AppConfig.ApplicationName} is already running.",
+                AppConfig.ApplicationName,
+                MessageBoxButton.OK,
+                MessageBoxImage.Information);
+
+            Shutdown();
+            return;
+        }
+
         // Set shutdown mode to close the application when the main window closes
         // This ensures the app fully terminates when the user closes the window
         ShutdownMode = ShutdownMode.OnMainWindowClose;
@@ -102,9 +120,11 @@ public partial class App : IDisposable
 
     private void App_Exit(object sender, ExitEventArgs e)
     {
-        BugReportService.DisposeHttpClient();
-        StatsService.DisposeHttpClient();
-        UpdateService.DisposeHttpClient();
+        _singleInstanceMutex?.ReleaseMutex();
+        _singleInstanceMutex?.Dispose();
+        _singleInstanceMutex = null;
+
+        AppHttpClient.Dispose();
 
         _bugReportService = null;
         SharedBugReportService = null;
@@ -151,24 +171,5 @@ public partial class App : IDisposable
         }
     }
 
-    /// <inheritdoc />
-    /// <summary>
-    /// Releases all resources used by the App.
-    /// </summary>
-    public void Dispose()
-    {
-        BugReportService.DisposeHttpClient();
-        StatsService.DisposeHttpClient();
-        UpdateService.DisposeHttpClient();
 
-        _bugReportService = null;
-        SharedBugReportService = null;
-        _statsService = null;
-
-        AppDomain.CurrentDomain.UnhandledException -= CurrentDomain_UnhandledException;
-        DispatcherUnhandledException -= App_DispatcherUnhandledException;
-        TaskScheduler.UnobservedTaskException -= TaskScheduler_UnobservedTaskException;
-
-        GC.SuppressFinalize(this);
-    }
 }

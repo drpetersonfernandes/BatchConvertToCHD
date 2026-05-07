@@ -14,7 +14,6 @@ public static class FileExtensions
     public const string Cue = ".cue";
     public const string Iso = ".iso";
     public const string Img = ".img";
-    public const string Cdi = ".cdi";
     public const string Gdi = ".gdi";
     public const string Toc = ".toc";
     public const string Raw = ".raw";
@@ -38,7 +37,7 @@ public static class FileExtensions
     /// </summary>
     public static readonly string[] AllSupportedInputExtensionsForConversion =
     [
-        Cue, Iso, Img, Cdi, Gdi, Toc, Raw, Zip, SevenZip, Rar, Cso, Pbp, Ccd
+        Cue, Iso, Img, Gdi, Toc, Raw, Zip, SevenZip, Rar, Cso, Pbp, Ccd
     ];
 
     /// <summary>
@@ -66,7 +65,7 @@ public static class FileExtensions
     /// </summary>
     public static readonly string[] PrimaryTargetExtensions =
     [
-        Cue, Iso, Img, Cdi, Gdi, Toc, Raw
+        Cue, Iso, Img, Gdi, Toc, Raw
     ];
 
     /// <summary>

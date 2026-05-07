@@ -4,8 +4,6 @@ using System.Reflection;
 using System.Text.Json;
 using System.Windows;
 using BatchConvertToCHD.Models;
-using System.Security.Authentication;
-using System.Net.Security;
 
 namespace BatchConvertToCHD.Services;
 
@@ -17,25 +15,6 @@ public class UpdateService(string applicationName)
     private readonly string _applicationName = applicationName;
     private const string GitHubApiLatestReleaseUrl = "https://api.github.com/repos/drpetersonfernandes/BatchConvertToCHD/releases/latest";
     private static readonly JsonSerializerOptions JsonSerializerOptions = new() { PropertyNameCaseInsensitive = true };
-
-    // HttpClient should be reused across the application lifetime to avoid socket exhaustion
-    // Configure with SocketsHttpHandler to ensure TLS 1.2 and 1.3 are enabled (important for older Windows versions)
-    private static readonly HttpClient HttpClient = new(new SocketsHttpHandler
-    {
-        SslOptions = new SslClientAuthenticationOptions
-        {
-            // SslProtocols.None allows the OS to decide, but on Win7 TLS 1.2 is often disabled by default.
-            // Explicitly including Tls12 and Tls13 ensures they are available if the OS supports them.
-            EnabledSslProtocols = SslProtocols.Tls12 | SslProtocols.Tls13
-        },
-        // PooledConnectionLifetime ensures DNS changes are respected by recycling connections periodically
-        PooledConnectionLifetime = TimeSpan.FromMinutes(2)
-    });
-
-    public static void DisposeHttpClient()
-    {
-        HttpClient.Dispose();
-    }
 
     /// <summary>
     /// Checks GitHub for a newer version of the application and prompts the user to download if available.
@@ -52,7 +31,7 @@ public class UpdateService(string applicationName)
             using var request = new HttpRequestMessage(HttpMethod.Get, GitHubApiLatestReleaseUrl);
             request.Headers.UserAgent.ParseAdd(_applicationName);
 
-            var response = await HttpClient.SendAsync(request);
+            var response = await AppHttpClient.Client.SendAsync(request);
 
             if (response.StatusCode == System.Net.HttpStatusCode.Forbidden)
             {

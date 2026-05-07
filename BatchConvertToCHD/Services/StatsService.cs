@@ -1,8 +1,6 @@
 using System.Net.Http;
 using System.Net.Http.Json;
 using System.Reflection;
-using System.Security.Authentication;
-using System.Net.Security;
 
 namespace BatchConvertToCHD.Services;
 
@@ -11,26 +9,9 @@ namespace BatchConvertToCHD.Services;
 /// </summary>
 public class StatsService
 {
-    // Shared HttpClient handler for connection pooling across the application lifetime
-    private static readonly SocketsHttpHandler SharedHandler = new()
-    {
-        SslOptions = new SslClientAuthenticationOptions
-        {
-            EnabledSslProtocols = SslProtocols.Tls12 | SslProtocols.Tls13
-        },
-        PooledConnectionLifetime = TimeSpan.FromMinutes(2)
-    };
-
-    private static readonly HttpClient HttpClient = new(SharedHandler);
     private readonly string _apiUrl;
     private readonly string _apiKey;
     private readonly string _applicationId;
-
-    public static void DisposeHttpClient()
-    {
-        HttpClient.Dispose();
-        SharedHandler.Dispose();
-    }
 
     /// <summary>
     /// Initializes a new instance of the <see cref="StatsService"/> class.
@@ -64,7 +45,7 @@ public class StatsService
             request.Headers.Add("Authorization", $"Bearer {_apiKey}");
             request.Content = JsonContent.Create(payload);
 
-            await HttpClient.SendAsync(request);
+            await AppHttpClient.Client.SendAsync(request);
         }
         catch
         {

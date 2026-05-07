@@ -74,4 +74,90 @@ public class PathUtilsTests
         Assert.NotNull(result);
         Assert.Equal(Path.GetFullPath(tempDir), result);
     }
+
+    [Fact]
+    public void ValidateAndNormalizePathNullPathReturnsNull()
+    {
+        string? capturedError = null;
+        var result = PathUtils.ValidateAndNormalizePath(null!, "test folder", msg => { capturedError = msg; }, static _ => { });
+        Assert.Null(result);
+        Assert.NotNull(capturedError);
+    }
+
+    [Fact]
+    public void ValidateAndNormalizePathInvalidCharsReturnsNull()
+    {
+        string? capturedError = null;
+        var result = PathUtils.ValidateAndNormalizePath("\0invalid", "invalid path", msg => { capturedError = msg; }, static _ => { });
+        Assert.Null(result);
+        Assert.NotNull(capturedError);
+    }
+
+    [Fact]
+    public void ValidateAndNormalizePathWhitespaceOnlyReturnsNull()
+    {
+        string? capturedError = null;
+        var result = PathUtils.ValidateAndNormalizePath("   ", "test folder", msg => { capturedError = msg; }, static _ => { });
+        Assert.Null(result);
+        Assert.NotNull(capturedError);
+    }
+
+    [Fact]
+    public void GetSafeRelativePathSameRootReturnsRelativePath()
+    {
+        var root = Path.GetPathRoot(Path.GetTempPath()) ?? @"C:\";
+        var path1 = Path.Combine(root, "dir1", "subdir");
+        var path2 = Path.Combine(root, "dir1", "subdir", "sub2", "file.txt");
+
+        var result = PathUtils.GetSafeRelativePath(path1, path2);
+        Assert.NotEqual(".", result);
+        Assert.Contains("sub2", result, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void GetSafeRelativePathDifferentRootReturnsDot()
+    {
+        var result = PathUtils.GetSafeRelativePath(@"C:\dir1", @"D:\dir2");
+        Assert.Equal(".", result);
+    }
+
+    [Fact]
+    public void GetSafeRelativePathInvalidPathReturnsDot()
+    {
+        var result = PathUtils.GetSafeRelativePath(string.Empty, @"C:\test");
+        Assert.Equal(".", result);
+    }
+
+    [Fact]
+    public void GetSafeTempFileNamePreservesExtension()
+    {
+        var tempDir = Path.GetTempPath();
+        var result = PathUtils.GetSafeTempFileName("game.cue", "iso", tempDir);
+        Assert.EndsWith(".iso", result, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void GetSafeTempFileNameSanitizesInput()
+    {
+        var tempDir = Path.GetTempPath();
+        var result = PathUtils.GetSafeTempFileName("game:test.iso", "chd", tempDir);
+        var fileName = Path.GetFileNameWithoutExtension(result);
+        Assert.DoesNotContain(":", fileName, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void SanitizeFileNameAllInvalidCharsReplaced()
+    {
+        var input = "a<b>c:d\"e/f\\g|h?i*j";
+        var result = PathUtils.SanitizeFileName(input);
+        Assert.DoesNotContain("<", result, StringComparison.Ordinal);
+        Assert.DoesNotContain(">", result, StringComparison.Ordinal);
+        Assert.DoesNotContain(":", result, StringComparison.Ordinal);
+        Assert.DoesNotContain("\"", result, StringComparison.Ordinal);
+        Assert.DoesNotContain("/", result, StringComparison.Ordinal);
+        Assert.DoesNotContain("\\", result, StringComparison.Ordinal);
+        Assert.DoesNotContain("|", result, StringComparison.Ordinal);
+        Assert.DoesNotContain("?", result, StringComparison.Ordinal);
+        Assert.DoesNotContain("*", result, StringComparison.Ordinal);
+    }
 }

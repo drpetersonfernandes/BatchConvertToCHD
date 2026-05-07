@@ -4,8 +4,6 @@ using System.Net.Http;
 using System.Net.Http.Json;
 using System.Reflection;
 using System.Runtime.InteropServices;
-using System.Security.Authentication;
-using System.Net.Security;
 using System.Text;
 
 namespace BatchConvertToCHD.Services;
@@ -15,32 +13,9 @@ namespace BatchConvertToCHD.Services;
 /// </summary>
 public class BugReportService
 {
-    // Shared HttpClient handler for connection pooling across the application lifetime
-    private static readonly SocketsHttpHandler SharedHandler = new()
-    {
-        SslOptions = new SslClientAuthenticationOptions
-        {
-            EnabledSslProtocols = SslProtocols.Tls12 | SslProtocols.Tls13
-        },
-        PooledConnectionLifetime = TimeSpan.FromMinutes(2)
-    };
-
-    private static readonly HttpClient HttpClient = new(SharedHandler);
     private readonly string _apiUrl;
     private readonly string _apiKey;
     private readonly string _applicationName;
-
-    static BugReportService()
-    {
-        // Set default headers that don't change across instances
-        HttpClient.DefaultRequestHeaders.Add("Accept", "application/json");
-    }
-
-    public static void DisposeHttpClient()
-    {
-        HttpClient.Dispose();
-        SharedHandler.Dispose();
-    }
 
     /// <summary>
     /// Initializes a new instance of the <see cref="BugReportService"/> class.
@@ -94,7 +69,7 @@ public class BugReportService
             request.Headers.Add("X-API-KEY", _apiKey);
             request.Content = content;
 
-            var response = await HttpClient.SendAsync(request);
+            var response = await AppHttpClient.Client.SendAsync(request);
 
             // Return true if successful
             return response.IsSuccessStatusCode;
