@@ -121,21 +121,21 @@
                                     <DataGrid.Columns>
                                         <DataGridCheckBoxColumn Header="Select" Binding="{Binding IsSelected, UpdateSourceTrigger=PropertyChanged}" Width="80">
                                             <DataGridCheckBoxColumn.HeaderStyle>
-                                                <Style TargetType="DataGridColumnHeader">
+                                                <Style TargetType="DataGridColumnHeader" BasedOn="{StaticResource ThemedDataGridColumnHeaderStyle}">
                                                     <Setter Property="ToolTip" Value="Check or uncheck to select files for processing" />
                                                 </Style>
                                             </DataGridCheckBoxColumn.HeaderStyle>
                                         </DataGridCheckBoxColumn>
                                         <DataGridTextColumn Header="File Name" Binding="{Binding FileName}" Width="*" IsReadOnly="True">
                                             <DataGridTextColumn.HeaderStyle>
-                                                <Style TargetType="DataGridColumnHeader">
+                                                <Style TargetType="DataGridColumnHeader" BasedOn="{StaticResource ThemedDataGridColumnHeaderStyle}">
                                                     <Setter Property="ToolTip" Value="Name of the file" />
                                                 </Style>
                                             </DataGridTextColumn.HeaderStyle>
                                         </DataGridTextColumn>
                                         <DataGridTextColumn Header="Size" Binding="{Binding DisplaySize}" Width="130" IsReadOnly="True">
                                             <DataGridTextColumn.HeaderStyle>
-                                                <Style TargetType="DataGridColumnHeader">
+                                                <Style TargetType="DataGridColumnHeader" BasedOn="{StaticResource ThemedDataGridColumnHeaderStyle}">
                                                     <Setter Property="ToolTip" Value="File size" />
                                                 </Style>
                                             </DataGridTextColumn.HeaderStyle>
@@ -189,21 +189,21 @@
                                     <DataGrid.Columns>
                                         <DataGridCheckBoxColumn Header="Select" Binding="{Binding IsSelected, UpdateSourceTrigger=PropertyChanged}" Width="80">
                                             <DataGridCheckBoxColumn.HeaderStyle>
-                                                <Style TargetType="DataGridColumnHeader">
+                                                <Style TargetType="DataGridColumnHeader" BasedOn="{StaticResource ThemedDataGridColumnHeaderStyle}">
                                                     <Setter Property="ToolTip" Value="Check or uncheck to select files for processing" />
                                                 </Style>
                                             </DataGridCheckBoxColumn.HeaderStyle>
                                         </DataGridCheckBoxColumn>
                                         <DataGridTextColumn Header="File Name" Binding="{Binding FileName}" Width="*" IsReadOnly="True">
                                             <DataGridTextColumn.HeaderStyle>
-                                                <Style TargetType="DataGridColumnHeader">
+                                                <Style TargetType="DataGridColumnHeader" BasedOn="{StaticResource ThemedDataGridColumnHeaderStyle}">
                                                     <Setter Property="ToolTip" Value="Name of the file" />
                                                 </Style>
                                             </DataGridTextColumn.HeaderStyle>
                                         </DataGridTextColumn>
                                         <DataGridTextColumn Header="Size" Binding="{Binding DisplaySize}" Width="130" IsReadOnly="True">
                                             <DataGridTextColumn.HeaderStyle>
-                                                <Style TargetType="DataGridColumnHeader">
+                                                <Style TargetType="DataGridColumnHeader" BasedOn="{StaticResource ThemedDataGridColumnHeaderStyle}">
                                                     <Setter Property="ToolTip" Value="File size" />
                                                 </Style>
                                             </DataGridTextColumn.HeaderStyle>
@@ -290,21 +290,21 @@
                                     <DataGrid.Columns>
                                         <DataGridCheckBoxColumn Header="Select" Binding="{Binding IsSelected, UpdateSourceTrigger=PropertyChanged}" Width="80">
                                             <DataGridCheckBoxColumn.HeaderStyle>
-                                                <Style TargetType="DataGridColumnHeader">
+                                                <Style TargetType="DataGridColumnHeader" BasedOn="{StaticResource ThemedDataGridColumnHeaderStyle}">
                                                     <Setter Property="ToolTip" Value="Check or uncheck to select files for processing" />
                                                 </Style>
                                             </DataGridCheckBoxColumn.HeaderStyle>
                                         </DataGridCheckBoxColumn>
                                         <DataGridTextColumn Header="File Name" Binding="{Binding FileName}" Width="*" IsReadOnly="True">
                                             <DataGridTextColumn.HeaderStyle>
-                                                <Style TargetType="DataGridColumnHeader">
+                                                <Style TargetType="DataGridColumnHeader" BasedOn="{StaticResource ThemedDataGridColumnHeaderStyle}">
                                                     <Setter Property="ToolTip" Value="Name of the file" />
                                                 </Style>
                                             </DataGridTextColumn.HeaderStyle>
                                         </DataGridTextColumn>
                                         <DataGridTextColumn Header="Size" Binding="{Binding DisplaySize}" Width="130" IsReadOnly="True">
                                             <DataGridTextColumn.HeaderStyle>
-                                                <Style TargetType="DataGridColumnHeader">
+                                                <Style TargetType="DataGridColumnHeader" BasedOn="{StaticResource ThemedDataGridColumnHeaderStyle}">
                                                     <Setter Property="ToolTip" Value="File size" />
                                                 </Style>
                                             </DataGridTextColumn.HeaderStyle>
