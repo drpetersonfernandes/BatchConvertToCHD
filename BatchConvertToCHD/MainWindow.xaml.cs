@@ -1457,6 +1457,25 @@ public partial class MainWindow : IDisposable
                 fileToProcess = inputFile;
             }
 
+            if (ext is FileExtensions.Cue or FileExtensions.Gdi or FileExtensions.Toc or FileExtensions.Ccd)
+            {
+                var referencedFiles = ext switch
+                {
+                    FileExtensions.Cue => await GameFileParser.GetReferencedFilesFromCueAsync(inputFile, LogMessage, token),
+                    FileExtensions.Gdi => await GameFileParser.GetReferencedFilesFromGdiAsync(inputFile, LogMessage, token),
+                    FileExtensions.Ccd => [Path.ChangeExtension(inputFile, FileExtensions.Img), Path.ChangeExtension(inputFile, FileExtensions.Sub)],
+                    _ => await GameFileParser.GetReferencedFilesFromTocAsync(inputFile, LogMessage, token)
+                };
+
+                var missingFiles = referencedFiles.Where(static f => !File.Exists(f)).ToList();
+                if (missingFiles.Count > 0)
+                {
+                    var missingNames = string.Join(", ", missingFiles.Select(Path.GetFileName));
+                    LogMessage($"SKIPPING: {originalName} — referenced files are missing: {missingNames}");
+                    return false;
+                }
+            }
+
             UpdateWriteSpeedDisplay(0);
             var outputDir = Path.GetDirectoryName(outputChd) ?? outputFolder;
             if (!Directory.Exists(outputDir)) Directory.CreateDirectory(outputDir);
@@ -1466,12 +1485,11 @@ public partial class MainWindow : IDisposable
             {
                 success = await ConvertToChdAsync(chdmanPath, fileToProcess, outputChd, cores, forceCd, forceDvd, timeoutMinutes, token);
             }
-            catch (OperationCanceledException)
-            {
-                throw;
-            }
             catch (Exception ex)
             {
+                if (ex is OperationCanceledException)
+                    throw;
+
                 LogMessage($"Direct conversion attempt error for {originalName}: {ex.Message}");
                 _ = ReportBugAsync($"Direct conversion attempt error for {originalName}", ex);
             }
@@ -1520,7 +1538,7 @@ public partial class MainWindow : IDisposable
                         {
                             var missingNames = string.Join(", ", missingFiles.Select(Path.GetFileName));
                             LogMessage($"WARNING: Skipping temp retry for {originalName} because referenced files are missing: {missingNames}");
-                            throw new InvalidOperationException($"Referenced files are missing: {missingNames}");
+                            return false;
                         }
 
                         foreach (var file in filesToCopy.Distinct())
@@ -1541,12 +1559,11 @@ public partial class MainWindow : IDisposable
                     fileToProcess = tempInputFile;
                     success = await ConvertToChdAsync(chdmanPath, fileToProcess, outputChd, cores, forceCd, forceDvd, timeoutMinutes, token);
                 }
-                catch (OperationCanceledException)
-                {
-                    throw;
-                }
                 catch (Exception ex)
                 {
+                    if (ex is OperationCanceledException)
+                        throw;
+
                     LogMessage($"Retry via temp failed for {originalName} ({inputFile}): {ex.Message}");
                     _ = ReportBugAsync($"Retry via temp failed for {originalName}", ex);
                 }
@@ -2171,6 +2188,8 @@ public partial class MainWindow : IDisposable
 
         try
         {
+            token.ThrowIfCancellationRequested();
+
             if (timeoutMinutes is > 0)
             {
                 using var timeoutCts = new CancellationTokenSource();
@@ -2190,7 +2209,7 @@ public partial class MainWindow : IDisposable
                 await Task.Run(() => process.WaitForExit(5000), CancellationToken.None);
             }
         }
-        catch (OperationCanceledException)
+        catch (Exception ex) when (ex is OperationCanceledException)
         {
             if (!process.HasExited)
             {
