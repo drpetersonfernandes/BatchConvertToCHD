@@ -1252,6 +1252,8 @@ public partial class MainWindow : IDisposable
             return;
         }
 
+        CheckDiskSpace(outputFolder, filesToConvert, true);
+
         await Application.Current.Dispatcher.InvokeAsync(() => ProgressBar.Maximum = _totalFilesProcessed);
         var processedCount = 0;
         var cores = Environment.ProcessorCount;
@@ -1294,6 +1296,8 @@ public partial class MainWindow : IDisposable
         {
             return;
         }
+
+        CheckDiskSpace(outputFolder, selectedFiles, false);
 
         await Application.Current.Dispatcher.InvokeAsync(() => ProgressBar.Maximum = _totalFilesProcessed);
         var processedCount = 0;
@@ -1490,7 +1494,15 @@ public partial class MainWindow : IDisposable
                 if (ex is OperationCanceledException)
                     throw;
 
-                LogMessage($"Direct conversion attempt error for {originalName}: {ex.Message}");
+                if (IsDiskSpaceException(ex))
+                {
+                    LogMessage($"ERROR: Not enough disk space to convert {originalName}. Free up disk space and try again.");
+                }
+                else
+                {
+                    LogMessage($"Direct conversion attempt error for {originalName}: {ex.Message}");
+                }
+
                 _ = ReportBugAsync($"Direct conversion attempt error for {originalName}", ex);
             }
 
@@ -1564,7 +1576,15 @@ public partial class MainWindow : IDisposable
                     if (ex is OperationCanceledException)
                         throw;
 
-                    LogMessage($"Retry via temp failed for {originalName} ({inputFile}): {ex.Message}");
+                    if (IsDiskSpaceException(ex))
+                    {
+                        LogMessage($"ERROR: Not enough disk space to convert {originalName} (via temp). Free up disk space and try again.");
+                    }
+                    else
+                    {
+                        LogMessage($"Retry via temp failed for {originalName} ({inputFile}): {ex.Message}");
+                    }
+
                     _ = ReportBugAsync($"Retry via temp failed for {originalName}", ex);
                 }
             }
@@ -1617,7 +1637,15 @@ public partial class MainWindow : IDisposable
         }
         catch (Exception ex)
         {
-            LogMessage($"Error processing {originalName}: {ex.Message}");
+            if (IsDiskSpaceException(ex))
+            {
+                LogMessage($"ERROR: Not enough disk space to process {originalName}. Free up disk space and try again.");
+            }
+            else
+            {
+                LogMessage($"Error processing {originalName}: {ex.Message}");
+            }
+
             _ = ReportBugAsync($"Error processing {originalName}", ex);
             if (!string.IsNullOrEmpty(outputChd)) await TryDeleteFileAsync(outputChd, "failed CHD", CancellationToken.None);
             return false;
@@ -1825,9 +1853,12 @@ public partial class MainWindow : IDisposable
             }
         };
 
+        var errorBuffer = new StringBuilder();
         process.ErrorDataReceived += (_, a) =>
         {
             if (string.IsNullOrEmpty(a.Data)) return;
+
+            errorBuffer.AppendLine(a.Data);
 
             // Filter progress messages but log important ones
             if (a.Data.Contains("% complete"))
@@ -1905,9 +1936,15 @@ public partial class MainWindow : IDisposable
 
         var success = process.ExitCode == 0 && !token.IsCancellationRequested;
 
-        if (success && deleteOriginal)
+        switch (success)
         {
-            await TryDeleteFileAsync(chdFile, "original CHD file", token);
+            case false when !token.IsCancellationRequested && IsDiskSpaceError(errorBuffer.ToString()):
+                LogMessage($"ERROR: Extraction of '{Path.GetFileName(chdFile)}' failed due to insufficient disk space.");
+                LogMessage("       Free up disk space on the output drive and try again.");
+                break;
+            case true when deleteOriginal:
+                await TryDeleteFileAsync(chdFile, "original CHD file", token);
+                break;
         }
 
         return success;
@@ -2129,6 +2166,7 @@ public partial class MainWindow : IDisposable
             ErrorDialog = false
         };
 
+        var errorBuffer = new StringBuilder();
         process.OutputDataReceived += (_, a) =>
         {
             if (string.IsNullOrEmpty(a.Data)) return;
@@ -2149,6 +2187,8 @@ public partial class MainWindow : IDisposable
         process.ErrorDataReceived += (_, a) =>
         {
             if (string.IsNullOrEmpty(a.Data)) return;
+
+            errorBuffer.AppendLine(a.Data);
 
             if (a.Data.Contains("Compression complete") || a.Data.Contains("final ratio"))
             {
@@ -2241,7 +2281,16 @@ public partial class MainWindow : IDisposable
             process.CancelErrorRead();
         }
 
-        return process.ExitCode == 0 && !token.IsCancellationRequested;
+        if (process.ExitCode == 0 && !token.IsCancellationRequested)
+            return true;
+
+        if (!token.IsCancellationRequested && IsDiskSpaceError(errorBuffer.ToString()))
+        {
+            LogMessage($"ERROR: Conversion of '{Path.GetFileName(inputFile)}' failed due to insufficient disk space.");
+            LogMessage("       Free up disk space on the output drive and try again.");
+        }
+
+        return false;
     }
 
     private async Task<PbpExtractionResult> ExtractPbpToCueBinAsync(string psxPackagerPath, string inputFile, string outputFolder, CancellationToken token)
@@ -2608,10 +2657,97 @@ public partial class MainWindow : IDisposable
                 await Task.Run(() => File.Copy(source, dest, true), token);
                 return;
             }
-            catch (IOException) when (attempt < maxRetries - 1)
+            catch (IOException ex) when (attempt < maxRetries - 1 && !IsDiskSpaceException(ex))
             {
                 await Task.Delay(baseDelayMs * (1 << attempt), token);
             }
+        }
+    }
+
+    private static bool IsDiskSpaceException(Exception ex)
+    {
+        // HResult 0x80070070 = ERROR_DISK_FULL, 0x80070079 = ERROR_SEM_TIMEOUT (can indicate disk issues)
+        return ex is IOException { HResult: -2147024784 or -2147024783 };
+    }
+
+    private static bool IsDiskSpaceError(string? errorOutput)
+    {
+        if (string.IsNullOrEmpty(errorOutput)) return false;
+
+        return errorOutput.Contains("not enough space", StringComparison.OrdinalIgnoreCase) ||
+               errorOutput.Contains("not enough disk space", StringComparison.OrdinalIgnoreCase) ||
+               errorOutput.Contains("disk full", StringComparison.OrdinalIgnoreCase) ||
+               errorOutput.Contains("no space left", StringComparison.OrdinalIgnoreCase) ||
+               errorOutput.Contains("insufficient disk space", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private void CheckDiskSpace(string outputFolder, string[] filesToProcess, bool isConversion)
+    {
+        try
+        {
+            var outputRoot = Path.GetPathRoot(Path.GetFullPath(outputFolder));
+            if (string.IsNullOrEmpty(outputRoot)) return;
+
+            var driveInfo = new DriveInfo(outputRoot);
+            if (!driveInfo.IsReady) return;
+
+            var availableGb = driveInfo.AvailableFreeSpace / (1024.0 * 1024.0 * 1024.0);
+            var totalInputSize = 0L;
+            foreach (var file in filesToProcess)
+            {
+                try
+                {
+                    totalInputSize += new FileInfo(file).Length;
+                }
+                catch
+                {
+                    /* skip inaccessible files */
+                }
+            }
+
+            var totalInputGb = totalInputSize / (1024.0 * 1024.0 * 1024.0);
+
+            if (isConversion)
+            {
+                // CHD compression typically reduces size, but warn if available space < 50% of input
+                if (availableGb < totalInputGb * 0.5)
+                {
+                    LogMessage($"WARNING: Output drive ({outputRoot.TrimEnd('\\')}) has {availableGb:F1} GB free, input files total {totalInputGb:F1} GB.");
+                    LogMessage("         CHD compression usually reduces file size, but you may run out of disk space.");
+                }
+            }
+            else
+            {
+                // Extraction: output can be larger than CHD input
+                if (availableGb < totalInputGb)
+                {
+                    LogMessage($"WARNING: Output drive ({outputRoot.TrimEnd('\\')}) has {availableGb:F1} GB free, CHD files total {totalInputGb:F1} GB.");
+                    LogMessage("         Extracted files are typically larger than CHD files. You may run out of disk space.");
+                }
+            }
+
+            // Also check temp drive if conversion (temp files are created)
+            if (isConversion)
+            {
+                var tempRoot = Path.GetPathRoot(Path.GetTempPath());
+                if (!string.IsNullOrEmpty(tempRoot) && !string.Equals(tempRoot, outputRoot, StringComparison.OrdinalIgnoreCase))
+                {
+                    var tempDrive = new DriveInfo(tempRoot);
+                    if (tempDrive.IsReady)
+                    {
+                        var tempFreeGb = tempDrive.AvailableFreeSpace / (1024.0 * 1024.0 * 1024.0);
+                        if (tempFreeGb < totalInputGb)
+                        {
+                            LogMessage($"WARNING: Temp drive ({tempRoot.TrimEnd('\\')}) has {tempFreeGb:F1} GB free, input files total {totalInputGb:F1} GB.");
+                            LogMessage("         Temporary files are created during conversion. You may run out of disk space.");
+                        }
+                    }
+                }
+            }
+        }
+        catch
+        {
+            // Best effort - don't fail the operation if disk check itself fails
         }
     }
 
