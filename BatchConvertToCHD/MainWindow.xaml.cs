@@ -255,12 +255,22 @@ public partial class MainWindow : IDisposable
         {
             try
             {
-                var directories = Directory.GetDirectories(Path.GetTempPath(), $"{TempDirPrefix}*");
-                foreach (var dir in directories)
+                foreach (var basePath in PathUtils.GetPossibleTempBasePaths())
                 {
                     try
                     {
-                        Directory.Delete(dir, true);
+                        var directories = Directory.GetDirectories(basePath, $"{TempDirPrefix}*");
+                        foreach (var dir in directories)
+                        {
+                            try
+                            {
+                                Directory.Delete(dir, true);
+                            }
+                            catch
+                            {
+                                /* ignore */
+                            }
+                        }
                     }
                     catch
                     {
@@ -1357,7 +1367,7 @@ public partial class MainWindow : IDisposable
             string fileToProcess;
             if (ext.Equals(FileExtensions.Cso, StringComparison.OrdinalIgnoreCase))
             {
-                var tempDir = Path.Combine(Path.GetTempPath(), $"{TempDirPrefix}{Guid.NewGuid():N}");
+                var tempDir = PathUtils.GetBestTempDirectory(inputFile, outputFolder, TempDirPrefix);
                 tempDirs.Add(tempDir);
                 await Task.Run(() => Directory.CreateDirectory(tempDir), token);
                 var tempIso = PathUtils.GetSafeTempFileName(originalName, "iso", tempDir);
@@ -1372,7 +1382,7 @@ public partial class MainWindow : IDisposable
             }
             else if (FileExtensions.ArchiveExtensionsSet.Contains(ext))
             {
-                var tempDir = Path.Combine(Path.GetTempPath(), $"{TempDirPrefix}{Guid.NewGuid():N}");
+                var tempDir = PathUtils.GetBestTempDirectory(inputFile, outputFolder, TempDirPrefix);
                 tempDirs.Add(tempDir);
                 var result = await _archiveService.ExtractArchiveAsync(inputFile, tempDir, LogMessage, token);
                 if (!result.Success)
@@ -1414,7 +1424,7 @@ public partial class MainWindow : IDisposable
                     return false;
                 }
 
-                var tempDir = Path.Combine(Path.GetTempPath(), $"{TempDirPrefix}{Guid.NewGuid():N}");
+                var tempDir = PathUtils.GetBestTempDirectory(inputFile, outputFolder, TempDirPrefix);
                 tempDirs.Add(tempDir);
                 await Task.Run(() => Directory.CreateDirectory(tempDir), token);
 
@@ -1515,7 +1525,7 @@ public partial class MainWindow : IDisposable
 
                 try
                 {
-                    var tempDir = Path.Combine(Path.GetTempPath(), $"{TempDirPrefix}{Guid.NewGuid():N}");
+                    var tempDir = PathUtils.GetBestTempDirectory(inputFile, outputFolder, TempDirPrefix);
                     tempDirs.Add(tempDir);
                     await Task.Run(() => Directory.CreateDirectory(tempDir), token);
 

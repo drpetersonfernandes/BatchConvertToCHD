@@ -147,6 +147,14 @@ public class ArchiveService : IDisposable
         try
         {
             token.ThrowIfCancellationRequested();
+
+            var spaceError = CheckTempDiskSpace(originalArchivePath, tempDirectoryRoot, archiveFileName);
+            if (spaceError != null)
+            {
+                onLog($"ERROR: {spaceError}");
+                return (false, new List<string>(), tempDirectoryRoot, spaceError);
+            }
+
             Directory.CreateDirectory(tempDirectoryRoot);
             onLog($"Extracting {archiveFileName} to: {tempDirectoryRoot}");
 
@@ -209,6 +217,13 @@ public class ArchiveService : IDisposable
         catch (SharpCompress.Common.ArchiveOperationException ex)
         {
             return (false, [], tempDirectoryRoot, $"Archive appears to be corrupt or unsupported: {ex.Message}");
+        }
+        catch (IOException ex) when (IsDiskFullException(ex))
+        {
+            var driveRoot = Path.GetPathRoot(Path.GetFullPath(tempDirectoryRoot))?.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar) ?? "temp drive";
+            var archiveSizeGb = new FileInfo(originalArchivePath).Length / (1024.0 * 1024.0 * 1024.0);
+            return (false, new List<string>(), tempDirectoryRoot,
+                $"Not enough disk space on {driveRoot}. The archive ({archiveFileName}, {archiveSizeGb:F1} GB uncompressed) cannot be extracted. Free up space on {driveRoot} or change your system TEMP directory to a drive with more space.");
         }
         catch (Exception ex)
         {
@@ -401,6 +416,72 @@ public class ArchiveService : IDisposable
         {
             /* ignore */
         }
+    }
+
+    private static bool IsDiskFullException(Exception ex)
+    {
+        return ex is IOException { HResult: -2147024784 or -2147024783 };
+    }
+
+    private static string? CheckTempDiskSpace(string originalArchivePath, string tempDirectoryRoot, string archiveFileName)
+    {
+        try
+        {
+            var driveRoot = Path.GetPathRoot(Path.GetFullPath(tempDirectoryRoot));
+            if (string.IsNullOrEmpty(driveRoot))
+            {
+                return null;
+            }
+
+            var drive = new DriveInfo(driveRoot);
+            if (!drive.IsReady)
+            {
+                return null;
+            }
+
+            var availableSpace = drive.AvailableFreeSpace;
+
+            long estimatedUncompressedSize;
+            try
+            {
+                estimatedUncompressedSize = EstimateArchiveUncompressedSize(originalArchivePath);
+            }
+            catch
+            {
+                estimatedUncompressedSize = new FileInfo(originalArchivePath).Length;
+            }
+
+            var safetyMargin = Math.Max(estimatedUncompressedSize / 10, 100L * 1024 * 1024);
+            var requiredSpace = estimatedUncompressedSize + safetyMargin;
+
+            if (availableSpace < requiredSpace)
+            {
+                var requiredGb = requiredSpace / (1024.0 * 1024.0 * 1024.0);
+                var availableGb = availableSpace / (1024.0 * 1024.0 * 1024.0);
+                return $"Not enough disk space on {driveRoot.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)}. " +
+                       $"Need at least {requiredGb:F1} GB to extract {archiveFileName}, but only {availableGb:F1} GB available. " +
+                       $"Free up space or change your system TEMP directory to a drive with more space.";
+            }
+        }
+        catch
+        {
+            // Best effort - don't fail the operation if disk check itself fails
+        }
+
+        return null;
+    }
+
+    private static long EstimateArchiveUncompressedSize(string archivePath)
+    {
+        var extension = Path.GetExtension(archivePath);
+
+        if (extension.Equals(FileExtensions.Zip, StringComparison.OrdinalIgnoreCase))
+        {
+            using var archive = ZipFile.OpenRead(archivePath);
+            return archive.Entries.Sum(static e => e.Length);
+        }
+
+        return new FileInfo(archivePath).Length;
     }
 
     /// <summary>

@@ -94,6 +94,127 @@ public static class PathUtils
     }
 
     /// <summary>
+    /// Returns the full path to a new unique temporary directory, selecting the drive
+    /// with the most available free space from among the input file's drive,
+    /// the output folder's drive, the system temp drive, and any other fixed drives.
+    /// Falls back to the system temp path if no suitable alternative is found.
+    /// </summary>
+    /// <param name="inputFilePath">Path to the input file (used to prioritize its drive).</param>
+    /// <param name="outputFolderPath">Path to the output folder (used to prioritize its drive).</param>
+    /// <param name="tempDirPrefix">Prefix for the temporary directory name (e.g., "BatchConvertToCHD_Temp_").</param>
+    /// <returns>The full path to a new temporary directory that has not yet been created on disk.</returns>
+    public static string GetBestTempDirectory(string? inputFilePath, string? outputFolderPath, string tempDirPrefix)
+    {
+        const long minFreeBytes = 1024L * 1024 * 1024; // 1 GB minimum to consider a drive viable
+
+        var candidates = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        AddCandidateRoot(inputFilePath);
+        AddCandidateRoot(outputFolderPath);
+
+        var systemTempRoot = Path.GetPathRoot(Path.GetTempPath());
+        if (!string.IsNullOrEmpty(systemTempRoot))
+            candidates.Add(systemTempRoot);
+
+        foreach (var drive in DriveInfo.GetDrives())
+        {
+            try
+            {
+                if (drive is { IsReady: true, DriveType: DriveType.Fixed })
+                    candidates.Add(drive.RootDirectory.FullName);
+            }
+            catch
+            {
+                // ignored
+            }
+        }
+
+        string? bestRoot = null;
+        long bestFree = 0;
+
+        foreach (var root in candidates)
+        {
+            try
+            {
+                var drive = new DriveInfo(root);
+                if (drive.IsReady && drive.AvailableFreeSpace > bestFree)
+                {
+                    bestFree = drive.AvailableFreeSpace;
+                    bestRoot = root;
+                }
+            }
+            catch
+            {
+                // ignored
+            }
+        }
+
+        var guid = Guid.NewGuid().ToString("N");
+        string basePath;
+
+        if (bestRoot != null && bestFree >= minFreeBytes &&
+            !string.Equals(bestRoot, systemTempRoot, StringComparison.OrdinalIgnoreCase))
+        {
+            basePath = Path.Combine(
+                bestRoot.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar),
+                "BatchConvertToCHD_Temp");
+        }
+        else
+        {
+            basePath = Path.GetTempPath();
+        }
+
+        return Path.Combine(basePath, $"{tempDirPrefix}{guid}");
+
+        void AddCandidateRoot(string? path)
+        {
+            if (string.IsNullOrEmpty(path)) return;
+
+            try
+            {
+                var root = Path.GetPathRoot(Path.GetFullPath(path));
+                if (!string.IsNullOrEmpty(root))
+                    candidates.Add(root);
+            }
+            catch
+            {
+                // ignored
+            }
+        }
+    }
+
+    /// <summary>
+    /// Collects all base paths that may contain BatchConvertToCHD temp directories,
+    /// for use by startup cleanup. Includes the system temp path and the
+    /// BatchConvertToCHD_Temp folder on the root of every ready fixed drive.
+    /// </summary>
+    public static IEnumerable<string> GetPossibleTempBasePaths()
+    {
+        var paths = new List<string> { Path.GetTempPath() };
+
+        foreach (var drive in DriveInfo.GetDrives())
+        {
+            try
+            {
+                if (drive is { IsReady: true, DriveType: DriveType.Fixed })
+                {
+                    var altPath = Path.Combine(
+                        drive.RootDirectory.FullName.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar),
+                        "BatchConvertToCHD_Temp");
+                    if (Directory.Exists(altPath))
+                        paths.Add(altPath);
+                }
+            }
+            catch
+            {
+                // ignored
+            }
+        }
+
+        return paths;
+    }
+
+    /// <summary>
     /// Validates and normalizes a directory path. Returns null if invalid.
     /// </summary>
     public static string? ValidateAndNormalizePath(string? path, string pathName, Action<string> onError, Action<string> onLog)
