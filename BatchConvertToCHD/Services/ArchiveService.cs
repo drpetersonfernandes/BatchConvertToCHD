@@ -331,25 +331,28 @@ public class ArchiveService : IDisposable
         {
             onLog($"Direct extraction failed ({ex.Message}). Attempting fallback with local copy...");
 
-            // Only report unexpected errors; skip bug reports for known corrupt or encrypted archive exceptions
-            if (ex is not InvalidDataException &&
-                ex is not SharpCompress.Common.IncompleteArchiveException &&
-                ex is not SharpCompress.Common.CryptographicException &&
-                ex is not SharpCompress.Common.ArchiveOperationException &&
-                ex.GetType().FullName != "SharpCompress.Compressors.LZMA.DataErrorException")
+            // For corrupt or incomplete archives, skip fallback and re-throw immediately
+            // The fallback mechanism is designed for file locking issues, not corrupt data
+            if (ex is InvalidDataException ||
+                ex is SharpCompress.Common.IncompleteArchiveException ||
+                ex is SharpCompress.Common.CryptographicException ||
+                ex is SharpCompress.Common.ArchiveOperationException ||
+                ex.GetType().FullName == "SharpCompress.Compressors.LZMA.DataErrorException")
             {
-                // Report bug if service is available
-                try
+                throw;
+            }
+
+            // Report unexpected errors if service is available
+            try
+            {
+                if (App.SharedBugReportService != null)
                 {
-                    if (App.SharedBugReportService != null)
-                    {
-                        _ = App.SharedBugReportService.SendBugReportAsync("Direct extraction failed", ex);
-                    }
+                    _ = App.SharedBugReportService.SendBugReportAsync("Direct extraction failed", ex);
                 }
-                catch
-                {
-                    // Ignore errors in bug reporting to avoid infinite loops
-                }
+            }
+            catch
+            {
+                // Ignore errors in bug reporting to avoid infinite loops
             }
         }
 
