@@ -1501,7 +1501,7 @@ public partial class MainWindow : IDisposable
             }
             catch (Exception ex)
             {
-                if (ex is OperationCanceledException)
+                if (IsCancellationException(ex))
                     throw;
 
                 if (IsDiskSpaceException(ex))
@@ -1583,7 +1583,7 @@ public partial class MainWindow : IDisposable
                 }
                 catch (Exception ex)
                 {
-                    if (ex is OperationCanceledException)
+                    if (IsCancellationException(ex))
                         throw;
 
                     if (IsDiskSpaceException(ex))
@@ -2674,7 +2674,12 @@ public partial class MainWindow : IDisposable
         }
     }
 
-    private static bool IsDiskSpaceException(Exception ex)
+    internal static bool IsCancellationException(Exception ex)
+    {
+        return ex is OperationCanceledException;
+    }
+
+    internal static bool IsDiskSpaceException(Exception ex)
     {
         // HResult 0x80070070 = ERROR_DISK_FULL, 0x80070079 = ERROR_SEM_TIMEOUT (can indicate disk issues)
         return ex is IOException { HResult: -2147024784 or -2147024783 };
