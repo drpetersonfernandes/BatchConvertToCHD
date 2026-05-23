@@ -1473,19 +1473,27 @@ public partial class MainWindow : IDisposable
 
             if (ext is FileExtensions.Cue or FileExtensions.Gdi or FileExtensions.Toc or FileExtensions.Ccd)
             {
-                var referencedFiles = ext switch
+                try
                 {
-                    FileExtensions.Cue => await GameFileParser.GetReferencedFilesFromCueAsync(inputFile, LogMessage, token),
-                    FileExtensions.Gdi => await GameFileParser.GetReferencedFilesFromGdiAsync(inputFile, LogMessage, token),
-                    FileExtensions.Ccd => [Path.ChangeExtension(inputFile, FileExtensions.Img), Path.ChangeExtension(inputFile, FileExtensions.Sub)],
-                    _ => await GameFileParser.GetReferencedFilesFromTocAsync(inputFile, LogMessage, token)
-                };
+                    var referencedFiles = ext switch
+                    {
+                        FileExtensions.Cue => await GameFileParser.GetReferencedFilesFromCueAsync(inputFile, LogMessage, token),
+                        FileExtensions.Gdi => await GameFileParser.GetReferencedFilesFromGdiAsync(inputFile, LogMessage, token),
+                        FileExtensions.Ccd => [Path.ChangeExtension(inputFile, FileExtensions.Img), Path.ChangeExtension(inputFile, FileExtensions.Sub)],
+                        _ => await GameFileParser.GetReferencedFilesFromTocAsync(inputFile, LogMessage, token)
+                    };
 
-                var missingFiles = referencedFiles.Where(static f => !File.Exists(f)).ToList();
-                if (missingFiles.Count > 0)
+                    var missingFiles = referencedFiles.Where(static f => !File.Exists(f)).ToList();
+                    if (missingFiles.Count > 0)
+                    {
+                        var missingNames = string.Join(", ", missingFiles.Select(Path.GetFileName));
+                        LogMessage($"SKIPPING: {originalName} — referenced files are missing: {missingNames}");
+                        return false;
+                    }
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
                 {
-                    var missingNames = string.Join(", ", missingFiles.Select(Path.GetFileName));
-                    LogMessage($"SKIPPING: {originalName} — referenced files are missing: {missingNames}");
+                    LogMessage($"SKIPPING: {originalName} — could not validate referenced files: {ex.Message}");
                     return false;
                 }
             }

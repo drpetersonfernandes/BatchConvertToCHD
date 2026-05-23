@@ -1,5 +1,4 @@
 using System.IO;
-using System.Runtime.ExceptionServices;
 using System.Text;
 
 namespace BatchConvertToCHD.Utilities;
@@ -62,7 +61,8 @@ public static class GameFileParser
                             afterFilename.Equals("WAVE", StringComparison.OrdinalIgnoreCase) ||
                             afterFilename.Equals("MP3", StringComparison.OrdinalIgnoreCase) ||
                             afterFilename.Equals("AIFF", StringComparison.OrdinalIgnoreCase) ||
-                            afterFilename.Equals("MOTOROLA", StringComparison.OrdinalIgnoreCase))
+                            afterFilename.Equals("MOTOROLA", StringComparison.OrdinalIgnoreCase) ||
+                            afterFilename.Equals("AUDIO", StringComparison.OrdinalIgnoreCase))
                         {
                             fileName = rest[..lastSpace];
                         }
@@ -86,8 +86,7 @@ public static class GameFileParser
         }
         catch (Exception ex)
         {
-            onLog($"Error parsing CUE file {Path.GetFileName(cuePath)}: {ex.Message}");
-            ExceptionDispatchInfo.Capture(ex).Throw();
+            onLog($"[WARNING] Could not parse CUE file: {Path.GetFileName(cuePath)}. Error: {ex.Message}");
         }
 
         return referencedFiles;
@@ -156,8 +155,7 @@ public static class GameFileParser
         }
         catch (Exception ex)
         {
-            onLog($"Error parsing GDI file {Path.GetFileName(gdiPath)}: {ex.Message}");
-            ExceptionDispatchInfo.Capture(ex).Throw();
+            onLog($"[WARNING] Could not parse GDI file: {Path.GetFileName(gdiPath)}. Error: {ex.Message}");
         }
 
         return referencedFiles;
@@ -214,7 +212,8 @@ public static class GameFileParser
                             afterFilename.Equals("WAVE", StringComparison.OrdinalIgnoreCase) ||
                             afterFilename.Equals("MP3", StringComparison.OrdinalIgnoreCase) ||
                             afterFilename.Equals("AIFF", StringComparison.OrdinalIgnoreCase) ||
-                            afterFilename.Equals("MOTOROLA", StringComparison.OrdinalIgnoreCase))
+                            afterFilename.Equals("MOTOROLA", StringComparison.OrdinalIgnoreCase) ||
+                            afterFilename.Equals("AUDIO", StringComparison.OrdinalIgnoreCase))
                         {
                             fileName = rest[..lastSpace];
                         }
@@ -238,8 +237,7 @@ public static class GameFileParser
         }
         catch (Exception ex)
         {
-            onLog($"Error parsing TOC file {Path.GetFileName(tocPath)}: {ex.Message}");
-            ExceptionDispatchInfo.Capture(ex).Throw();
+            onLog($"[WARNING] Could not parse TOC file: {Path.GetFileName(tocPath)}. Error: {ex.Message}");
         }
 
         return referencedFiles;

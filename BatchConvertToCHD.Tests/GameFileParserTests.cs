@@ -57,13 +57,11 @@ public class GameFileParserTests : IDisposable
     }
 
     [Fact]
-    public async Task GetReferencedFilesFromCueAsyncMissingFileThrows()
+    public async Task GetReferencedFilesFromCueAsyncMissingFileReturnsEmptyList()
     {
         var cuePath = Path.Combine(_tempDir, "missing.cue");
-        await Assert.ThrowsAsync<FileNotFoundException>(async () =>
-        {
-            await GameFileParser.GetReferencedFilesFromCueAsync(cuePath, static _ => { }, CancellationToken.None);
-        });
+        var result = await GameFileParser.GetReferencedFilesFromCueAsync(cuePath, static _ => { }, CancellationToken.None);
+        Assert.Empty(result);
     }
 
     [Fact]
@@ -96,13 +94,11 @@ public class GameFileParserTests : IDisposable
     }
 
     [Fact]
-    public async Task GetReferencedFilesFromGdiAsyncMissingFileThrows()
+    public async Task GetReferencedFilesFromGdiAsyncMissingFileReturnsEmptyList()
     {
         var gdiPath = Path.Combine(_tempDir, "missing.gdi");
-        await Assert.ThrowsAsync<FileNotFoundException>(async () =>
-        {
-            await GameFileParser.GetReferencedFilesFromGdiAsync(gdiPath, static _ => { }, CancellationToken.None);
-        });
+        var result = await GameFileParser.GetReferencedFilesFromGdiAsync(gdiPath, static _ => { }, CancellationToken.None);
+        Assert.Empty(result);
     }
 
     [Fact]
@@ -119,13 +115,11 @@ public class GameFileParserTests : IDisposable
     }
 
     [Fact]
-    public async Task GetReferencedFilesFromTocAsyncMissingFileThrows()
+    public async Task GetReferencedFilesFromTocAsyncMissingFileReturnsEmptyList()
     {
         var tocPath = Path.Combine(_tempDir, "missing.toc");
-        await Assert.ThrowsAsync<FileNotFoundException>(async () =>
-        {
-            await GameFileParser.GetReferencedFilesFromTocAsync(tocPath, static _ => { }, CancellationToken.None);
-        });
+        var result = await GameFileParser.GetReferencedFilesFromTocAsync(tocPath, static _ => { }, CancellationToken.None);
+        Assert.Empty(result);
     }
 
     [Fact]
