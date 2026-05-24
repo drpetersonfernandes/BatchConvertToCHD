@@ -1796,7 +1796,6 @@ public partial class MainWindow : IDisposable
         catch (Exception ex)
         {
             // Log error but don't fail the verification
-            Debug.WriteLine($"Failed to move file {sourceFile}: {ex.Message}");
             _ = ReportBugAsync($"Failed to move file {sourceFile}", ex);
         }
     }
@@ -1927,32 +1926,20 @@ public partial class MainWindow : IDisposable
         }
         catch (OperationCanceledException)
         {
-            if (!process.HasExited)
-            {
-                process.Kill(true);
-                // Wait for process to fully exit and release file handles
-                await Task.Run(() => process.WaitForExit(5000), CancellationToken.None);
-            }
-
             // Wait a bit more for file handles to be fully released
             await Task.Delay(500, CancellationToken.None);
             // Clean up partially extracted file
             await TryDeleteFileAsync(outputFile, "partially extracted file", CancellationToken.None);
             throw;
         }
-        catch (Exception)
+        finally
         {
-            // Ensure process is terminated on any other exception
             if (!process.HasExited)
             {
                 process.Kill(true);
                 await Task.Run(() => process.WaitForExit(5000), CancellationToken.None);
             }
 
-            throw;
-        }
-        finally
-        {
             ctsSpeed.Cancel();
             await Task.WhenAny(readSpeedTask, Task.Delay(500, CancellationToken.None));
             // Ensure output streams are properly drained before disposal
@@ -2268,28 +2255,16 @@ public partial class MainWindow : IDisposable
             {
                 await process.WaitForExitAsync(token);
             }
-
-            if (token.IsCancellationRequested && !process.HasExited)
-            {
-                process.Kill(true);
-                await Task.Run(() => process.WaitForExit(5000), CancellationToken.None);
-            }
         }
         catch (Exception ex) when (ex is OperationCanceledException)
         {
-            if (!process.HasExited)
-            {
-                process.Kill(true);
-                await Task.Run(() => process.WaitForExit(5000), CancellationToken.None);
-            }
-
             if (token.IsCancellationRequested)
                 throw;
 
             if (timeoutMinutes != null) LogMessage($"TIMEOUT: Conversion of '{Path.GetFileName(inputFile)}' exceeded {timeoutMinutes.Value} minute(s). Marking as failed.");
             return false;
         }
-        catch (Exception)
+        finally
         {
             if (!process.HasExited)
             {
@@ -2297,10 +2272,6 @@ public partial class MainWindow : IDisposable
                 await Task.Run(() => process.WaitForExit(5000), CancellationToken.None);
             }
 
-            throw;
-        }
-        finally
-        {
             ctsSpeed.Cancel();
             await Task.WhenAny(speedMonitoringTask, Task.Delay(500, CancellationToken.None));
             process.CancelOutputRead();
@@ -2349,31 +2320,16 @@ public partial class MainWindow : IDisposable
             await process.WaitForExitAsync(timeoutCts.Token);
             if (token.IsCancellationRequested && !process.HasExited)
             {
-                process.Kill(true);
-                await Task.Run(() => process.WaitForExit(5000), CancellationToken.None);
                 throw new OperationCanceledException();
             }
         }
-        catch (OperationCanceledException)
+        finally
         {
-            if (!process.HasExited)
-            {
-                process.Kill(true);
-            }
-
-            await Task.Run(() => process.WaitForExit(5000), CancellationToken.None);
-            throw;
-        }
-        catch (Exception)
-        {
-            // Ensure process is terminated on any other exception
             if (!process.HasExited)
             {
                 process.Kill(true);
                 await Task.Run(() => process.WaitForExit(5000), CancellationToken.None);
             }
-
-            throw;
         }
 
         if (process.ExitCode != 0)
@@ -2516,29 +2472,14 @@ public partial class MainWindow : IDisposable
         {
             await process.WaitForExitAsync(token);
         }
-        catch (OperationCanceledException)
+        finally
         {
-            if (!process.HasExited)
-            {
-                process.Kill(true);
-            }
-
-            await Task.Run(() => process.WaitForExit(5000), CancellationToken.None);
-            throw;
-        }
-        catch (Exception)
-        {
-            // Ensure process is terminated on any other exception
             if (!process.HasExited)
             {
                 process.Kill(true);
                 await Task.Run(() => process.WaitForExit(5000), CancellationToken.None);
             }
 
-            throw;
-        }
-        finally
-        {
             ctsSpeed.Cancel();
             await Task.WhenAny(readSpeedTask, Task.Delay(500, CancellationToken.None));
             // Ensure output streams are properly drained before disposal

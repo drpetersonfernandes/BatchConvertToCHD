@@ -17,88 +17,9 @@ public static class GameFileParser
     /// <param name="onLog">Callback for logging messages.</param>
     /// <param name="token">Cancellation token to cancel the operation.</param>
     /// <returns>A list of file paths referenced by the CUE sheet.</returns>
-    public static async Task<List<string>> GetReferencedFilesFromCueAsync(string cuePath, Action<string> onLog, CancellationToken token)
+    public static Task<List<string>> GetReferencedFilesFromCueAsync(string cuePath, Action<string> onLog, CancellationToken token)
     {
-        var referencedFiles = new List<string>();
-        var cueDir = Path.GetDirectoryName(cuePath) ?? string.Empty;
-        try
-        {
-            var lines = await File.ReadAllLinesAsync(cuePath, token);
-            token.ThrowIfCancellationRequested();
-            foreach (var line in lines)
-            {
-                var trimmedLine = line.Trim();
-                if (!trimmedLine.StartsWith("FILE ", StringComparison.OrdinalIgnoreCase))
-                {
-                    continue;
-                }
-
-                string fileName;
-                var firstQuote = trimmedLine.IndexOf('"');
-                var lastQuote = trimmedLine.LastIndexOf('"');
-
-                if (firstQuote != -1 && lastQuote > firstQuote)
-                {
-                    fileName = trimmedLine.Substring(firstQuote + 1, lastQuote - firstQuote - 1);
-                }
-                else
-                {
-                    // Unquoted fallback: split with limit to preserve filename+spaces+type
-                    var parts = trimmedLine.Split(Separator, 2, StringSplitOptions.RemoveEmptyEntries);
-                    if (parts.Length < 2)
-                    {
-                        continue;
-                    }
-
-                    // parts[1] is now "filename TYPE" — strip the trailing file type keyword
-                    var rest = parts[1].TrimEnd();
-                    var lastSpace = rest.LastIndexOf(' ');
-                    if (lastSpace > 0)
-                    {
-                        // Known CUE file type keywords that follow the filename
-                        var afterFilename = rest[(lastSpace + 1)..];
-                        if (afterFilename.Equals("BINARY", StringComparison.OrdinalIgnoreCase) ||
-                            afterFilename.Equals("WAVE", StringComparison.OrdinalIgnoreCase) ||
-                            afterFilename.Equals("MP3", StringComparison.OrdinalIgnoreCase) ||
-                            afterFilename.Equals("AIFF", StringComparison.OrdinalIgnoreCase) ||
-                            afterFilename.Equals("MOTOROLA", StringComparison.OrdinalIgnoreCase) ||
-                            afterFilename.Equals("AUDIO", StringComparison.OrdinalIgnoreCase))
-                        {
-                            fileName = rest[..lastSpace];
-                        }
-                        else
-                        {
-                            fileName = rest;
-                        }
-                    }
-                    else
-                    {
-                        fileName = rest;
-                    }
-                }
-
-                referencedFiles.Add(Path.Combine(cueDir, fileName));
-            }
-        }
-        catch (OperationCanceledException)
-        {
-            throw;
-        }
-        catch (Exception ex)
-        {
-            onLog($"[WARNING] Could not parse CUE file: {Path.GetFileName(cuePath)}. Error: {ex.Message}");
-
-            try
-            {
-                _ = App.SharedBugReportService?.SendBugReportAsync($"Error parsing CUE file: {Path.GetFileName(cuePath)}", ex);
-            }
-            catch
-            {
-                // Silently fail to avoid cascading errors
-            }
-        }
-
-        return referencedFiles;
+        return ParseFileReferenceLinesAsync(cuePath, onLog, "CUE", token);
     }
 
     /// <summary>
@@ -186,13 +107,19 @@ public static class GameFileParser
     /// <param name="onLog">Callback for logging messages.</param>
     /// <param name="token">Cancellation token to cancel the operation.</param>
     /// <returns>A list of file paths referenced by the TOC file.</returns>
-    public static async Task<List<string>> GetReferencedFilesFromTocAsync(string tocPath, Action<string> onLog, CancellationToken token)
+    public static Task<List<string>> GetReferencedFilesFromTocAsync(string tocPath, Action<string> onLog, CancellationToken token)
+    {
+        return ParseFileReferenceLinesAsync(tocPath, onLog, "TOC", token);
+    }
+
+    private static async Task<List<string>> ParseFileReferenceLinesAsync(
+        string filePath, Action<string> onLog, string fileType, CancellationToken token)
     {
         var referencedFiles = new List<string>();
-        var tocDir = Path.GetDirectoryName(tocPath) ?? string.Empty;
+        var directory = Path.GetDirectoryName(filePath) ?? string.Empty;
         try
         {
-            var lines = await File.ReadAllLinesAsync(tocPath, token);
+            var lines = await File.ReadAllLinesAsync(filePath, token);
             token.ThrowIfCancellationRequested();
             foreach (var line in lines)
             {
@@ -212,19 +139,16 @@ public static class GameFileParser
                 }
                 else
                 {
-                    // Unquoted fallback: split with limit to preserve filename+spaces+type
                     var parts = trimmedLine.Split(Separator, 2, StringSplitOptions.RemoveEmptyEntries);
                     if (parts.Length < 2)
                     {
                         continue;
                     }
 
-                    // parts[1] is now "filename TYPE" — strip the trailing file type keyword
                     var rest = parts[1].TrimEnd();
                     var lastSpace = rest.LastIndexOf(' ');
                     if (lastSpace > 0)
                     {
-                        // Known TOC/CUE file type keywords that follow the filename
                         var afterFilename = rest[(lastSpace + 1)..];
                         if (afterFilename.Equals("BINARY", StringComparison.OrdinalIgnoreCase) ||
                             afterFilename.Equals("WAVE", StringComparison.OrdinalIgnoreCase) ||
@@ -246,7 +170,7 @@ public static class GameFileParser
                     }
                 }
 
-                referencedFiles.Add(Path.Combine(tocDir, fileName));
+                referencedFiles.Add(Path.Combine(directory, fileName));
             }
         }
         catch (OperationCanceledException)
@@ -255,11 +179,11 @@ public static class GameFileParser
         }
         catch (Exception ex)
         {
-            onLog($"[WARNING] Could not parse TOC file: {Path.GetFileName(tocPath)}. Error: {ex.Message}");
+            onLog($"[WARNING] Could not parse {fileType} file: {Path.GetFileName(filePath)}. Error: {ex.Message}");
 
             try
             {
-                _ = App.SharedBugReportService?.SendBugReportAsync($"Error parsing TOC file: {Path.GetFileName(tocPath)}", ex);
+                _ = App.SharedBugReportService?.SendBugReportAsync($"Error parsing {fileType} file: {Path.GetFileName(filePath)}", ex);
             }
             catch
             {
