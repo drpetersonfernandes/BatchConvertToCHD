@@ -13,8 +13,14 @@ namespace BatchConvertToCHD.Services;
 public class UpdateService(string applicationName)
 {
     private readonly string _applicationName = applicationName;
-    private const string GitHubApiLatestReleaseUrl = "https://api.github.com/repos/drpetersonfernandes/BatchConvertToCHD/releases/latest";
+    private readonly HttpClient _httpClient = AppHttpClient.Client;
     private static readonly JsonSerializerOptions JsonSerializerOptions = new() { PropertyNameCaseInsensitive = true };
+
+    internal UpdateService(string applicationName, HttpClient httpClient)
+        : this(applicationName)
+    {
+        _httpClient = httpClient;
+    }
 
     /// <summary>
     /// Checks GitHub for a newer version of the application and prompts the user to download if available.
@@ -22,16 +28,21 @@ public class UpdateService(string applicationName)
     /// <param name="onLog">Callback for logging messages.</param>
     /// <param name="onStatusUpdate">Callback for status bar updates.</param>
     /// <param name="onBugReport">Callback for reporting errors.</param>
-    public async Task CheckForNewVersionAsync(Action<string> onLog, Action<string> onStatusUpdate, Func<string, Exception?, Task> onBugReport)
+    public Task CheckForNewVersionAsync(Action<string> onLog, Action<string> onStatusUpdate, Func<string, Exception?, Task> onBugReport)
+    {
+        return CheckForNewVersionAsync(_httpClient, Assembly.GetExecutingAssembly().GetName().Version, onLog, onStatusUpdate, onBugReport);
+    }
+
+    internal async Task CheckForNewVersionAsync(HttpClient httpClient, Version? currentVersion, Action<string> onLog, Action<string> onStatusUpdate, Func<string, Exception?, Task> onBugReport)
     {
         try
         {
             onLog("Checking for updates on GitHub...");
 
-            using var request = new HttpRequestMessage(HttpMethod.Get, GitHubApiLatestReleaseUrl);
+            using var request = new HttpRequestMessage(HttpMethod.Get, AppConfig.GitHubApiLatestReleaseUrl);
             request.Headers.UserAgent.ParseAdd(_applicationName);
 
-            var response = await AppHttpClient.Client.SendAsync(request);
+            var response = await httpClient.SendAsync(request);
 
             if (response.StatusCode == System.Net.HttpStatusCode.Forbidden)
             {
@@ -54,75 +65,63 @@ public class UpdateService(string applicationName)
                 return;
             }
 
-            var currentVersion = Assembly.GetExecutingAssembly().GetName().Version;
             var remoteVersionString = ParseVersionFromTag(latestRelease.TagName);
 
-            if (currentVersion == null || !Version.TryParse(remoteVersionString, out var remoteVersion))
+            if (!TryNormalizeVersions(currentVersion, remoteVersionString, out var normalizedCurrent, out var normalizedRemote))
             {
                 onLog($"Could not compare versions. Current: {currentVersion}, Remote: {remoteVersionString}");
                 return;
             }
-
-            // Normalize versions to ensure consistent comparison (handle 2-part vs 4-part versions)
-            // If Build or Revision is -1 (undefined), default to 0 to avoid ArgumentOutOfRangeException
-            var normalizedCurrent = new Version(
-                currentVersion.Major,
-                currentVersion.Minor,
-                currentVersion.Build < 0 ? 0 : currentVersion.Build,
-                currentVersion.Revision < 0 ? 0 : currentVersion.Revision);
-            var normalizedRemote = new Version(
-                remoteVersion.Major,
-                remoteVersion.Minor,
-                remoteVersion.Build < 0 ? 0 : remoteVersion.Build,
-                remoteVersion.Revision < 0 ? 0 : remoteVersion.Revision);
 
             onLog($"Current version: {normalizedCurrent}");
             onLog($"Latest version: {normalizedRemote}");
 
             if (normalizedRemote > normalizedCurrent)
             {
-                await Application.Current.Dispatcher.InvokeAsync(() =>
+                if (Application.Current != null)
                 {
-                    var releaseNotes = string.IsNullOrWhiteSpace(latestRelease.Body)
-                        ? "No release notes available."
-                        : latestRelease.Body.Replace(@"\r\n", "\n").Replace("\\n", "\n");
-
-                    var result = MessageBox.Show(
-                        $"A new version ({remoteVersion}) of {_applicationName} is available!\n\nRelease Notes:\n{releaseNotes}\n\nWould you like to download it?",
-                        "New Version Available", MessageBoxButton.YesNo, MessageBoxImage.Information);
-
-                    if (result == MessageBoxResult.Yes)
+                    await Application.Current.Dispatcher.InvokeAsync(() =>
                     {
-                        try
-                        {
-                            Process.Start(new ProcessStartInfo(latestRelease.HtmlUrl) { UseShellExecute = true });
-                        }
-                        catch (Exception urlEx)
-                        {
-                            onLog($"Failed to open browser: {urlEx.Message}");
-                            _ = onBugReport("Failed to open browser", urlEx);
+                        var releaseNotes = string.IsNullOrWhiteSpace(latestRelease.Body)
+                            ? "No release notes available."
+                            : latestRelease.Body.Replace(@"\r\n", "\n").Replace("\\n", "\n");
 
-                            // Copy URL to clipboard
+                        var result = MessageBox.Show(
+                            $"A new version ({remoteVersionString}) of {_applicationName} is available!\n\nRelease Notes:\n{releaseNotes}\n\nWould you like to download it?",
+                            "New Version Available", MessageBoxButton.YesNo, MessageBoxImage.Information);
+
+                        if (result == MessageBoxResult.Yes)
+                        {
                             try
                             {
-                                Clipboard.SetText(latestRelease.HtmlUrl);
+                                Process.Start(new ProcessStartInfo(latestRelease.HtmlUrl) { UseShellExecute = true });
                             }
-                            catch (Exception clipboardEx)
+                            catch (Exception urlEx)
                             {
-                                onLog($"Failed to copy URL to clipboard: {clipboardEx.Message}");
-                                _ = onBugReport("Failed to copy URL to clipboard", clipboardEx);
-                            }
+                                onLog($"Failed to open browser: {urlEx.Message}");
+                                _ = onBugReport("Failed to open browser", urlEx);
 
-                            // Show URL in message box so user can manually access it
-                            MessageBox.Show(
-                                $"Unable to open browser automatically. The update URL has been copied to your clipboard.\n\nURL: {latestRelease.HtmlUrl}\n\nPlease paste it into your browser manually.",
-                                "Browser Launch Failed",
-                                MessageBoxButton.OK,
-                                MessageBoxImage.Information);
+                                try
+                                {
+                                    Clipboard.SetText(latestRelease.HtmlUrl);
+                                }
+                                catch (Exception clipboardEx)
+                                {
+                                    onLog($"Failed to copy URL to clipboard: {clipboardEx.Message}");
+                                    _ = onBugReport("Failed to copy URL to clipboard", clipboardEx);
+                                }
+
+                                MessageBox.Show(
+                                    $"Unable to open browser automatically. The update URL has been copied to your clipboard.\n\nURL: {latestRelease.HtmlUrl}\n\nPlease paste it into your browser manually.",
+                                    "Browser Launch Failed",
+                                    MessageBoxButton.OK,
+                                    MessageBoxImage.Information);
+                            }
                         }
-                    }
-                });
-                onStatusUpdate($"Update available: v{remoteVersion}");
+                    });
+                }
+
+                onStatusUpdate($"Update available: v{remoteVersionString}");
             }
             else
             {
@@ -144,7 +143,36 @@ public class UpdateService(string applicationName)
         }
     }
 
-    private static string ParseVersionFromTag(string tagName)
+    /// <summary>
+    /// Normalizes versions to ensure consistent comparison (handles 2-part vs 4-part versions).
+    /// If Build or Revision is -1 (undefined), defaults to 0 to avoid ArgumentOutOfRangeException.
+    /// Returns false if either version cannot be parsed.
+    /// </summary>
+    internal static bool TryNormalizeVersions(Version? current, string remoteTag, out Version? normalizedCurrent, out Version? normalizedRemote)
+    {
+        normalizedCurrent = null;
+        normalizedRemote = null;
+
+        if (current == null || !Version.TryParse(remoteTag, out var remoteVersion))
+        {
+            return false;
+        }
+
+        normalizedCurrent = new Version(
+            current.Major,
+            current.Minor,
+            current.Build < 0 ? 0 : current.Build,
+            current.Revision < 0 ? 0 : current.Revision);
+        normalizedRemote = new Version(
+            remoteVersion.Major,
+            remoteVersion.Minor,
+            remoteVersion.Build < 0 ? 0 : remoteVersion.Build,
+            remoteVersion.Revision < 0 ? 0 : remoteVersion.Revision);
+
+        return true;
+    }
+
+    internal static string ParseVersionFromTag(string tagName)
     {
         if (string.IsNullOrWhiteSpace(tagName))
         {

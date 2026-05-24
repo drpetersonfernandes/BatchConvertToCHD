@@ -87,6 +87,15 @@ public static class GameFileParser
         catch (Exception ex)
         {
             onLog($"[WARNING] Could not parse CUE file: {Path.GetFileName(cuePath)}. Error: {ex.Message}");
+
+            try
+            {
+                _ = App.SharedBugReportService?.SendBugReportAsync($"Error parsing CUE file: {Path.GetFileName(cuePath)}", ex);
+            }
+            catch
+            {
+                // Silently fail to avoid cascading errors
+            }
         }
 
         return referencedFiles;
@@ -156,6 +165,15 @@ public static class GameFileParser
         catch (Exception ex)
         {
             onLog($"[WARNING] Could not parse GDI file: {Path.GetFileName(gdiPath)}. Error: {ex.Message}");
+
+            try
+            {
+                _ = App.SharedBugReportService?.SendBugReportAsync($"Error parsing GDI file: {Path.GetFileName(gdiPath)}", ex);
+            }
+            catch
+            {
+                // Silently fail to avoid cascading errors
+            }
         }
 
         return referencedFiles;
@@ -238,6 +256,15 @@ public static class GameFileParser
         catch (Exception ex)
         {
             onLog($"[WARNING] Could not parse TOC file: {Path.GetFileName(tocPath)}. Error: {ex.Message}");
+
+            try
+            {
+                _ = App.SharedBugReportService?.SendBugReportAsync($"Error parsing TOC file: {Path.GetFileName(tocPath)}", ex);
+            }
+            catch
+            {
+                // Silently fail to avoid cascading errors
+            }
         }
 
         return referencedFiles;

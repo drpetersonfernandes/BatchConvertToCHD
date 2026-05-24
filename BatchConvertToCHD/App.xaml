@@ -429,6 +429,18 @@
             <Setter Property="HorizontalContentAlignment" Value="Left"/>
         </Style>
 
+        <Style x:Key="SelectColumnHeaderStyle" TargetType="DataGridColumnHeader" BasedOn="{StaticResource ThemedDataGridColumnHeaderStyle}">
+            <Setter Property="ToolTip" Value="Check or uncheck to select files for processing"/>
+        </Style>
+
+        <Style x:Key="FileNameColumnHeaderStyle" TargetType="DataGridColumnHeader" BasedOn="{StaticResource ThemedDataGridColumnHeaderStyle}">
+            <Setter Property="ToolTip" Value="Name of the file"/>
+        </Style>
+
+        <Style x:Key="FileSizeColumnHeaderStyle" TargetType="DataGridColumnHeader" BasedOn="{StaticResource ThemedDataGridColumnHeaderStyle}">
+            <Setter Property="ToolTip" Value="File size"/>
+        </Style>
+
         <!-- ==================== NAMED STYLES ==================== -->
 
         <!-- Primary Action Button Style -->

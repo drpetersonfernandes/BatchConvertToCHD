@@ -103,6 +103,9 @@ public class FileItemTests
     [InlineData(1536, "1.5 KB")]
     [InlineData(1048576, "1 MB")]
     [InlineData(1073741824, "1 GB")]
+    [InlineData(1099511627776, "1 TB")]
+    [InlineData(1649267441664, "1.5 TB")]
+    [InlineData(long.MaxValue, "8388608 TB")]
     public void DisplaySizeFormatsCorrectly(long bytes, string expected)
     {
         var item = new FileItem
@@ -112,5 +115,32 @@ public class FileItemTests
         };
         item.FileSize = bytes;
         Assert.Equal(expected, item.DisplaySize);
+    }
+
+    [Fact]
+    public void DisplaySizeNegativeValueFormatsDirectly()
+    {
+        var item = new FileItem { FileSize = 1 };
+        item.FileSize = -1;
+        Assert.Equal("-1 B", item.DisplaySize);
+    }
+
+    [Fact]
+    public void DisplaySizeChangeFiresPropertyChanged()
+    {
+        var item = new FileItem();
+        var displaySizeChanged = false;
+        item.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(FileItem.DisplaySize))
+            {
+                displaySizeChanged = true;
+            }
+        };
+
+        item.FileSize = 1024;
+
+        Assert.True(displaySizeChanged);
+        Assert.Equal("1 KB", item.DisplaySize);
     }
 }

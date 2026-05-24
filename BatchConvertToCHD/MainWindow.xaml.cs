@@ -21,7 +21,6 @@ public partial class MainWindow : IDisposable
 {
     private CancellationTokenSource _cts;
     private readonly object _ctsLock = new();
-    private readonly string _maxCsoPath;
     private readonly bool _isMaxCsoAvailable;
     private readonly bool _isChdmanAvailable;
     private readonly string _psxPackagerPath;
@@ -35,6 +34,9 @@ public partial class MainWindow : IDisposable
 
     // Operation state tracking (0 = idle, >0 = running) - using Interlocked for thread safety
     private int _operationRunningState;
+
+    // Tracks whether a close was requested while an operation was running
+    private bool _pendingClose;
 
     // Services
     private readonly UpdateService _updateService;
@@ -71,15 +73,15 @@ public partial class MainWindow : IDisposable
         var chdmanPath = Path.Combine(appDirectory, AppConfig.ChdmanExeName);
         _isChdmanAvailable = File.Exists(chdmanPath);
 
-        _maxCsoPath = Path.Combine(appDirectory, "maxcso.exe");
-        _isMaxCsoAvailable = File.Exists(_maxCsoPath) && !AppConfig.IsArm64;
+        var maxCsoPath = Path.Combine(appDirectory, "maxcso.exe");
+        _isMaxCsoAvailable = File.Exists(maxCsoPath) && !AppConfig.IsArm64;
 
         _psxPackagerPath = Path.Combine(appDirectory, AppConfig.PsxPackagerExeName);
         _isPsxPackagerAvailable = File.Exists(_psxPackagerPath);
 
         // Initialize Services
         _updateService = new UpdateService(AppConfig.ApplicationName);
-        _archiveService = new ArchiveService(_maxCsoPath, _isMaxCsoAvailable);
+        _archiveService = new ArchiveService(maxCsoPath, _isMaxCsoAvailable);
 
         // Initialize performance counters
         _writeBytesCounter = CreateWritePerformanceCounter();
@@ -556,6 +558,7 @@ public partial class MainWindow : IDisposable
                 if (!_cts.IsCancellationRequested)
                 {
                     _cts.Cancel();
+                    _pendingClose = true;
                     LogMessage("Cancelling operations before closing...");
                     UpdateStatusBarMessage("Cancelling...");
                     e.Cancel = true;
@@ -1140,6 +1143,11 @@ public partial class MainWindow : IDisposable
 
         // Clear progress display
         ClearProgressDisplay();
+
+        if (_pendingClose)
+        {
+            Close();
+        }
     }
 
     private void RenewCancellationTokenSource()
@@ -2919,7 +2927,6 @@ public partial class MainWindow : IDisposable
         _operationTimer.Stop();
 
         KillOrphanedProcesses();
-
         GC.SuppressFinalize(this);
     }
 

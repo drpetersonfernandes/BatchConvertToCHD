@@ -72,4 +72,11 @@ public class AppConfigTests
     {
         Assert.False(string.IsNullOrEmpty(AppConfig.PsxPackagerExeName));
     }
+
+    [Fact]
+    public void GitHubApiLatestReleaseUrlIsNotEmpty()
+    {
+        Assert.False(string.IsNullOrEmpty(AppConfig.GitHubApiLatestReleaseUrl));
+        Assert.StartsWith("https://api.github.com/repos/", AppConfig.GitHubApiLatestReleaseUrl);
+    }
 }

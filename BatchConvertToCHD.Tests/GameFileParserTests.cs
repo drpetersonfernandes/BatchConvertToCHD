@@ -243,4 +243,17 @@ public class GameFileParserTests : IDisposable
         var result = await GameFileParser.GetReferencedFilesFromTocAsync(tocPath, static _ => { }, CancellationToken.None);
         Assert.Empty(result);
     }
+
+    [Fact]
+    public async Task GetReferencedFilesFromTocAsyncUnquotedFileReturnsReferencedFiles()
+    {
+        var tocPath = Path.Combine(_tempDir, "game.toc");
+        const string content = "FILE track1.bin BINARY\n  TRACK 01 MODE2/2352\n    INDEX 01 00:00:00";
+        await File.WriteAllTextAsync(tocPath, content);
+
+        var result = await GameFileParser.GetReferencedFilesFromTocAsync(tocPath, static _ => { }, CancellationToken.None);
+
+        Assert.Single(result);
+        Assert.Equal(Path.Combine(_tempDir, "track1.bin"), result[0]);
+    }
 }

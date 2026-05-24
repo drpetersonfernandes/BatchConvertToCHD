@@ -14,6 +14,7 @@ internal static class AppConfig
     public const string BugReportApiKey = "hjh7yu6t56tyr540o9u8767676r5674534453235264c75b6t7ggghgg76trf564e";
     public const string ApplicationStatsApiUrl = "https://www.purelogiccode.com/ApplicationStats/stats";
     public const string ApplicationStatsApiKey = "hjh7yu6t56tyr540o9u8767676r5674534453235264c75b6t7ggghgg76trf564e";
+    public const string GitHubApiLatestReleaseUrl = "https://api.github.com/repos/drpetersonfernandes/BatchConvertToCHD/releases/latest";
     public const string ApplicationName = "BatchConvertToCHD";
     public const int WriteSpeedUpdateIntervalMs = 1000;
 

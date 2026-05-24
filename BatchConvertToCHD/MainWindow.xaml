@@ -29,16 +29,16 @@
                     <Button Click="AboutMenuItem_Click" Style="{StaticResource ActionButtonStyle}" Background="{StaticResource AboutButtonBrush}" ToolTip="View application information and acknowledgements">
                         <Button.Content>
                             <StackPanel Orientation="Horizontal">
-                                <Image Source="pack://application:,,,/images/about.png" Width="16" Height="16" Margin="0,0,5,0" />
-                                <TextBlock Text="About" Style="{StaticResource ButtonContentTextStyle}" />
+                                <Image Source="pack://application:,,,/images/about.png" Width="16" Height="16" Margin="0,0,5,0" ToolTip="Open the About window" />
+                                <TextBlock Text="About" Style="{StaticResource ButtonContentTextStyle}" ToolTip="Open the About window" />
                             </StackPanel>
                         </Button.Content>
                     </Button>
                     <Button Click="ExitMenuItem_Click" Style="{StaticResource ActionButtonStyle}" Background="{StaticResource ExitButtonBrush}" ToolTip="Close the application">
                         <Button.Content>
                             <StackPanel Orientation="Horizontal">
-                                <Image Source="pack://application:,,,/images/exit.png" Width="16" Height="16" Margin="0,0,5,0" />
-                                <TextBlock Text="Exit" Style="{StaticResource ButtonContentTextStyle}" />
+                                <Image Source="pack://application:,,,/images/exit.png" Width="16" Height="16" Margin="0,0,5,0" ToolTip="Close the application" />
+                                <TextBlock Text="Exit" Style="{StaticResource ButtonContentTextStyle}" ToolTip="Close the application" />
                             </StackPanel>
                         </Button.Content>
                     </Button>
@@ -61,7 +61,7 @@
                     <ColumnDefinition Width="*" MinWidth="300" />
                 </Grid.ColumnDefinitions>
 
-                <TabControl Grid.Column="0" x:Name="MainTabControl" SelectionChanged="MainTabControl_SelectionChanged">
+                <TabControl Grid.Column="0" x:Name="MainTabControl" SelectionChanged="MainTabControl_SelectionChanged" ToolTip="Switch between Convert, Verify, and Extract operations">
                     <TabItem Header="Convert to CHD" x:Name="ConvertTab" ToolTip="Batch convert various disc image formats to CHD">
                         <Border Background="{StaticResource CardBackgroundBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="0,0,6,6" Padding="15">
                             <Grid>
@@ -117,29 +117,11 @@
                                 </GroupBox>
 
                                 <Label Grid.Row="3" Content="Select Files to Convert:" Margin="0,5,0,0" Style="{StaticResource SectionLabelStyle}" ToolTip="Mark or unmark files to include in the batch conversion" />
-                                <DataGrid Grid.Row="4" x:Name="ConversionFilesDataGrid" Margin="0,5" AutoGenerateColumns="False">
+                                <DataGrid Grid.Row="4" x:Name="ConversionFilesDataGrid" Margin="0,5" AutoGenerateColumns="False" ToolTip="List of files available for conversion. Select files to include in batch processing.">
                                     <DataGrid.Columns>
-                                        <DataGridCheckBoxColumn Header="Select" Binding="{Binding IsSelected, UpdateSourceTrigger=PropertyChanged}" Width="80">
-                                            <DataGridCheckBoxColumn.HeaderStyle>
-                                                <Style TargetType="DataGridColumnHeader" BasedOn="{StaticResource ThemedDataGridColumnHeaderStyle}">
-                                                    <Setter Property="ToolTip" Value="Check or uncheck to select files for processing" />
-                                                </Style>
-                                            </DataGridCheckBoxColumn.HeaderStyle>
-                                        </DataGridCheckBoxColumn>
-                                        <DataGridTextColumn Header="File Name" Binding="{Binding FileName}" Width="*" IsReadOnly="True">
-                                            <DataGridTextColumn.HeaderStyle>
-                                                <Style TargetType="DataGridColumnHeader" BasedOn="{StaticResource ThemedDataGridColumnHeaderStyle}">
-                                                    <Setter Property="ToolTip" Value="Name of the file" />
-                                                </Style>
-                                            </DataGridTextColumn.HeaderStyle>
-                                        </DataGridTextColumn>
-                                        <DataGridTextColumn Header="Size" Binding="{Binding DisplaySize}" Width="130" IsReadOnly="True">
-                                            <DataGridTextColumn.HeaderStyle>
-                                                <Style TargetType="DataGridColumnHeader" BasedOn="{StaticResource ThemedDataGridColumnHeaderStyle}">
-                                                    <Setter Property="ToolTip" Value="File size" />
-                                                </Style>
-                                            </DataGridTextColumn.HeaderStyle>
-                                        </DataGridTextColumn>
+                                        <DataGridCheckBoxColumn Header="Select" Binding="{Binding IsSelected, UpdateSourceTrigger=PropertyChanged}" Width="80" HeaderStyle="{StaticResource SelectColumnHeaderStyle}" />
+                                        <DataGridTextColumn Header="File Name" Binding="{Binding FileName}" Width="*" IsReadOnly="True" HeaderStyle="{StaticResource FileNameColumnHeaderStyle}" />
+                                        <DataGridTextColumn Header="Size" Binding="{Binding DisplaySize}" Width="130" IsReadOnly="True" HeaderStyle="{StaticResource FileSizeColumnHeaderStyle}" />
                                     </DataGrid.Columns>
                                 </DataGrid>
                                 <StackPanel Grid.Row="5" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,0,0,10">
@@ -185,29 +167,11 @@
                                 </GroupBox>
 
                                 <Label Grid.Row="2" Content="Select Files to Verify:" Margin="0,5,0,0" Style="{StaticResource SectionLabelStyle}" ToolTip="Mark or unmark files to include in the batch verification" />
-                                <DataGrid Grid.Row="3" x:Name="VerificationFilesDataGrid" Margin="0,5" AutoGenerateColumns="False">
+                                <DataGrid Grid.Row="3" x:Name="VerificationFilesDataGrid" Margin="0,5" AutoGenerateColumns="False" ToolTip="List of CHD files available for verification. Select files to include in batch verification.">
                                     <DataGrid.Columns>
-                                        <DataGridCheckBoxColumn Header="Select" Binding="{Binding IsSelected, UpdateSourceTrigger=PropertyChanged}" Width="80">
-                                            <DataGridCheckBoxColumn.HeaderStyle>
-                                                <Style TargetType="DataGridColumnHeader" BasedOn="{StaticResource ThemedDataGridColumnHeaderStyle}">
-                                                    <Setter Property="ToolTip" Value="Check or uncheck to select files for processing" />
-                                                </Style>
-                                            </DataGridCheckBoxColumn.HeaderStyle>
-                                        </DataGridCheckBoxColumn>
-                                        <DataGridTextColumn Header="File Name" Binding="{Binding FileName}" Width="*" IsReadOnly="True">
-                                            <DataGridTextColumn.HeaderStyle>
-                                                <Style TargetType="DataGridColumnHeader" BasedOn="{StaticResource ThemedDataGridColumnHeaderStyle}">
-                                                    <Setter Property="ToolTip" Value="Name of the file" />
-                                                </Style>
-                                            </DataGridTextColumn.HeaderStyle>
-                                        </DataGridTextColumn>
-                                        <DataGridTextColumn Header="Size" Binding="{Binding DisplaySize}" Width="130" IsReadOnly="True">
-                                            <DataGridTextColumn.HeaderStyle>
-                                                <Style TargetType="DataGridColumnHeader" BasedOn="{StaticResource ThemedDataGridColumnHeaderStyle}">
-                                                    <Setter Property="ToolTip" Value="File size" />
-                                                </Style>
-                                            </DataGridTextColumn.HeaderStyle>
-                                        </DataGridTextColumn>
+                                        <DataGridCheckBoxColumn Header="Select" Binding="{Binding IsSelected, UpdateSourceTrigger=PropertyChanged}" Width="80" HeaderStyle="{StaticResource SelectColumnHeaderStyle}" />
+                                        <DataGridTextColumn Header="File Name" Binding="{Binding FileName}" Width="*" IsReadOnly="True" HeaderStyle="{StaticResource FileNameColumnHeaderStyle}" />
+                                        <DataGridTextColumn Header="Size" Binding="{Binding DisplaySize}" Width="130" IsReadOnly="True" HeaderStyle="{StaticResource FileSizeColumnHeaderStyle}" />
                                     </DataGrid.Columns>
                                 </DataGrid>
                                 <StackPanel Grid.Row="4" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,0,0,10">
@@ -286,29 +250,11 @@
                                 </Grid>
 
                                 <Label Grid.Row="3" Content="Select Files to Extract:" Margin="0,5,0,0" Style="{StaticResource SectionLabelStyle}" ToolTip="Mark or unmark files to include in the batch extraction" />
-                                <DataGrid Grid.Row="4" x:Name="ExtractionFilesDataGrid" Margin="0,5" AutoGenerateColumns="False">
+                                <DataGrid Grid.Row="4" x:Name="ExtractionFilesDataGrid" Margin="0,5" AutoGenerateColumns="False" ToolTip="List of CHD files available for extraction. Select files to include in batch extraction.">
                                     <DataGrid.Columns>
-                                        <DataGridCheckBoxColumn Header="Select" Binding="{Binding IsSelected, UpdateSourceTrigger=PropertyChanged}" Width="80">
-                                            <DataGridCheckBoxColumn.HeaderStyle>
-                                                <Style TargetType="DataGridColumnHeader" BasedOn="{StaticResource ThemedDataGridColumnHeaderStyle}">
-                                                    <Setter Property="ToolTip" Value="Check or uncheck to select files for processing" />
-                                                </Style>
-                                            </DataGridCheckBoxColumn.HeaderStyle>
-                                        </DataGridCheckBoxColumn>
-                                        <DataGridTextColumn Header="File Name" Binding="{Binding FileName}" Width="*" IsReadOnly="True">
-                                            <DataGridTextColumn.HeaderStyle>
-                                                <Style TargetType="DataGridColumnHeader" BasedOn="{StaticResource ThemedDataGridColumnHeaderStyle}">
-                                                    <Setter Property="ToolTip" Value="Name of the file" />
-                                                </Style>
-                                            </DataGridTextColumn.HeaderStyle>
-                                        </DataGridTextColumn>
-                                        <DataGridTextColumn Header="Size" Binding="{Binding DisplaySize}" Width="130" IsReadOnly="True">
-                                            <DataGridTextColumn.HeaderStyle>
-                                                <Style TargetType="DataGridColumnHeader" BasedOn="{StaticResource ThemedDataGridColumnHeaderStyle}">
-                                                    <Setter Property="ToolTip" Value="File size" />
-                                                </Style>
-                                            </DataGridTextColumn.HeaderStyle>
-                                        </DataGridTextColumn>
+                                        <DataGridCheckBoxColumn Header="Select" Binding="{Binding IsSelected, UpdateSourceTrigger=PropertyChanged}" Width="80" HeaderStyle="{StaticResource SelectColumnHeaderStyle}" />
+                                        <DataGridTextColumn Header="File Name" Binding="{Binding FileName}" Width="*" IsReadOnly="True" HeaderStyle="{StaticResource FileNameColumnHeaderStyle}" />
+                                        <DataGridTextColumn Header="Size" Binding="{Binding DisplaySize}" Width="130" IsReadOnly="True" HeaderStyle="{StaticResource FileSizeColumnHeaderStyle}" />
                                     </DataGrid.Columns>
                                 </DataGrid>
                                 <StackPanel Grid.Row="5" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,0,0,10">
@@ -324,7 +270,7 @@
 
                 <GridSplitter Grid.Column="1" Width="10" HorizontalAlignment="Stretch" ToolTip="Drag to resize the log panel" />
 
-                <Border Grid.Column="2" BorderBrush="{StaticResource TerminalBorderBrush}" BorderThickness="2" CornerRadius="4" Background="{StaticResource TerminalBackgroundBrush}">
+                <Border Grid.Column="2" BorderBrush="{StaticResource TerminalBorderBrush}" BorderThickness="2" CornerRadius="4" Background="{StaticResource TerminalBackgroundBrush}" ToolTip="Real-time application activity log">
                     <TextBox x:Name="LogViewer"
                              Style="{StaticResource TerminalLogTextBoxWithGlow}"
                              ToolTip="Application activity log" />
@@ -342,41 +288,41 @@
 
                 <Border Grid.Column="0" Style="{StaticResource StatCard}" ToolTip="Total number of files to process">
                     <StackPanel Orientation="Vertical" HorizontalAlignment="Center">
-                        <TextBlock Text="TOTAL FILES" Style="{StaticResource StatLabelStyle}" Foreground="{StaticResource TextSecondaryBrush}" />
-                        <TextBlock x:Name="TotalFilesValue" Text="0" Style="{StaticResource StatValueStyle}" Foreground="{StaticResource TextPrimaryBrush}" />
+                        <TextBlock Text="TOTAL FILES" Style="{StaticResource StatLabelStyle}" Foreground="{StaticResource TextSecondaryBrush}" ToolTip="Total number of files selected for processing" />
+                        <TextBlock x:Name="TotalFilesValue" Text="0" Style="{StaticResource StatValueStyle}" Foreground="{StaticResource TextPrimaryBrush}" ToolTip="Number of files detected in the current batch" />
                     </StackPanel>
                 </Border>
 
                 <Border Grid.Column="1" Style="{StaticResource StatCard}" ToolTip="Number of successfully processed files">
                     <StackPanel Orientation="Vertical" HorizontalAlignment="Center">
-                        <TextBlock Text="SUCCESS" Style="{StaticResource StatLabelSuccessStyle}" />
-                        <TextBlock x:Name="SuccessValue" Text="0" Style="{StaticResource StatValueSuccessStyle}" />
+                        <TextBlock Text="SUCCESS" Style="{StaticResource StatLabelSuccessStyle}" ToolTip="Number of files that were successfully processed" />
+                        <TextBlock x:Name="SuccessValue" Text="0" Style="{StaticResource StatValueSuccessStyle}" ToolTip="Count of files that completed without errors" />
                     </StackPanel>
                 </Border>
 
                 <Border Grid.Column="2" Style="{StaticResource StatCard}" ToolTip="Number of files that failed processing">
                     <StackPanel Orientation="Vertical" HorizontalAlignment="Center">
-                        <TextBlock Text="FAILED" Style="{StaticResource StatLabelFailedStyle}" />
-                        <TextBlock x:Name="FailedValue" Text="0" Style="{StaticResource StatValueFailedStyle}" />
+                        <TextBlock Text="FAILED" Style="{StaticResource StatLabelFailedStyle}" ToolTip="Number of files that failed during processing" />
+                        <TextBlock x:Name="FailedValue" Text="0" Style="{StaticResource StatValueFailedStyle}" ToolTip="Count of files that encountered errors" />
                     </StackPanel>
                 </Border>
 
                 <Border Grid.Column="3" Style="{StaticResource StatCard}" ToolTip="Total processing time">
                     <StackPanel Orientation="Vertical" HorizontalAlignment="Center">
-                        <TextBlock Text="ELAPSED" Style="{StaticResource StatLabelStyle}" Foreground="{StaticResource TextSecondaryBrush}" />
-                        <TextBlock x:Name="ProcessingTimeValue" Text="00:00:00" Style="{StaticResource StatValueStyle}" Foreground="{StaticResource TextPrimaryBrush}" />
+                        <TextBlock Text="ELAPSED" Style="{StaticResource StatLabelStyle}" Foreground="{StaticResource TextSecondaryBrush}" ToolTip="Total time elapsed during the current or last batch operation" />
+                        <TextBlock x:Name="ProcessingTimeValue" Text="00:00:00" Style="{StaticResource StatValueStyle}" Foreground="{StaticResource TextPrimaryBrush}" ToolTip="The total processing time in HH:MM:SS format" />
                     </StackPanel>
                 </Border>
 
                 <Border x:Name="SpeedStatCard" Grid.Column="4" Style="{StaticResource StatCard}" ToolTip="Average processing speed">
                     <StackPanel Orientation="Vertical" HorizontalAlignment="Center">
-                        <TextBlock Text="SPEED" Style="{StaticResource StatLabelStyle}" Foreground="{StaticResource TextSecondaryBrush}" />
-                        <TextBlock x:Name="SpeedValue" Text="0.0 MB/s" Style="{StaticResource StatValueStyle}" Foreground="{StaticResource TextPrimaryBrush}" />
+                        <TextBlock Text="SPEED" Style="{StaticResource StatLabelStyle}" Foreground="{StaticResource TextSecondaryBrush}" ToolTip="Average processing speed of the current batch operation" />
+                        <TextBlock x:Name="SpeedValue" Text="0.0 MB/s" Style="{StaticResource StatValueStyle}" Foreground="{StaticResource TextPrimaryBrush}" ToolTip="The average throughput in megabytes per second" />
                     </StackPanel>
                 </Border>
             </Grid>
 
-            <Grid x:Name="ProgressAreaGrid" Grid.Row="2" Margin="0,15,0,0" Visibility="Collapsed">
+            <Grid x:Name="ProgressAreaGrid" Grid.Row="2" Margin="0,15,0,0" Visibility="Collapsed" ToolTip="Processing progress and cancel button area. Visible only during batch operations.">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="Auto" />
@@ -392,7 +338,7 @@
         </Grid>
 
         <!-- Status Bar -->
-        <StatusBar Grid.Row="2" Background="{StaticResource StatusBarBackgroundBrush}" Padding="5">
+        <StatusBar Grid.Row="2" Background="{StaticResource StatusBarBackgroundBrush}" Padding="5" ToolTip="Status bar showing application state and external tool availability">
             <StatusBar.ItemsPanel>
                 <ItemsPanelTemplate>
                     <Grid>
@@ -412,9 +358,9 @@
                 <StackPanel Orientation="Horizontal">
                     <TextBlock Text="Dependencies:" Margin="0,0,5,0" Foreground="{StaticResource TextSecondaryBrush}" ToolTip="External tools required for processing" />
                     <TextBlock x:Name="StatusBarChdman" Text="CHDMAN" Foreground="{StaticResource SuccessTextBrush}" Margin="0,0,5,0" ToolTip="Status of chdman.exe" />
-                    <TextBlock Text="|" Margin="0,0,5,0" Foreground="{StaticResource TextMutedBrush}" />
+                    <TextBlock Text="|" Margin="0,0,5,0" Foreground="{StaticResource TextMutedBrush}" ToolTip="Separator" />
                     <TextBlock x:Name="StatusBarMaxcso" Text="MAXCSO" Foreground="{StaticResource SuccessTextBrush}" Margin="0,0,5,0" ToolTip="Status of maxcso.exe" />
-                    <TextBlock Text="|" Margin="0,0,5,0" Foreground="{StaticResource TextMutedBrush}" />
+                    <TextBlock Text="|" Margin="0,0,5,0" Foreground="{StaticResource TextMutedBrush}" ToolTip="Separator" />
                     <TextBlock x:Name="StatusBarPsxPackager" Text="PSXPACKAGER" Foreground="{StaticResource SuccessTextBrush}" Margin="0" ToolTip="Status of psxpackager.exe" />
                 </StackPanel>
             </StatusBarItem>

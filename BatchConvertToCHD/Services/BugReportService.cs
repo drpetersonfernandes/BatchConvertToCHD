@@ -44,7 +44,7 @@ public class BugReportService
             var formattedMessage = BuildFormattedReport(message, ex);
 
             // Get environment details for version field
-            var envDetails = GetEnvironmentDetails();
+            var versionString = GetApplicationVersion();
 
             // Get exception stack trace
             var stackTrace = GetExceptionStackTrace(ex);
@@ -55,7 +55,7 @@ public class BugReportService
             {
                 message = formattedMessage,
                 applicationName = _applicationName,
-                version = envDetails.ApplicationVersion,
+                version = versionString,
                 userInfo = Environment.UserName,
                 environment = "Production",
                 stackTrace
@@ -202,18 +202,8 @@ public class BugReportService
     /// <summary>
     /// Gets environment details for structured API fields
     /// </summary>
-    private static (string OsVersion, string Architecture, string Bitness, string WindowsVersion,
-        int ProcessorCount, string BaseDirectory, string TempPath, string ApplicationVersion) GetEnvironmentDetails()
+    private static string GetApplicationVersion()
     {
-        return (
-            Environment.OSVersion.ToString(),
-            RuntimeInformation.ProcessArchitecture.ToString(),
-            Environment.Is64BitProcess ? "64-bit" : "32-bit",
-            Environment.OSVersion.Version.ToString(),
-            Environment.ProcessorCount,
-            AppDomain.CurrentDomain.BaseDirectory,
-            Path.GetTempPath(),
-            Assembly.GetExecutingAssembly().GetName().Version?.ToString() ?? "Unknown"
-        );
+        return Assembly.GetExecutingAssembly().GetName().Version?.ToString() ?? "Unknown";
     }
 }

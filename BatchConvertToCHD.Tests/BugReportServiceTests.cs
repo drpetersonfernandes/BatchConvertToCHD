@@ -127,24 +127,14 @@ public class BugReportServiceTests
     }
 
     [Fact]
-    public void GetEnvironmentDetailsReturnsValidValues()
+    public void GetApplicationVersionReturnsValidValue()
     {
-        var method = typeof(BugReportService).GetMethod("GetEnvironmentDetails", BindingFlags.NonPublic | BindingFlags.Static);
+        var method = typeof(BugReportService).GetMethod("GetApplicationVersion", BindingFlags.NonPublic | BindingFlags.Static);
         Assert.NotNull(method);
 
-        var result = method.Invoke(null, null);
+        var result = method.Invoke(null, null) as string;
         Assert.NotNull(result);
-
-        var type = result.GetType();
-        var osVersion = type.GetField("Item1")?.GetValue(result) as string;
-        var architecture = type.GetField("Item2")?.GetValue(result) as string;
-        var processorCount = type.GetField("Item5")?.GetValue(result);
-
-        Assert.NotNull(osVersion);
-        Assert.NotEmpty(osVersion);
-        Assert.NotNull(architecture);
-        Assert.NotEmpty(architecture);
-        Assert.IsType<int>(processorCount);
+        Assert.NotEmpty(result);
     }
 
     [Fact]
@@ -166,5 +156,67 @@ public class BugReportServiceTests
         var service = new BugReportService("https://invalid.example.invalid/api", TestApiKey, TestAppName);
         var result = await service.SendBugReportAsync("Test message");
         Assert.False(result);
+    }
+
+    [Fact]
+    public void BuildFormattedReportExceptionWithNullFieldsDoesNotCrash()
+    {
+        var service = new BugReportService(TestApiUrl, TestApiKey, TestAppName);
+        var method = typeof(BugReportService).GetMethod("BuildFormattedReport", BindingFlags.NonPublic | BindingFlags.Instance);
+        Assert.NotNull(method);
+
+        var ex = Record.Exception(() =>
+        {
+            // Exception with no message and no stack trace
+            var customEx = new Exception((string?)null);
+            var result = method.Invoke(service, ["Error summary", customEx]) as string;
+            Assert.NotNull(result);
+            Assert.Contains("Error summary", result, StringComparison.Ordinal);
+        });
+
+        Assert.Null(ex);
+    }
+
+    [Fact]
+    public void BuildFormattedReportEmptyMessageDoesNotCrash()
+    {
+        var service = new BugReportService(TestApiUrl, TestApiKey, TestAppName);
+        var method = typeof(BugReportService).GetMethod("BuildFormattedReport", BindingFlags.NonPublic | BindingFlags.Instance);
+        Assert.NotNull(method);
+
+        var result = method.Invoke(service, ["", null]) as string;
+        Assert.NotNull(result);
+        Assert.Contains("=== Error Details ===", result, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void BuildFormattedReportExceptionWithoutStackTraceDoesNotCrash()
+    {
+        var service = new BugReportService(TestApiUrl, TestApiKey, TestAppName);
+        var method = typeof(BugReportService).GetMethod("BuildFormattedReport", BindingFlags.NonPublic | BindingFlags.Instance);
+        Assert.NotNull(method);
+
+        // Create exception using parameterless constructor which may not populate StackTrace immediately
+        var customEx = new InvalidOperationException("Error with no explicit stack");
+        var result = method.Invoke(service, ["Error with null stack", customEx]) as string;
+        Assert.NotNull(result);
+        Assert.Contains("Error with null stack", result, StringComparison.Ordinal);
+        Assert.Contains("InvalidOperationException", result, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void AppendExceptionDetailsHandlesExceptionWithoutSource()
+    {
+        var method = typeof(BugReportService).GetMethod("AppendExceptionDetails", BindingFlags.NonPublic | BindingFlags.Static);
+        Assert.NotNull(method);
+
+        var sb = new StringBuilder();
+        var ex = Record.Exception(() =>
+        {
+            method.Invoke(null, [sb, new InvalidOperationException(), 0]);
+        });
+
+        Assert.Null(ex);
+        Assert.Contains("InvalidOperationException", sb.ToString(), StringComparison.Ordinal);
     }
 }

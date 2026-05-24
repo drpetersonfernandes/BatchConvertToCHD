@@ -492,7 +492,6 @@ public class ArchiveService : IDisposable
     /// </summary>
     public void Dispose()
     {
-        // No unmanaged resources to dispose
         GC.SuppressFinalize(this);
     }
 }

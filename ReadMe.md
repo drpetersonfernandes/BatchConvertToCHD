@@ -55,7 +55,7 @@
 | Category             | Formats                                                                      |
 |:---------------------|:-----------------------------------------------------------------------------|
 | **Standard Images**  | `.iso`, `.cue` (+`.bin`), `.img`, `.ccd` (+`.sub`), `.raw`, `.toc`           |
-| **Console Specific** | `.cdi` (Dreamcast/Saturn), `.gdi` (Dreamcast), `.pbp` (PlayStation Portable) |
+| **Console Specific** | `.gdi` (Dreamcast), `.pbp` (PlayStation) |
 | **Compressed**       | `.cso` (Compressed ISO)                                                      |
 | **Archives**         | `.zip`, `.7z`, `.rar`                                                        |
 | **Output**           | `.chd` (Compressed Hunks of Data)                                            |
@@ -67,7 +67,7 @@
 The application implements priority-based logic to ensure compatibility:
 
 1.  **DVD Images (`.iso`)**: Defaults to `createdvd`.
-2.  **CloneCD / Multi-track Images (`.ccd`, `.cue`, `.cdi`, `.gdi`, `.toc`)**: Defaults to `createcd`.
+2.  **CloneCD / Multi-track Images (`.ccd`, `.cue`, `.gdi`, `.toc`)**: Defaults to `createcd`.
 3.  **Hard Disk Images (`.img`)**: Defaults to `createhd` unless an accompanying `.ccd` file is detected.
 4.  **Raw Data (`.raw`)**: Defaults to `createraw`.
 5.  **PlayStation PBP (`.pbp`)**: Extracts to CUE/BIN using `psxpackager`, then converts to CHD using `createcd`.
@@ -84,8 +84,8 @@ The application implements priority-based logic to ensure compatibility:
     *   `chdman.exe` / `chdman_arm64.exe` (MAME Project)
     *   `maxcso.exe` (CSO Decompression - x64 only)
     *   `psxpackager.exe` (PBP Extraction)
-*   **NuGet Dependencies**:
-* [SharpCompress](https://github.com/adamhathcock/sharpcompress) (v0.48.0) - Archive extraction support
+ *   **NuGet Dependencies**:
+     * [SharpCompress](https://github.com/adamhathcock/sharpcompress) (v0.48.1) - Archive extraction support
 
 ---
 
@@ -100,13 +100,29 @@ The application implements priority-based logic to ensure compatibility:
 
 ## 📖 Usage
 
+The application also accepts a folder path as a command-line argument to quickly populate the source directory:
+```sh
+BatchConvertToCHD.exe "C:\ROMs\MyGames"
+```
+
 ### Conversion Workflow
 1.  Navigate to the **Convert to CHD** tab.
 2.  Select your **Source Folder** (containing images or archives).
 3.  Select your **Output Folder**.
-4.  *(Optional)* Set a time limit per file to abort conversions that exceed the specified duration.
-5.  *(Optional)* Enable "Delete original files" to clean up source data after a successful conversion.
-6.  Click **Start Conversion**.
+4.  *(Optional)* Check "Process smaller files first" to sort by file size.
+5.  *(Optional)* Check "Force CD" or "Force DVD" to override automatic command detection.
+6.  *(Optional)* Set a time limit per file to abort conversions that exceed the specified duration.
+7.  *(Optional)* Enable "Delete original files" to clean up source data after a successful conversion.
+8.  Click **Start Conversion**.
+
+### Extraction Workflow
+1.  Navigate to the **Extract CHD Files** tab.
+2.  Select your **Source Folder** (containing `.chd` files).
+3.  Select your **Output Folder**.
+4.  Choose the desired output format (Auto-detect, CD `.cue`, DVD `.iso`, Dreamcast `.gdi`, HDD `.img`).
+5.  *(Optional)* Enable "Include subfolders" to process nested directories.
+6.  *(Optional)* Enable "Delete original CHD files" to clean up after successful extraction.
+7.  Click **Start Extraction**.
 
 ### Verification Workflow
 1.  Navigate to the **Verify CHD Files** tab.
@@ -123,7 +139,7 @@ If you encounter issues or have feature requests, please use the [GitHub Issues]
 **Support the Project:**
 If this tool saves you time, consider supporting further development:
 *   ⭐ **Star this repository** on GitHub.
-*   ☕ **Donate**: [purelogiccode.com/donate](https://www.purelogiccode.com/donate)
+*   ☕ **Donate**: [www.purelogiccode.com/donate](https://www.purelogiccode.com/donate)
 
 ---
 

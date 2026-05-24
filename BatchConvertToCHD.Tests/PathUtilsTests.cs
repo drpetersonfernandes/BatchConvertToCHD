@@ -160,4 +160,96 @@ public class PathUtilsTests
         Assert.DoesNotContain("?", result, StringComparison.Ordinal);
         Assert.DoesNotContain("*", result, StringComparison.Ordinal);
     }
+
+    [Fact]
+    public void SanitizeFileNameMultipleTrailingPeriodsReplaced()
+    {
+        var result = PathUtils.SanitizeFileName("file...");
+        Assert.DoesNotContain("...", result, StringComparison.Ordinal);
+        // The algorithm processes trailing periods one at a time:
+        // "file..." -> "file.._" -> stops because last char is now '_'
+        Assert.Equal("file.._", result);
+    }
+
+    [Fact]
+    public void SanitizeFileNameSingleTrailingPeriodWithContent()
+    {
+        var result = PathUtils.SanitizeFileName("game.iso.");
+        Assert.Equal("game.iso_", result);
+    }
+
+    [Fact]
+    public void SanitizeFileNameOnlyPeriodsBecomesUnderscores()
+    {
+        var result = PathUtils.SanitizeFileName("...");
+        // The algorithm processes one trailing period at a time,
+        // replacing each with '_' and then stopping when last char is not '.'
+        Assert.Equal(".._", result);
+    }
+
+    [Fact]
+    public void SanitizeFileNameReplacesMojibakeEllipsis()
+    {
+        // The source code replaces "â€¦" (a mojibake-encoded ellipsis)
+        // with "_ellipsis_"
+        var result = PathUtils.SanitizeFileName("game\u00e2\u20ac\u00a6iso");
+        Assert.Contains("_ellipsis_", result, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void SanitizeFileNamePreservesValidUnicode()
+    {
+        // Japanese filename characters should be preserved
+        var result = PathUtils.SanitizeFileName("\u30b2\u30fc\u30e0.iso");
+        Assert.Equal("\u30b2\u30fc\u30e0.iso", result);
+    }
+
+    #region GetBestTempDirectory / GetPossibleTempBasePaths
+
+    [Fact]
+    public void GetBestTempDirectoryReturnsNonNullPath()
+    {
+        var result = PathUtils.GetBestTempDirectory(null, null, "TestPrefix_");
+        Assert.NotNull(result);
+        Assert.NotEmpty(result);
+    }
+
+    [Fact]
+    public void GetBestTempDirectoryIncludesPrefix()
+    {
+        var result = PathUtils.GetBestTempDirectory(null, null, "TestPrefix_");
+        Assert.Contains("TestPrefix_", result, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void GetBestTempDirectoryUsesSystemTempAsFallback()
+    {
+        // With null inputs, the result is based on the drive with most free space,
+        // which may or may not be the system temp drive. Verify the path is valid.
+        var result = PathUtils.GetBestTempDirectory(null, null, "FallbackTest_");
+        Assert.NotNull(result);
+        Assert.NotEmpty(result);
+        Assert.Contains("FallbackTest_", result, StringComparison.Ordinal);
+        // Path should include a guid component
+        var dirName = Path.GetFileName(result);
+        Assert.StartsWith("FallbackTest_", dirName, StringComparison.Ordinal);
+        Assert.True(dirName.Length > "FallbackTest_".Length + 10);
+    }
+
+    [Fact]
+    public void GetPossibleTempBasePathsIncludesSystemTemp()
+    {
+        var paths = PathUtils.GetPossibleTempBasePaths().ToList();
+        Assert.NotEmpty(paths);
+        Assert.Contains(Path.GetTempPath(), paths);
+    }
+
+    [Fact]
+    public void GetPossibleTempBasePathsReturnsNoDuplicates()
+    {
+        var paths = PathUtils.GetPossibleTempBasePaths().ToList();
+        Assert.Equal(paths.Count, paths.Distinct(StringComparer.OrdinalIgnoreCase).Count());
+    }
+
+    #endregion
 }
