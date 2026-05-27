@@ -402,7 +402,27 @@ public class ArchiveService : IDisposable
                 throw new SecurityException("Attempted to extract file outside of the target directory.");
             }
 
-            entry.WriteToFile(destinationPath);
+            WriteEntryWithRetry(entry, destinationPath);
+        }
+    }
+
+    /// <summary>
+    /// Writes an archive entry to a file with retry logic for transient I/O errors (e.g., network drops).
+    /// </summary>
+    private static void WriteEntryWithRetry(IArchiveEntry entry, string destinationPath)
+    {
+        const int maxRetries = 3;
+        for (var attempt = 1;; attempt++)
+        {
+            try
+            {
+                entry.WriteToFile(destinationPath);
+                return;
+            }
+            catch (IOException) when (attempt < maxRetries)
+            {
+                Thread.Sleep(attempt * 1000);
+            }
         }
     }
 

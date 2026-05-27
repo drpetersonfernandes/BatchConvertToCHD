@@ -137,7 +137,7 @@ public static class PathUtils
             try
             {
                 var drive = new DriveInfo(root);
-                if (drive.IsReady && drive.AvailableFreeSpace > bestFree)
+                if (drive.IsReady && drive.DriveType != DriveType.Network && drive.AvailableFreeSpace > bestFree)
                 {
                     bestFree = drive.AvailableFreeSpace;
                     bestRoot = root;
