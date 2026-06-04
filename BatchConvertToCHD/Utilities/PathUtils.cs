@@ -97,13 +97,16 @@ public static class PathUtils
     /// Returns the full path to a new unique temporary directory, selecting the drive
     /// with the most available free space from among the input file's drive,
     /// the output folder's drive, the system temp drive, and any other fixed drives.
-    /// Falls back to the system temp path if no suitable alternative is found.
+    /// When <paramref name="requiredBytes"/> is specified, prefers a drive that has
+    /// enough free space for the operation, even if it is not the drive with the most
+    /// total free space. Falls back to the system temp path if no suitable alternative is found.
     /// </summary>
     /// <param name="inputFilePath">Path to the input file (used to prioritize its drive).</param>
     /// <param name="outputFolderPath">Path to the output folder (used to prioritize its drive).</param>
     /// <param name="tempDirPrefix">Prefix for the temporary directory name (e.g., "BatchConvertToCHD_Temp_").</param>
+    /// <param name="requiredBytes">Minimum free space required in bytes. When &gt; 0, a drive meeting this requirement is preferred over the drive with the most total free space.</param>
     /// <returns>The full path to a new temporary directory that has not yet been created on disk.</returns>
-    public static string GetBestTempDirectory(string? inputFilePath, string? outputFolderPath, string tempDirPrefix)
+    public static string GetBestTempDirectory(string? inputFilePath, string? outputFolderPath, string tempDirPrefix, long requiredBytes = 0)
     {
         const long minFreeBytes = 1024L * 1024 * 1024; // 1 GB minimum to consider a drive viable
 
@@ -131,16 +134,28 @@ public static class PathUtils
 
         string? bestRoot = null;
         long bestFree = 0;
+        string? bestRootMeetingRequirement = null;
+        long bestFreeMeetingRequirement = 0;
 
         foreach (var root in candidates)
         {
             try
             {
                 var drive = new DriveInfo(root);
-                if (drive.IsReady && drive.DriveType != DriveType.Network && drive.AvailableFreeSpace > bestFree)
+                if (drive.IsReady && drive.DriveType != DriveType.Network)
                 {
-                    bestFree = drive.AvailableFreeSpace;
-                    bestRoot = root;
+                    if (drive.AvailableFreeSpace > bestFree)
+                    {
+                        bestFree = drive.AvailableFreeSpace;
+                        bestRoot = root;
+                    }
+
+                    if (requiredBytes > 0 && drive.AvailableFreeSpace >= requiredBytes &&
+                        drive.AvailableFreeSpace > bestFreeMeetingRequirement)
+                    {
+                        bestFreeMeetingRequirement = drive.AvailableFreeSpace;
+                        bestRootMeetingRequirement = root;
+                    }
                 }
             }
             catch
@@ -149,14 +164,18 @@ public static class PathUtils
             }
         }
 
+        // Prefer a drive that meets the space requirement; fall back to best overall
+        var selectedRoot = bestRootMeetingRequirement ?? bestRoot;
+        var selectedFree = bestRootMeetingRequirement != null ? bestFreeMeetingRequirement : bestFree;
+
         var guid = Guid.NewGuid().ToString("N");
         string basePath;
 
-        if (bestRoot != null && bestFree >= minFreeBytes &&
-            !string.Equals(bestRoot, systemTempRoot, StringComparison.OrdinalIgnoreCase))
+        if (selectedRoot != null && selectedFree >= minFreeBytes &&
+            !string.Equals(selectedRoot, systemTempRoot, StringComparison.OrdinalIgnoreCase))
         {
             basePath = Path.Combine(
-                bestRoot.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar),
+                selectedRoot.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar),
                 "BatchConvertToCHD_Temp");
         }
         else

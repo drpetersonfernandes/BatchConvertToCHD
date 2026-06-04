@@ -1375,7 +1375,17 @@ public partial class MainWindow : IDisposable
             string fileToProcess;
             if (ext.Equals(FileExtensions.Cso, StringComparison.OrdinalIgnoreCase))
             {
-                var tempDir = PathUtils.GetBestTempDirectory(inputFile, outputFolder, TempDirPrefix);
+                long csoSize = 0;
+                try
+                {
+                    csoSize = new FileInfo(inputFile).Length;
+                }
+                catch
+                {
+                    /* ignored */
+                }
+
+                var tempDir = PathUtils.GetBestTempDirectory(inputFile, outputFolder, TempDirPrefix, csoSize);
                 tempDirs.Add(tempDir);
                 await Task.Run(() => Directory.CreateDirectory(tempDir), token);
                 var tempIso = PathUtils.GetSafeTempFileName(originalName, "iso", tempDir);
@@ -1390,7 +1400,17 @@ public partial class MainWindow : IDisposable
             }
             else if (FileExtensions.ArchiveExtensionsSet.Contains(ext))
             {
-                var tempDir = PathUtils.GetBestTempDirectory(inputFile, outputFolder, TempDirPrefix);
+                long archiveSize = 0;
+                try
+                {
+                    archiveSize = new FileInfo(inputFile).Length;
+                }
+                catch
+                {
+                    /* ignored */
+                }
+
+                var tempDir = PathUtils.GetBestTempDirectory(inputFile, outputFolder, TempDirPrefix, archiveSize);
                 tempDirs.Add(tempDir);
                 var result = await _archiveService.ExtractArchiveAsync(inputFile, tempDir, LogMessage, token);
                 if (!result.Success)
@@ -1432,7 +1452,17 @@ public partial class MainWindow : IDisposable
                     return false;
                 }
 
-                var tempDir = PathUtils.GetBestTempDirectory(inputFile, outputFolder, TempDirPrefix);
+                long pbpSize = 0;
+                try
+                {
+                    pbpSize = new FileInfo(inputFile).Length;
+                }
+                catch
+                {
+                    /* ignored */
+                }
+
+                var tempDir = PathUtils.GetBestTempDirectory(inputFile, outputFolder, TempDirPrefix, pbpSize);
                 tempDirs.Add(tempDir);
                 await Task.Run(() => Directory.CreateDirectory(tempDir), token);
 
@@ -1529,7 +1559,10 @@ public partial class MainWindow : IDisposable
                     LogMessage($"Direct conversion attempt error for {originalName}: {ex.Message}");
                 }
 
-                _ = ReportBugAsync($"Direct conversion attempt error for {originalName}", ex);
+                if (!IsDiskSpaceException(ex))
+                {
+                    _ = ReportBugAsync($"Direct conversion attempt error for {originalName}", ex);
+                }
             }
 
             // Fallback: If direct conversion failed and we haven't already extracted to temp (i.e. it was a direct file attempt),
@@ -1541,16 +1574,11 @@ public partial class MainWindow : IDisposable
 
                 try
                 {
-                    var tempDir = PathUtils.GetBestTempDirectory(inputFile, outputFolder, TempDirPrefix);
-                    tempDirs.Add(tempDir);
-                    await Task.Run(() => Directory.CreateDirectory(tempDir), token);
-
-                    string tempInputFile;
-
+                    // Determine files to copy and total size before selecting temp directory
+                    List<string> filesToCopy;
                     if (ext is FileExtensions.Cue or FileExtensions.Gdi or FileExtensions.Toc or FileExtensions.Ccd)
                     {
-                        LogMessage("Copying game with dependencies to temporary directory...");
-                        var filesToCopy = new List<string> { inputFile };
+                        filesToCopy = [inputFile];
                         switch (ext)
                         {
                             case FileExtensions.Cue:
@@ -1578,7 +1606,57 @@ public partial class MainWindow : IDisposable
                             LogMessage($"WARNING: Skipping temp retry for {originalName} because referenced files are missing: {missingNames}");
                             return false;
                         }
+                    }
+                    else
+                    {
+                        filesToCopy = [inputFile];
+                    }
 
+                    // Calculate total bytes needed for temp copy
+                    long totalBytesNeeded = 0;
+                    foreach (var file in filesToCopy.Distinct())
+                    {
+                        try
+                        {
+                            totalBytesNeeded += new FileInfo(file).Length;
+                        }
+                        catch
+                        {
+                            /* skip inaccessible files */
+                        }
+                    }
+
+                    // Select temp directory preferring a drive with enough space
+                    var tempDir = PathUtils.GetBestTempDirectory(inputFile, outputFolder, TempDirPrefix, totalBytesNeeded);
+                    tempDirs.Add(tempDir);
+                    await Task.Run(() => Directory.CreateDirectory(tempDir), token);
+
+                    // Verify the selected temp drive has enough space
+                    try
+                    {
+                        var tempDriveRoot = Path.GetPathRoot(tempDir);
+                        if (!string.IsNullOrEmpty(tempDriveRoot))
+                        {
+                            var tempDrive = new DriveInfo(tempDriveRoot);
+                            if (tempDrive.IsReady && tempDrive.AvailableFreeSpace < totalBytesNeeded)
+                            {
+                                var availableGb = tempDrive.AvailableFreeSpace / (1024.0 * 1024.0 * 1024.0);
+                                var neededGb = totalBytesNeeded / (1024.0 * 1024.0 * 1024.0);
+                                LogMessage($"ERROR: Not enough disk space for temp copy of {originalName}. Need {neededGb:F1} GB but only {availableGb:F1} GB available on {tempDriveRoot.TrimEnd('\\')}.");
+                                return false;
+                            }
+                        }
+                    }
+                    catch
+                    {
+                        // If drive info check fails, proceed with the copy attempt anyway
+                    }
+
+                    string tempInputFile;
+
+                    if (ext is FileExtensions.Cue or FileExtensions.Gdi or FileExtensions.Toc or FileExtensions.Ccd)
+                    {
+                        LogMessage("Copying game with dependencies to temporary directory...");
                         foreach (var file in filesToCopy.Distinct())
                         {
                             var destPath = Path.Combine(tempDir, Path.GetFileName(file));
@@ -1611,7 +1689,10 @@ public partial class MainWindow : IDisposable
                         LogMessage($"Retry via temp failed for {originalName} ({inputFile}): {ex.Message}");
                     }
 
-                    _ = ReportBugAsync($"Retry via temp failed for {originalName}", ex);
+                    if (!IsDiskSpaceException(ex))
+                    {
+                        _ = ReportBugAsync($"Retry via temp failed for {originalName}", ex);
+                    }
                 }
             }
 
@@ -1672,7 +1753,11 @@ public partial class MainWindow : IDisposable
                 LogMessage($"Error processing {originalName}: {ex.Message}");
             }
 
-            _ = ReportBugAsync($"Error processing {originalName}", ex);
+            if (!IsDiskSpaceException(ex))
+            {
+                _ = ReportBugAsync($"Error processing {originalName}", ex);
+            }
+
             if (!string.IsNullOrEmpty(outputChd)) await TryDeleteFileAsync(outputChd, "failed CHD", CancellationToken.None);
             return false;
         }
