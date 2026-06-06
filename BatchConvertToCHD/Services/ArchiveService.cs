@@ -220,13 +220,13 @@ public class ArchiveService : IDisposable
         {
             return (false, new List<string>(), tempDirectoryRoot, $"Archive is encrypted/password-protected: {ex.Message}");
         }
-        catch (SharpCompress.Common.ArchiveOperationException ex)
-        {
-            return (false, [], tempDirectoryRoot, $"Archive appears to be corrupt or unsupported: {ex.Message}");
-        }
         catch (SharpCompress.Common.InvalidFormatException ex)
         {
             return (false, new List<string>(), tempDirectoryRoot, $"Archive is invalid or incomplete: {ex.Message}");
+        }
+        catch (SharpCompress.Common.ArchiveOperationException ex)
+        {
+            return (false, [], tempDirectoryRoot, $"Archive appears to be corrupt or unsupported: {ex.Message}");
         }
         catch (IOException ex) when (IsDiskFullException(ex))
         {

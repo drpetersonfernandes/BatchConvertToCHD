@@ -28,7 +28,7 @@
 *   **Recursive Structure Preservation**: Maintains your original directory hierarchy in the output folder when processing subfolders.
 *   **CloneCD Support**: Smart detection of `.img` files that belong to CloneCD sets (via `.ccd` files), automatically ensuring the correct `createcd` command is used.
 *   **Robust Extraction**: Supports extracting CHD files back to **.cue (CD)**, **.iso (DVD)**, **.gdi (Dreamcast/Naomi)**, and **.img (HDD)** with intelligent metadata auto-detection.
-*   **Archive Integration**: Transparently handles `.zip`, `.7z`, and `.rar` archives, extracting and processing contents automatically while respecting cancellation tokens.
+*   **Archive Integration**: Transparently handles `.zip`, `.7z`, and `.rar` archives, extracting and processing contents automatically while respecting cancellation tokens. Includes a 7za.exe fallback for `.7z` files that SharpCompress cannot extract.
 *   **CSO Decompression**: Built-in support for `.cso` (Compressed ISO) files via `maxcso` integration.
 *   **PBP Extraction**: Convert PlayStation Portable `.pbp` files to CHD format via `psxpackager` integration.
 
@@ -84,8 +84,9 @@ The application implements priority-based logic to ensure compatibility:
     *   `chdman.exe` / `chdman_arm64.exe` (MAME Project)
     *   `maxcso.exe` (CSO Decompression - x64 only)
     *   `psxpackager.exe` (PBP Extraction)
+    *   `7za.exe` / `7za_arm64.exe` (7-Zip fallback extraction)
  *   **NuGet Dependencies**:
-     * [SharpCompress](https://github.com/adamhathcock/sharpcompress) (v0.48.1) - Archive extraction support
+     * [SharpCompress](https://github.com/adamhathcock/sharpcompress) (v0.49.1) - Archive extraction support
 
 ---
 
@@ -152,6 +153,7 @@ This project is licensed under the **GNU General Public License v3.0**. See the 
 *   [unknownbrackets](https://github.com/unknownbrackets/maxcso) for `maxcso`.
 *   [PSXPackager](https://github.com/rupert-avery/psxpackager) for PlayStation PBP extraction support.
 *   [SharpCompress](https://github.com/adamhathcock/sharpcompress) for archive handling.
+*   [Igor Pavlov](https://www.7-zip.org/) for `7za.exe` (7-Zip command-line tool).
 
 ---
 Developed by [Pure Logic Code](https://www.purelogiccode.com)
