@@ -17,16 +17,22 @@ public class ArchiveService : IDisposable
 {
     private readonly string _maxCsoPath;
     private readonly bool _isMaxCsoAvailable;
+    private readonly string _sevenZipExePath;
+    private readonly bool _isSevenZipAvailable;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="ArchiveService"/> class.
     /// </summary>
     /// <param name="maxCsoPath">The path to the maxcso executable for CSO decompression.</param>
     /// <param name="isMaxCsoAvailable">Whether maxcso is available on the system.</param>
-    public ArchiveService(string maxCsoPath, bool isMaxCsoAvailable)
+    /// <param name="sevenZipExePath">The path to the 7za executable for 7z fallback extraction.</param>
+    /// <param name="isSevenZipAvailable">Whether 7za is available on the system.</param>
+    public ArchiveService(string maxCsoPath, bool isMaxCsoAvailable, string sevenZipExePath, bool isSevenZipAvailable)
     {
         _maxCsoPath = maxCsoPath;
         _isMaxCsoAvailable = isMaxCsoAvailable;
+        _sevenZipExePath = sevenZipExePath;
+        _isSevenZipAvailable = isSevenZipAvailable;
     }
 
     /// <summary>
@@ -164,7 +170,7 @@ public class ArchiveService : IDisposable
             }
             else if (extension.Equals(FileExtensions.SevenZip, StringComparison.OrdinalIgnoreCase))
             {
-                await Task.Run(() => ExtractSevenZipArchive(originalArchivePath, tempDirectoryRoot, onLog, token), token);
+                await Task.Run(async () => await ExtractSevenZipArchive(originalArchivePath, tempDirectoryRoot, onLog, token), token);
             }
             else if (extension.Equals(FileExtensions.Rar, StringComparison.OrdinalIgnoreCase))
             {
@@ -217,6 +223,10 @@ public class ArchiveService : IDisposable
         catch (SharpCompress.Common.ArchiveOperationException ex)
         {
             return (false, [], tempDirectoryRoot, $"Archive appears to be corrupt or unsupported: {ex.Message}");
+        }
+        catch (SharpCompress.Common.InvalidFormatException ex)
+        {
+            return (false, new List<string>(), tempDirectoryRoot, $"Archive is invalid or incomplete: {ex.Message}");
         }
         catch (IOException ex) when (IsDiskFullException(ex))
         {
@@ -274,15 +284,96 @@ public class ArchiveService : IDisposable
         }
     }
 
-    private static void ExtractSevenZipArchive(string archivePath, string outputDirectory, Action<string> onLog, CancellationToken token)
+    private async Task ExtractSevenZipArchive(string archivePath, string outputDirectory, Action<string> onLog, CancellationToken token)
     {
-        ExtractArchiveWithFallback(
-            archivePath,
-            outputDirectory,
-            onLog,
-            FileExtensions.SevenZip,
-            static stream => SevenZipArchive.OpenArchive(stream),
-            token);
+        try
+        {
+            ExtractArchiveWithFallback(
+                archivePath,
+                outputDirectory,
+                onLog,
+                FileExtensions.SevenZip,
+                static stream => SevenZipArchive.OpenArchive(stream),
+                token);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            if (_isSevenZipAvailable)
+            {
+                onLog($"SharpCompress extraction failed ({ex.Message}). Trying 7za.exe fallback...");
+                await ExtractWith7Za(archivePath, outputDirectory, onLog, token);
+            }
+            else
+            {
+                throw;
+            }
+        }
+    }
+
+    private async Task ExtractWith7Za(string archivePath, string outputDirectory, Action<string> onLog, CancellationToken token)
+    {
+        onLog($"Extracting with 7za.exe: {Path.GetFileName(archivePath)}");
+
+        using var process = new Process();
+        var outputBuilder = new StringBuilder();
+
+        try
+        {
+            process.StartInfo = new ProcessStartInfo
+            {
+                FileName = _sevenZipExePath,
+                Arguments = $"x \"{archivePath}\" -o\"{outputDirectory}\" -y",
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true,
+                ErrorDialog = false
+            };
+
+            process.OutputDataReceived += (_, args) =>
+            {
+                if (args.Data != null)
+                {
+                    outputBuilder.AppendLine(args.Data);
+                }
+            };
+            process.ErrorDataReceived += (_, args) =>
+            {
+                if (args.Data != null)
+                {
+                    outputBuilder.AppendLine(args.Data);
+                }
+            };
+
+            process.Start();
+            process.BeginOutputReadLine();
+            process.BeginErrorReadLine();
+
+            await process.WaitForExitAsync(token);
+
+            if (process.ExitCode != 0)
+            {
+                throw new InvalidOperationException($"7za.exe extraction failed with exit code {process.ExitCode}. Output: {outputBuilder}");
+            }
+
+            onLog($"Successfully extracted {Path.GetFileName(archivePath)} with 7za.exe");
+        }
+        catch (OperationCanceledException)
+        {
+            try
+            {
+                if (!process.HasExited)
+                {
+                    process.Kill(true);
+                }
+            }
+            catch
+            {
+                /* ignore */
+            }
+
+            throw;
+        }
     }
 
     private static void ExtractRarArchive(string archivePath, string outputDirectory, Action<string> onLog, CancellationToken token)
@@ -337,6 +428,9 @@ public class ArchiveService : IDisposable
                 ex is SharpCompress.Common.IncompleteArchiveException ||
                 ex is SharpCompress.Common.CryptographicException ||
                 ex is SharpCompress.Common.ArchiveOperationException ||
+                ex is SharpCompress.Common.InvalidFormatException ||
+                ex is IndexOutOfRangeException ||
+                ex is NullReferenceException ||
                 ex.GetType().FullName == "SharpCompress.Compressors.LZMA.DataErrorException")
             {
                 throw;

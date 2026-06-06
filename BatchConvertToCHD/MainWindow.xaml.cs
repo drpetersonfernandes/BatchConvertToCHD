@@ -23,8 +23,10 @@ public partial class MainWindow : IDisposable
     private readonly object _ctsLock = new();
     private readonly bool _isMaxCsoAvailable;
     private readonly bool _isChdmanAvailable;
+
     private readonly string _psxPackagerPath;
     private readonly bool _isPsxPackagerAvailable;
+    private readonly bool _isSevenZipAvailable;
 
     // Statistics
     private int _totalFilesProcessed;
@@ -79,9 +81,12 @@ public partial class MainWindow : IDisposable
         _psxPackagerPath = Path.Combine(appDirectory, AppConfig.PsxPackagerExeName);
         _isPsxPackagerAvailable = File.Exists(_psxPackagerPath);
 
+        var sevenZipExePath = Path.Combine(appDirectory, AppConfig.SevenZipExeName);
+        _isSevenZipAvailable = File.Exists(sevenZipExePath);
+
         // Initialize Services
         _updateService = new UpdateService(AppConfig.ApplicationName);
-        _archiveService = new ArchiveService(maxCsoPath, _isMaxCsoAvailable);
+        _archiveService = new ArchiveService(maxCsoPath, _isMaxCsoAvailable, sevenZipExePath, _isSevenZipAvailable);
 
         // Initialize performance counters
         _writeBytesCounter = CreateWritePerformanceCounter();
@@ -2961,7 +2966,7 @@ public partial class MainWindow : IDisposable
         try
         {
             var currentProcessId = Environment.ProcessId;
-            var toolNames = new[] { "chdman", "maxcso", AppConfig.PsxPackagerExeName };
+            var toolNames = new[] { "chdman", "maxcso", "7za", AppConfig.PsxPackagerExeName };
 
             foreach (var toolName in toolNames)
             {

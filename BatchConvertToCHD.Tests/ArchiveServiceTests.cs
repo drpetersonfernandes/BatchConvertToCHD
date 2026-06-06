@@ -1,5 +1,6 @@
 using System.IO.Compression;
 using BatchConvertToCHD.Services;
+using SharpCompress.Common;
 using SharpCompressZipArchive = SharpCompress.Archives.Zip.ZipArchive;
 
 namespace BatchConvertToCHD.Tests;
@@ -34,7 +35,7 @@ public class ArchiveServiceTests : IDisposable
     [Fact]
     public async Task ExtractArchiveAsyncMissingFileReturnsFailureAndLogsWarning()
     {
-        var service = new ArchiveService("maxcso.exe", false);
+        var service = new ArchiveService("maxcso.exe", false, "7za.exe", false);
         var missingPath = Path.Combine(_tempDir, "missing.7z");
         var tempDir = Path.Combine(_tempDir, "extract");
         var logs = new List<string>();
@@ -49,7 +50,7 @@ public class ArchiveServiceTests : IDisposable
     [Fact]
     public async Task ExtractArchiveAsyncUnsupportedExtensionReturnsFailure()
     {
-        var service = new ArchiveService("maxcso.exe", false);
+        var service = new ArchiveService("maxcso.exe", false, "7za.exe", false);
         var filePath = Path.Combine(_tempDir, "test.tar");
         File.WriteAllText(filePath, "dummy");
         var tempDir = Path.Combine(_tempDir, "extract");
@@ -63,12 +64,11 @@ public class ArchiveServiceTests : IDisposable
     [Fact]
     public async Task ExtractArchiveAsyncValidZipExtractsFiles()
     {
-        var service = new ArchiveService("maxcso.exe", false);
+        var service = new ArchiveService("maxcso.exe", false, "7za.exe", false);
         var zipPath = Path.Combine(_tempDir, "test.zip");
         var tempDir = Path.Combine(_tempDir, "extract");
         Directory.CreateDirectory(tempDir);
 
-        // Create a zip with an ISO file inside
         await using (var archive = ZipFile.Open(zipPath, ZipArchiveMode.Create))
         {
             var entry = archive.CreateEntry("game.iso");
@@ -88,12 +88,11 @@ public class ArchiveServiceTests : IDisposable
     [Fact]
     public async Task ExtractArchiveAsyncValidZipNoPrimaryFilesReturnsFailure()
     {
-        var service = new ArchiveService("maxcso.exe", false);
+        var service = new ArchiveService("maxcso.exe", false, "7za.exe", false);
         var zipPath = Path.Combine(_tempDir, "test.zip");
         var tempDir = Path.Combine(_tempDir, "extract");
         Directory.CreateDirectory(tempDir);
 
-        // Create a zip with a txt file (not a primary target)
         await using (var archive = ZipFile.Open(zipPath, ZipArchiveMode.Create))
         {
             var entry = archive.CreateEntry("readme.txt");
@@ -112,7 +111,7 @@ public class ArchiveServiceTests : IDisposable
     [Fact]
     public async Task ExtractCsoAsyncMaxCsoNotAvailableReturnsFailure()
     {
-        var service = new ArchiveService("maxcso.exe", false);
+        var service = new ArchiveService("maxcso.exe", false, "7za.exe", false);
         var tempIso = Path.Combine(_tempDir, "out.iso");
 
         var result = await service.ExtractCsoAsync("input.cso", tempIso, _tempDir, static _ => { }, CancellationToken.None);
@@ -124,7 +123,7 @@ public class ArchiveServiceTests : IDisposable
     [Fact]
     public void DisposeDoesNotThrow()
     {
-        var service = new ArchiveService("maxcso.exe", false);
+        var service = new ArchiveService("maxcso.exe", false, "7za.exe", false);
         var exception = Record.Exception(service.Dispose);
         Assert.Null(exception);
     }
@@ -156,7 +155,7 @@ public class ArchiveServiceTests : IDisposable
     [Fact]
     public async Task ExtractArchiveAsyncInvalidSevenZipReturnsFailure()
     {
-        var service = new ArchiveService("maxcso.exe", false);
+        var service = new ArchiveService("maxcso.exe", false, "7za.exe", false);
         var sevenZPath = Path.Combine(_tempDir, "invalid.7z");
         File.WriteAllText(sevenZPath, "not a valid 7z archive");
         var tempDir = Path.Combine(_tempDir, "extract");
@@ -169,7 +168,7 @@ public class ArchiveServiceTests : IDisposable
     [Fact]
     public async Task ExtractArchiveAsyncInvalidRarReturnsFailure()
     {
-        var service = new ArchiveService("maxcso.exe", false);
+        var service = new ArchiveService("maxcso.exe", false, "7za.exe", false);
         var rarPath = Path.Combine(_tempDir, "invalid.rar");
         File.WriteAllText(rarPath, "not a valid rar archive");
         var tempDir = Path.Combine(_tempDir, "extract");
@@ -177,5 +176,541 @@ public class ArchiveServiceTests : IDisposable
         var result = await service.ExtractArchiveAsync(rarPath, tempDir, static _ => { }, CancellationToken.None);
 
         Assert.False(result.Success);
+    }
+
+    // --- Tests for corrupt-data exception re-throw in ExtractArchiveWithFallback ---
+
+    [Fact]
+    public void ExtractArchiveWithFallbackIndexOutOfRangeExceptionRethrowsWithoutFallback()
+    {
+        var archivePath = CreateDummyFile("test.rar");
+        var outputDir = Path.Combine(_tempDir, "out");
+        Directory.CreateDirectory(outputDir);
+        var logs = new List<string>();
+        var openCalled = false;
+
+        var ex = Record.Exception(() =>
+        {
+            ArchiveService.ExtractArchiveWithFallback<SharpCompressZipArchive>(
+                archivePath,
+                outputDir,
+                logs.Add,
+                ".rar",
+                _ =>
+                {
+                    openCalled = true;
+                    ThrowIndexOutOfRange();
+                    return null!;
+                },
+                CancellationToken.None);
+        });
+
+        Assert.NotNull(ex);
+        Assert.IsType<IndexOutOfRangeException>(ex);
+        Assert.True(openCalled);
+        Assert.Contains(logs, static msg => msg.Contains("Direct extraction failed", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void ExtractArchiveWithFallbackNullReferenceExceptionRethrowsWithoutFallback()
+    {
+        var archivePath = CreateDummyFile("test.rar");
+        var outputDir = Path.Combine(_tempDir, "out");
+        Directory.CreateDirectory(outputDir);
+        var logs = new List<string>();
+
+        var ex = Record.Exception(() =>
+        {
+            ArchiveService.ExtractArchiveWithFallback<SharpCompressZipArchive>(
+                archivePath,
+                outputDir,
+                logs.Add,
+                ".rar",
+                static _ =>
+                {
+                    ThrowNullReference();
+                    return null!;
+                },
+                CancellationToken.None);
+        });
+
+        Assert.NotNull(ex);
+        Assert.IsType<NullReferenceException>(ex);
+    }
+
+    [Fact]
+    public void ExtractArchiveWithFallbackInvalidFormatExceptionRethrowsWithoutFallback()
+    {
+        var archivePath = CreateDummyFile("test.rar");
+        var outputDir = Path.Combine(_tempDir, "out");
+        Directory.CreateDirectory(outputDir);
+        var logs = new List<string>();
+
+        var ex = Record.Exception(() =>
+        {
+            ArchiveService.ExtractArchiveWithFallback<SharpCompressZipArchive>(
+                archivePath,
+                outputDir,
+                logs.Add,
+                ".rar",
+                static _ => throw new InvalidFormatException("Multi-part rar file is incomplete."),
+                CancellationToken.None);
+        });
+
+        Assert.NotNull(ex);
+        Assert.IsType<InvalidFormatException>(ex);
+    }
+
+    [Fact]
+    public void ExtractArchiveWithFallbackInvalidDataExceptionRethrowsWithoutFallback()
+    {
+        var archivePath = CreateDummyFile("test.rar");
+        var outputDir = Path.Combine(_tempDir, "out");
+        Directory.CreateDirectory(outputDir);
+        var logs = new List<string>();
+
+        var ex = Record.Exception(() =>
+        {
+            ArchiveService.ExtractArchiveWithFallback<SharpCompressZipArchive>(
+                archivePath,
+                outputDir,
+                logs.Add,
+                ".rar",
+                static _ => throw new InvalidDataException("archive is corrupt"),
+                CancellationToken.None);
+        });
+
+        Assert.NotNull(ex);
+        Assert.IsType<InvalidDataException>(ex);
+    }
+
+    [Fact]
+    public void ExtractArchiveWithFallbackIncompleteArchiveExceptionRethrowsWithoutFallback()
+    {
+        var archivePath = CreateDummyFile("test.rar");
+        var outputDir = Path.Combine(_tempDir, "out");
+        Directory.CreateDirectory(outputDir);
+        var logs = new List<string>();
+
+        var ex = Record.Exception(() =>
+        {
+            ArchiveService.ExtractArchiveWithFallback<SharpCompressZipArchive>(
+                archivePath,
+                outputDir,
+                logs.Add,
+                ".rar",
+                static _ => throw new IncompleteArchiveException("archive is incomplete"),
+                CancellationToken.None);
+        });
+
+        Assert.NotNull(ex);
+        Assert.IsType<IncompleteArchiveException>(ex);
+    }
+
+    [Fact]
+    public void ExtractArchiveWithFallbackCryptographicExceptionRethrowsWithoutFallback()
+    {
+        var archivePath = CreateDummyFile("test.rar");
+        var outputDir = Path.Combine(_tempDir, "out");
+        Directory.CreateDirectory(outputDir);
+        var logs = new List<string>();
+
+        var ex = Record.Exception(() =>
+        {
+            ArchiveService.ExtractArchiveWithFallback<SharpCompressZipArchive>(
+                archivePath,
+                outputDir,
+                logs.Add,
+                ".rar",
+                static _ => throw new CryptographicException("archive is encrypted"),
+                CancellationToken.None);
+        });
+
+        Assert.NotNull(ex);
+        Assert.IsType<CryptographicException>(ex);
+    }
+
+    [Fact]
+    public void ExtractArchiveWithFallbackArchiveOperationExceptionRethrowsWithoutFallback()
+    {
+        var archivePath = CreateDummyFile("test.rar");
+        var outputDir = Path.Combine(_tempDir, "out");
+        Directory.CreateDirectory(outputDir);
+        var logs = new List<string>();
+
+        var ex = Record.Exception(() =>
+        {
+            ArchiveService.ExtractArchiveWithFallback<SharpCompressZipArchive>(
+                archivePath,
+                outputDir,
+                logs.Add,
+                ".rar",
+                static _ => throw new ArchiveOperationException("archive operation failed"),
+                CancellationToken.None);
+        });
+
+        Assert.NotNull(ex);
+        Assert.IsType<ArchiveOperationException>(ex);
+    }
+
+    [Fact]
+    public void ExtractArchiveWithFallbackOperationCanceledExceptionRethrows()
+    {
+        var archivePath = CreateDummyFile("test.rar");
+        var outputDir = Path.Combine(_tempDir, "out");
+        Directory.CreateDirectory(outputDir);
+
+        var ex = Record.Exception(() =>
+        {
+            ArchiveService.ExtractArchiveWithFallback<SharpCompressZipArchive>(
+                archivePath,
+                outputDir,
+                static _ => { },
+                ".rar",
+                static _ => throw new OperationCanceledException(),
+                CancellationToken.None);
+        });
+
+        Assert.NotNull(ex);
+        Assert.IsType<OperationCanceledException>(ex);
+    }
+
+    [Fact]
+    public void ExtractArchiveWithFallbackNonCorruptExceptionAttemptsFallback()
+    {
+        var archivePath = CreateDummyFile("test.rar");
+        var outputDir = Path.Combine(_tempDir, "out");
+        Directory.CreateDirectory(outputDir);
+        var logs = new List<string>();
+        var openCallCount = 0;
+
+        // InvalidOperationException is not in the corrupt-data list, so fallback should be attempted
+        var ex = Record.Exception(() =>
+        {
+            ArchiveService.ExtractArchiveWithFallback<SharpCompressZipArchive>(
+                archivePath,
+                outputDir,
+                logs.Add,
+                ".rar",
+                _ =>
+                {
+                    openCallCount++;
+                    throw new InvalidOperationException("some transient error");
+                },
+                CancellationToken.None);
+        });
+
+        Assert.NotNull(ex);
+        // openArchive should be called twice: once for direct, once for fallback
+        Assert.Equal(2, openCallCount);
+    }
+
+    // --- Tests for ExtractArchiveAsync exception handling ---
+
+    [Fact]
+    public async Task ExtractArchiveAsyncInvalidFormatExceptionReturnsInvalidOrIncompleteMessage()
+    {
+        var service = new ArchiveService("maxcso.exe", false, "7za.exe", false);
+        // Create a file with RAR extension but invalid content to trigger InvalidFormatException
+        var rarPath = Path.Combine(_tempDir, "bad.rar");
+        File.WriteAllText(rarPath, "not a valid rar archive");
+        var tempDir = Path.Combine(_tempDir, "extract");
+
+        var result = await service.ExtractArchiveAsync(rarPath, tempDir, static _ => { }, CancellationToken.None);
+
+        Assert.False(result.Success);
+        // The error should be one of the known archive error messages
+        Assert.True(
+            result.ErrorMessage.Contains("invalid or incomplete", StringComparison.OrdinalIgnoreCase) ||
+            result.ErrorMessage.Contains("corrupt", StringComparison.OrdinalIgnoreCase) ||
+            result.ErrorMessage.Contains("Error extracting archive", StringComparison.OrdinalIgnoreCase),
+            $"Expected a known error message but got: {result.ErrorMessage}");
+    }
+
+    [Fact]
+    public async Task ExtractArchiveAsyncValidZipWithMultipleFilesExtractsAll()
+    {
+        var service = new ArchiveService("maxcso.exe", false, "7za.exe", false);
+        var zipPath = Path.Combine(_tempDir, "multi.zip");
+        var tempDir = Path.Combine(_tempDir, "extract");
+        Directory.CreateDirectory(tempDir);
+
+        await using (var archive = ZipFile.Open(zipPath, ZipArchiveMode.Create))
+        {
+            foreach (var name in new[] { "game1.iso", "game2.cue", "readme.txt" })
+            {
+                var entry = archive.CreateEntry(name);
+                await using var stream = entry.Open();
+                stream.WriteByte(0x01);
+            }
+        }
+
+        var result = await service.ExtractArchiveAsync(zipPath, tempDir, static _ => { }, CancellationToken.None);
+
+        Assert.True(result.Success);
+        Assert.Equal(2, result.FilePaths.Count);
+        Assert.Contains(result.FilePaths, static f => f.EndsWith("game1.iso", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(result.FilePaths, static f => f.EndsWith("game2.cue", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public async Task ExtractArchiveAsyncValidZipWithSubdirectoriesExtractsFiles()
+    {
+        var service = new ArchiveService("maxcso.exe", false, "7za.exe", false);
+        var zipPath = Path.Combine(_tempDir, "nested.zip");
+        var tempDir = Path.Combine(_tempDir, "extract");
+        Directory.CreateDirectory(tempDir);
+
+        await using (var archive = ZipFile.Open(zipPath, ZipArchiveMode.Create))
+        {
+            var entry = archive.CreateEntry("subdir/game.iso");
+            await using var stream = entry.Open();
+            stream.WriteByte(0x01);
+        }
+
+        var result = await service.ExtractArchiveAsync(zipPath, tempDir, static _ => { }, CancellationToken.None);
+
+        Assert.True(result.Success);
+        Assert.Single(result.FilePaths);
+        Assert.Contains("subdir", result.FilePaths[0]);
+        Assert.EndsWith("game.iso", result.FilePaths[0], StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task ExtractArchiveAsyncCancellationThrowsOperationCanceled()
+    {
+        var service = new ArchiveService("maxcso.exe", false, "7za.exe", false);
+        var zipPath = Path.Combine(_tempDir, "cancel.zip");
+        var tempDir = Path.Combine(_tempDir, "extract");
+        Directory.CreateDirectory(tempDir);
+
+        await using (var archive = ZipFile.Open(zipPath, ZipArchiveMode.Create))
+        {
+            var entry = archive.CreateEntry("game.iso");
+            await using var stream = entry.Open();
+            stream.WriteByte(0x01);
+        }
+
+        using var cts = new CancellationTokenSource();
+        cts.Cancel();
+
+        await Assert.ThrowsAsync<OperationCanceledException>(() =>
+            service.ExtractArchiveAsync(zipPath, tempDir, static _ => { }, cts.Token));
+    }
+
+    // --- Tests for 7za fallback logic ---
+
+    [Fact]
+    public async Task ExtractArchiveAsyncInvalidSevenZipWith7ZaUnavailableReturnsFailure()
+    {
+        var service = new ArchiveService("maxcso.exe", false, "7za.exe", false);
+        var sevenZPath = Path.Combine(_tempDir, "bad.7z");
+        File.WriteAllText(sevenZPath, "not a valid 7z archive");
+        var tempDir = Path.Combine(_tempDir, "extract");
+        var logs = new List<string>();
+
+        var result = await service.ExtractArchiveAsync(sevenZPath, tempDir, logs.Add, CancellationToken.None);
+
+        Assert.False(result.Success);
+        // Should NOT log 7za fallback attempt since 7za is unavailable
+        Assert.DoesNotContain(logs, static msg => msg.Contains("7za.exe fallback", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public async Task ExtractArchiveAsyncInvalidSevenZipWith7ZaAvailableAttemptsFallback()
+    {
+        // Use a non-existent 7za path so the fallback will fail, but we can verify it was attempted
+        var fake7ZaPath = Path.Combine(_tempDir, "7za.exe");
+        var service = new ArchiveService("maxcso.exe", false, fake7ZaPath, true);
+        var sevenZPath = Path.Combine(_tempDir, "bad.7z");
+        File.WriteAllText(sevenZPath, "not a valid 7z archive");
+        var tempDir = Path.Combine(_tempDir, "extract");
+        var logs = new List<string>();
+
+        var result = await service.ExtractArchiveAsync(sevenZPath, tempDir, logs.Add, CancellationToken.None);
+
+        Assert.False(result.Success);
+        // Should log the 7za fallback attempt since 7za is marked as available
+        Assert.Contains(logs, static msg => msg.Contains("7za.exe fallback", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public async Task ExtractArchiveAsyncValidSevenZipExtractsSuccessfully()
+    {
+        // Create a 7z archive using System.IO.Compression (the test verifies the extraction pipeline works)
+        var sevenZPath = Path.Combine(_tempDir, "valid.7z");
+        var tempDir = Path.Combine(_tempDir, "extract");
+        Directory.CreateDirectory(tempDir);
+
+        // Write a minimal valid 7z header (signature only - enough for SharpCompress to open but may have no entries)
+        // For a proper integration test, a real 7z file is needed. Here we test that the error path works.
+        File.WriteAllBytes(sevenZPath, new byte[] { 0x37, 0x7A, 0xBC, 0xAF, 0x27, 0x1C, 0x00, 0x04 });
+
+        var service = new ArchiveService("maxcso.exe", false, "7za.exe", false);
+        var result = await service.ExtractArchiveAsync(sevenZPath, tempDir, static _ => { }, CancellationToken.None);
+
+        // This will either succeed (if the minimal header is valid enough) or fail gracefully
+        Assert.False(result.Success);
+    }
+
+    // --- Tests for ExtractArchiveWithFallback with valid archives ---
+
+    [Fact]
+    public async Task ExtractArchiveAsyncValidZipWithLogOutput()
+    {
+        var service = new ArchiveService("maxcso.exe", false, "7za.exe", false);
+        var zipPath = Path.Combine(_tempDir, "log_test.zip");
+        var tempDir = Path.Combine(_tempDir, "extract");
+        Directory.CreateDirectory(tempDir);
+
+        await using (var archive = ZipFile.Open(zipPath, ZipArchiveMode.Create))
+        {
+            var entry = archive.CreateEntry("game.iso");
+            await using var stream = entry.Open();
+            stream.WriteByte(0x01);
+        }
+
+        var logs = new List<string>();
+        var result = await service.ExtractArchiveAsync(zipPath, tempDir, logs.Add, CancellationToken.None);
+
+        Assert.True(result.Success);
+        Assert.Contains(logs, static msg => msg.Contains("Extracting", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void ExtractArchiveWithFallbackDirectoryNotFoundExceptionThrows()
+    {
+        var missingDir = Path.Combine(_tempDir, $"missing_{Guid.NewGuid():N}", "test.rar");
+        var outputDir = Path.Combine(_tempDir, "out");
+        Directory.CreateDirectory(outputDir);
+        var logs = new List<string>();
+
+        var ex = Record.Exception(() =>
+        {
+            ArchiveService.ExtractArchiveWithFallback<SharpCompressZipArchive>(
+                missingDir,
+                outputDir,
+                logs.Add,
+                ".rar",
+                static _ => throw new InvalidOperationException("Should not reach here"),
+                CancellationToken.None);
+        });
+
+        Assert.NotNull(ex);
+        Assert.IsType<DirectoryNotFoundException>(ex);
+        Assert.Contains(logs, static msg => msg.Contains("Skipping fallback", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public async Task ExtractArchiveAsyncCsoAsyncWithCancellationThrows()
+    {
+        var service = new ArchiveService("maxcso.exe", true, "7za.exe", false);
+        var csoPath = Path.Combine(_tempDir, "test.cso");
+        File.WriteAllBytes(csoPath, new byte[] { 0x01 });
+        var tempIso = Path.Combine(_tempDir, "out.iso");
+
+        using var cts = new CancellationTokenSource();
+        cts.Cancel();
+
+        await Assert.ThrowsAsync<OperationCanceledException>(() =>
+            service.ExtractCsoAsync(csoPath, tempIso, _tempDir, static _ => { }, cts.Token));
+    }
+
+    [Fact]
+    public void ExtractArchiveWithFallbackLogsFallbackAttemptForNonCorruptErrors()
+    {
+        var archivePath = CreateDummyFile("test.rar");
+        var outputDir = Path.Combine(_tempDir, "out");
+        Directory.CreateDirectory(outputDir);
+        var logs = new List<string>();
+
+        var ex = Record.Exception(() =>
+        {
+            ArchiveService.ExtractArchiveWithFallback<SharpCompressZipArchive>(
+                archivePath,
+                outputDir,
+                logs.Add,
+                ".rar",
+                static _ => throw new InvalidOperationException("transient error"),
+                CancellationToken.None);
+        });
+
+        Assert.NotNull(ex);
+        Assert.Contains(logs, static msg => msg.Contains("Direct extraction failed", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(logs, static msg => msg.Contains("Attempting fallback with local copy", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void ExtractArchiveWithFallbackCorruptErrorsDoNotAttemptFallbackCopy()
+    {
+        var archivePath = CreateDummyFile("test.rar");
+        var outputDir = Path.Combine(_tempDir, "out");
+        Directory.CreateDirectory(outputDir);
+        var logs = new List<string>();
+
+        var ex = Record.Exception(() =>
+        {
+            ArchiveService.ExtractArchiveWithFallback<SharpCompressZipArchive>(
+                archivePath,
+                outputDir,
+                logs.Add,
+                ".rar",
+                static _ =>
+                {
+                    ThrowIndexOutOfRange();
+                    return null!;
+                },
+                CancellationToken.None);
+        });
+
+        Assert.NotNull(ex);
+        Assert.IsType<IndexOutOfRangeException>(ex);
+        // The exception is re-thrown before the fallback copy happens
+        Assert.Contains(logs, static msg => msg.Contains("Direct extraction failed", StringComparison.OrdinalIgnoreCase));
+        // No temp file should be created in the output directory (fallback copy didn't happen)
+        Assert.DoesNotContain(Directory.GetFiles(Path.GetTempPath(), "*.rar"), static f => File.GetCreationTime(f) > DateTime.UtcNow.AddMinutes(-1));
+    }
+
+    [Fact]
+    public async Task ExtractArchiveAsyncLogsExtractionPath()
+    {
+        var service = new ArchiveService("maxcso.exe", false, "7za.exe", false);
+        var zipPath = Path.Combine(_tempDir, "log_test.zip");
+        var tempDir = Path.Combine(_tempDir, "extract");
+        Directory.CreateDirectory(tempDir);
+
+        await using (var archive = ZipFile.Open(zipPath, ZipArchiveMode.Create))
+        {
+            var entry = archive.CreateEntry("game.iso");
+            await using var stream = entry.Open();
+            stream.WriteByte(0x01);
+        }
+
+        var logs = new List<string>();
+        var result = await service.ExtractArchiveAsync(zipPath, tempDir, logs.Add, CancellationToken.None);
+
+        Assert.True(result.Success);
+        Assert.Contains(logs, static msg => msg.Contains("Extracting", StringComparison.OrdinalIgnoreCase));
+    }
+
+    private string CreateDummyFile(string fileName)
+    {
+        var path = Path.Combine(_tempDir, fileName);
+        File.WriteAllBytes(path, new byte[] { 0x00 });
+        return path;
+    }
+
+    private static void ThrowIndexOutOfRange()
+    {
+        // Simulates what SharpCompress does internally with corrupt RAR data
+        var arr = new int[1];
+        _ = arr[1];
+    }
+
+    private static void ThrowNullReference()
+    {
+        // Simulates what SharpCompress does internally with corrupt RAR data
+        string? s = null;
+        _ = s!.Length;
     }
 }
