@@ -147,7 +147,7 @@ public class ArchiveService : IDisposable
         if (!File.Exists(originalArchivePath))
         {
             onLog($"WARNING: File not found, skipping extraction: {originalArchivePath}");
-            return (false, new List<string>(), tempDirectoryRoot, $"File not found: {originalArchivePath}");
+            return (false, [], tempDirectoryRoot, $"File not found: {originalArchivePath}");
         }
 
         try
@@ -158,7 +158,7 @@ public class ArchiveService : IDisposable
             if (spaceError != null)
             {
                 onLog($"ERROR: {spaceError}");
-                return (false, new List<string>(), tempDirectoryRoot, spaceError);
+                return (false, [], tempDirectoryRoot, spaceError);
             }
 
             Directory.CreateDirectory(tempDirectoryRoot);
@@ -178,7 +178,7 @@ public class ArchiveService : IDisposable
             }
             else
             {
-                return (false, new List<string>(), tempDirectoryRoot, $"Unsupported archive type: {extension}");
+                return (false, [], tempDirectoryRoot, $"Unsupported archive type: {extension}");
             }
 
             token.ThrowIfCancellationRequested();
@@ -206,37 +206,37 @@ public class ArchiveService : IDisposable
         }
         catch (InvalidDataException ex)
         {
-            return (false, new List<string>(), tempDirectoryRoot, $"Archive appears to be corrupt or incomplete: {ex.Message}");
+            return (false, [], tempDirectoryRoot, $"The archive file may be corrupted or incomplete and could not be extracted. Try re-downloading or re-copying the file, then attempt the conversion again. Details: {ex.Message}");
         }
         catch (SharpCompress.Common.IncompleteArchiveException ex)
         {
-            return (false, new List<string>(), tempDirectoryRoot, $"Archive appears to be incomplete: {ex.Message}");
+            return (false, [], tempDirectoryRoot, $"The archive file appears to be incomplete and could not be fully extracted. Try re-downloading or re-copying the file, then attempt the conversion again. Details: {ex.Message}");
         }
         catch (Exception ex) when (ex.GetType().FullName == "SharpCompress.Compressors.LZMA.DataErrorException")
         {
-            return (false, new List<string>(), tempDirectoryRoot, $"Archive data is corrupt: {ex.Message}");
+            return (false, [], tempDirectoryRoot, $"The archive file may be corrupted and could not be extracted. Try re-downloading or re-copying the file, then attempt the conversion again. Details: {ex.Message}");
         }
         catch (SharpCompress.Common.CryptographicException ex)
         {
-            return (false, new List<string>(), tempDirectoryRoot, $"Archive is encrypted/password-protected: {ex.Message}");
+            return (false, [], tempDirectoryRoot, $"Archive is encrypted/password-protected and cannot be processed. Please extract it manually and add the extracted files. Details: {ex.Message}");
         }
         catch (SharpCompress.Common.InvalidFormatException ex)
         {
-            return (false, new List<string>(), tempDirectoryRoot, $"Archive is invalid or incomplete: {ex.Message}");
+            return (false, [], tempDirectoryRoot, $"The archive file may be corrupted or in an unsupported format and could not be extracted. Try re-downloading or re-copying the file, then attempt the conversion again. Details: {ex.Message}");
         }
         catch (SharpCompress.Common.ArchiveOperationException ex)
         {
-            return (false, [], tempDirectoryRoot, $"Archive appears to be corrupt or unsupported: {ex.Message}");
+            return (false, [], tempDirectoryRoot, $"The archive file may be corrupted or unsupported and could not be extracted. Try re-downloading or re-copying the file, then attempt the conversion again. Details: {ex.Message}");
         }
         catch (IndexOutOfRangeException)
         {
-            return (false, [], tempDirectoryRoot, "Archive appears to be corrupt or unsupported (internal decompression error).");
+            return (false, [], tempDirectoryRoot, "The archive file may be corrupted or incomplete and could not be extracted. Try re-downloading or re-copying the file, then attempt the conversion again.");
         }
         catch (IOException ex) when (IsDiskFullException(ex))
         {
             var driveRoot = Path.GetPathRoot(Path.GetFullPath(tempDirectoryRoot))?.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar) ?? "temp drive";
             var archiveSizeGb = new FileInfo(originalArchivePath).Length / (1024.0 * 1024.0 * 1024.0);
-            return (false, new List<string>(), tempDirectoryRoot,
+            return (false, [], tempDirectoryRoot,
                 $"Not enough disk space on {driveRoot}. The archive ({archiveFileName}, {archiveSizeGb:F1} GB uncompressed) cannot be extracted. Free up space on {driveRoot} or change your system TEMP directory to a drive with more space.");
         }
         catch (Exception ex)
@@ -254,7 +254,7 @@ public class ArchiveService : IDisposable
                 // Ignore errors in bug reporting to avoid infinite loops
             }
 
-            return (false, new List<string>(), tempDirectoryRoot, $"Error extracting archive: {ex.Message}");
+            return (false, [], tempDirectoryRoot, $"Error extracting archive: {ex.Message}");
         }
     }
 

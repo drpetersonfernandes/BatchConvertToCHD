@@ -133,6 +133,7 @@ public class UpdateService(string applicationName)
         {
             onLog($"Update check failed (Network/SSL): {ex.Message}");
             onStatusUpdate("Update check failed (network)");
+            await onBugReport("Update check failed (network/SSL)", ex);
         }
         catch (Exception ex)
         {

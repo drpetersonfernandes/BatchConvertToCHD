@@ -1420,6 +1420,11 @@ public partial class MainWindow : IDisposable
                 var result = await _archiveService.ExtractArchiveAsync(inputFile, tempDir, LogMessage, token);
                 if (!result.Success)
                 {
+                    if (!string.IsNullOrWhiteSpace(result.ErrorMessage))
+                    {
+                        LogMessage($"ERROR: {result.ErrorMessage}");
+                    }
+
                     return false;
                 }
 
@@ -2749,14 +2754,14 @@ public partial class MainWindow : IDisposable
     internal static bool IsCorruptionException(Exception ex)
     {
         return ex is InvalidDataException
-            or IndexOutOfRangeException
-            or NullReferenceException
-            or System.Security.Cryptography.CryptographicException
-            || ex.GetType().FullName is
-                "SharpCompress.Common.IncompleteArchiveException"
-                or "SharpCompress.Common.ArchiveOperationException"
-                or "SharpCompress.Common.InvalidFormatException"
-                or "SharpCompress.Compressors.LZMA.DataErrorException";
+                   or IndexOutOfRangeException
+                   or NullReferenceException
+                   or System.Security.Cryptography.CryptographicException
+               || ex.GetType().FullName is
+                   "SharpCompress.Common.IncompleteArchiveException"
+                   or "SharpCompress.Common.ArchiveOperationException"
+                   or "SharpCompress.Common.InvalidFormatException"
+                   or "SharpCompress.Compressors.LZMA.DataErrorException";
     }
 
     private static bool IsDiskSpaceError(string? errorOutput)
