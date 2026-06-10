@@ -228,6 +228,10 @@ public class ArchiveService : IDisposable
         {
             return (false, [], tempDirectoryRoot, $"Archive appears to be corrupt or unsupported: {ex.Message}");
         }
+        catch (IndexOutOfRangeException)
+        {
+            return (false, [], tempDirectoryRoot, "Archive appears to be corrupt or unsupported (internal decompression error).");
+        }
         catch (IOException ex) when (IsDiskFullException(ex))
         {
             var driveRoot = Path.GetPathRoot(Path.GetFullPath(tempDirectoryRoot))?.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar) ?? "temp drive";

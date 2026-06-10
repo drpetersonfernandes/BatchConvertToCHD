@@ -1689,12 +1689,16 @@ public partial class MainWindow : IDisposable
                     {
                         LogMessage($"ERROR: Not enough disk space to convert {originalName} (via temp). Free up disk space and try again.");
                     }
+                    else if (IsCorruptionException(ex) || IsCrcErrorException(ex))
+                    {
+                        LogMessage($"ERROR: Source file appears to be corrupt: {originalName}");
+                    }
                     else
                     {
                         LogMessage($"Retry via temp failed for {originalName} ({inputFile}): {ex.Message}");
                     }
 
-                    if (!IsDiskSpaceException(ex))
+                    if (!IsDiskSpaceException(ex) && !IsCorruptionException(ex) && !IsCrcErrorException(ex))
                     {
                         _ = ReportBugAsync($"Retry via temp failed for {originalName}", ex);
                     }
@@ -1753,12 +1757,16 @@ public partial class MainWindow : IDisposable
             {
                 LogMessage($"ERROR: Not enough disk space to process {originalName}. Free up disk space and try again.");
             }
+            else if (IsCorruptionException(ex))
+            {
+                LogMessage($"ERROR: Archive appears to be corrupt or unsupported: {originalName}");
+            }
             else
             {
                 LogMessage($"Error processing {originalName}: {ex.Message}");
             }
 
-            if (!IsDiskSpaceException(ex))
+            if (!IsDiskSpaceException(ex) && !IsCorruptionException(ex))
             {
                 _ = ReportBugAsync($"Error processing {originalName}", ex);
             }
@@ -2714,7 +2722,7 @@ public partial class MainWindow : IDisposable
                 await Task.Run(() => File.Copy(source, dest, true), token);
                 return;
             }
-            catch (IOException ex) when (attempt < maxRetries - 1 && !IsDiskSpaceException(ex))
+            catch (IOException ex) when (attempt < maxRetries - 1 && !IsDiskSpaceException(ex) && !IsCrcErrorException(ex))
             {
                 await Task.Delay(baseDelayMs * (1 << attempt), token);
             }
@@ -2730,6 +2738,25 @@ public partial class MainWindow : IDisposable
     {
         // HResult 0x80070070 = ERROR_DISK_FULL, 0x80070079 = ERROR_SEM_TIMEOUT (can indicate disk issues)
         return ex is IOException { HResult: -2147024784 or -2147024783 };
+    }
+
+    internal static bool IsCrcErrorException(Exception ex)
+    {
+        // HResult 0x80070017 = ERROR_CRC (cyclic redundancy check)
+        return ex is IOException { HResult: -2147024809 };
+    }
+
+    internal static bool IsCorruptionException(Exception ex)
+    {
+        return ex is InvalidDataException
+            or IndexOutOfRangeException
+            or NullReferenceException
+            or System.Security.Cryptography.CryptographicException
+            || ex.GetType().FullName is
+                "SharpCompress.Common.IncompleteArchiveException"
+                or "SharpCompress.Common.ArchiveOperationException"
+                or "SharpCompress.Common.InvalidFormatException"
+                or "SharpCompress.Compressors.LZMA.DataErrorException";
     }
 
     private static bool IsDiskSpaceError(string? errorOutput)
