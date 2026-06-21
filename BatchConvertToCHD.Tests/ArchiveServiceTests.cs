@@ -693,6 +693,77 @@ public class ArchiveServiceTests : IDisposable
         Assert.Contains(logs, static msg => msg.Contains("Extracting", StringComparison.OrdinalIgnoreCase));
     }
 
+    // --- Tests for 7za.exe exit code 2 (corrupt/invalid archive) handling ---
+
+    [Fact]
+    public async Task ExtractArchiveAsyncCorrupt7ZWith7ZaReturnsCorruptErrorMessage()
+    {
+        var sevenZipPath = Path.Combine(AppContext.BaseDirectory, "7za.exe");
+        var service = new ArchiveService("maxcso.exe", false, sevenZipPath, true);
+        var corruptPath = Path.Combine(_tempDir, "corrupt.7z");
+        File.WriteAllText(corruptPath, "this is not a valid 7z archive file at all");
+        var tempDir = Path.Combine(_tempDir, "extract");
+        var logs = new List<string>();
+
+        var result = await service.ExtractArchiveAsync(corruptPath, tempDir, logs.Add, CancellationToken.None);
+
+        Assert.False(result.Success);
+        Assert.True(
+            result.ErrorMessage.Contains("corrupt", StringComparison.OrdinalIgnoreCase) ||
+            result.ErrorMessage.Contains("invalid", StringComparison.OrdinalIgnoreCase) ||
+            result.ErrorMessage.Contains("incomplete", StringComparison.OrdinalIgnoreCase),
+            $"Expected corrupt/invalid/incomplete message but got: {result.ErrorMessage}");
+    }
+
+    [Fact]
+    public async Task ExtractArchiveAsyncCorrupt7ZWith7ZaDoesNotReturnGenericExtractionFailed()
+    {
+        var sevenZipPath = Path.Combine(AppContext.BaseDirectory, "7za.exe");
+        var service = new ArchiveService("maxcso.exe", false, sevenZipPath, true);
+        var corruptPath = Path.Combine(_tempDir, "corrupt2.7z");
+        File.WriteAllBytes(corruptPath, new byte[] { 0x00, 0x01, 0x02, 0x03 });
+        var tempDir = Path.Combine(_tempDir, "extract");
+        var logs = new List<string>();
+
+        var result = await service.ExtractArchiveAsync(corruptPath, tempDir, logs.Add, CancellationToken.None);
+
+        Assert.False(result.Success);
+        // Should NOT contain the generic "7za.exe extraction failed" message
+        Assert.DoesNotContain("7za.exe extraction failed", result.ErrorMessage);
+    }
+
+    [Fact]
+    public async Task ExtractArchiveAsyncCorrupt7ZWith7ZaLogs7ZaFallbackAttempt()
+    {
+        var sevenZipPath = Path.Combine(AppContext.BaseDirectory, "7za.exe");
+        var service = new ArchiveService("maxcso.exe", false, sevenZipPath, true);
+        var corruptPath = Path.Combine(_tempDir, "corrupt3.7z");
+        File.WriteAllText(corruptPath, "not a 7z archive");
+        var tempDir = Path.Combine(_tempDir, "extract");
+        var logs = new List<string>();
+
+        var result = await service.ExtractArchiveAsync(corruptPath, tempDir, logs.Add, CancellationToken.None);
+
+        Assert.False(result.Success);
+        Assert.Contains(logs, static msg => msg.Contains("7za.exe fallback", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public async Task ExtractArchiveAsyncCorrupt7ZWithout7ZaReturnsFailure()
+    {
+        var service = new ArchiveService("maxcso.exe", false, "7za.exe", false);
+        var corruptPath = Path.Combine(_tempDir, "corrupt_no7za.7z");
+        File.WriteAllText(corruptPath, "not a 7z archive");
+        var tempDir = Path.Combine(_tempDir, "extract");
+        var logs = new List<string>();
+
+        var result = await service.ExtractArchiveAsync(corruptPath, tempDir, logs.Add, CancellationToken.None);
+
+        Assert.False(result.Success);
+        // Should NOT attempt 7za fallback
+        Assert.DoesNotContain(logs, static msg => msg.Contains("7za.exe fallback", StringComparison.OrdinalIgnoreCase));
+    }
+
     private string CreateDummyFile(string fileName)
     {
         var path = Path.Combine(_tempDir, fileName);

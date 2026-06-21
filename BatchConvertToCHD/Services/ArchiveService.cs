@@ -320,6 +320,7 @@ public class ArchiveService : IDisposable
 
         using var process = new Process();
         var outputBuilder = new StringBuilder();
+        var outputLock = new object();
 
         try
         {
@@ -338,14 +339,14 @@ public class ArchiveService : IDisposable
             {
                 if (args.Data != null)
                 {
-                    outputBuilder.AppendLine(args.Data);
+                    lock (outputLock) { outputBuilder.AppendLine(args.Data); }
                 }
             };
             process.ErrorDataReceived += (_, args) =>
             {
                 if (args.Data != null)
                 {
-                    outputBuilder.AppendLine(args.Data);
+                    lock (outputLock) { outputBuilder.AppendLine(args.Data); }
                 }
             };
 
@@ -355,9 +356,11 @@ public class ArchiveService : IDisposable
 
             await process.WaitForExitAsync(token);
 
+            string outputText;
+            lock (outputLock) { outputText = outputBuilder.ToString(); }
+
             if (process.ExitCode != 0)
             {
-                var outputText = outputBuilder.ToString();
                 if (process.ExitCode == 2 || outputText.Contains("Is not archive", StringComparison.OrdinalIgnoreCase) ||
                     outputText.Contains("Cannot open", StringComparison.OrdinalIgnoreCase))
                 {

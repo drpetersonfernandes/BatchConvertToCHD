@@ -168,7 +168,7 @@ public class BugReportServiceTests
         var ex = Record.Exception(() =>
         {
             // Exception with no message and no stack trace
-            var customEx = new Exception((string?)null);
+            var customEx = new InvalidOperationException(null);
             var result = method.Invoke(service, ["Error summary", customEx]) as string;
             Assert.NotNull(result);
             Assert.Contains("Error summary", result, StringComparison.Ordinal);

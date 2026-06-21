@@ -336,7 +336,7 @@ public class UpdateServiceTests
     [Fact]
     public async Task CheckForNewVersionAsync_HttpError_ReportsBug()
     {
-        using var httpClient = CreateHttpClient(HttpStatusCode.InternalServerError, "Server error");
+        using var httpClient = CreateHttpClient(HttpStatusCode.BadRequest, "Bad request");
         var service = new UpdateService("TestApp", httpClient);
         var logMessages = new List<string>();
         var statusMessages = new List<string>();
@@ -364,6 +364,101 @@ public class UpdateServiceTests
 
         Assert.Contains(logMessages, static m => m.Contains("Update check failed"));
         Assert.NotNull(reportedError);
+    }
+
+    [Theory]
+    [InlineData(HttpStatusCode.InternalServerError)]
+    [InlineData(HttpStatusCode.BadGateway)]
+    [InlineData(HttpStatusCode.ServiceUnavailable)]
+    [InlineData(HttpStatusCode.GatewayTimeout)]
+    public async Task CheckForNewVersionAsync_ServerErrors_HandledGracefullyWithoutBugReport(HttpStatusCode statusCode)
+    {
+        using var httpClient = CreateHttpClient(statusCode, "Server error");
+        var service = new UpdateService("TestApp", httpClient);
+        var logMessages = new List<string>();
+        var statusMessages = new List<string>();
+        var bugReportCalled = false;
+
+        var currentVersion = new Version(2, 7, 0);
+
+        var method = typeof(UpdateService).GetMethod("CheckForNewVersionAsync",
+            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance,
+            [typeof(HttpClient), typeof(Version), typeof(Action<string>), typeof(Action<string>), typeof(Func<string, Exception?, Task>)]);
+        Assert.NotNull(method);
+
+        var task = (Task)method.Invoke(service, [
+            httpClient,
+            currentVersion,
+            (Action<string>)(logMessages.Add),
+            (Action<string>)(statusMessages.Add),
+            (Func<string, Exception?, Task>)((_, _) =>
+            {
+                bugReportCalled = true;
+                return Task.CompletedTask;
+            })
+        ])!;
+        await task;
+
+        Assert.Contains(logMessages, static m => m.Contains("server error", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(statusMessages, static m => m.Contains("server error", StringComparison.OrdinalIgnoreCase));
+        Assert.False(bugReportCalled, "Bug report should NOT be called for server errors (5xx)");
+    }
+
+    [Fact]
+    public async Task CheckForNewVersionAsync_GatewayTimeout_LogsAndSkips()
+    {
+        using var httpClient = CreateHttpClient(HttpStatusCode.GatewayTimeout, "Gateway Timeout");
+        var service = new UpdateService("TestApp", httpClient);
+        var logMessages = new List<string>();
+        var statusMessages = new List<string>();
+
+        var currentVersion = new Version(2, 7, 0);
+
+        var method = typeof(UpdateService).GetMethod("CheckForNewVersionAsync",
+            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance,
+            [typeof(HttpClient), typeof(Version), typeof(Action<string>), typeof(Action<string>), typeof(Func<string, Exception?, Task>)]);
+        Assert.NotNull(method);
+
+        var task = (Task)method.Invoke(service, [
+            httpClient,
+            currentVersion,
+            (Action<string>)(logMessages.Add),
+            (Action<string>)(statusMessages.Add),
+            (Func<string, Exception?, Task>)(static (_, _) => Task.CompletedTask)
+        ])!;
+        await task;
+
+        Assert.Contains(logMessages, static m => m.Contains("504") || m.Contains("server error", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(statusMessages, static m => m.Contains("server error", StringComparison.OrdinalIgnoreCase));
+        Assert.DoesNotContain(statusMessages, static m => m.Contains("failed", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public async Task CheckForNewVersionAsync_BadGateway_LogsAndSkips()
+    {
+        using var httpClient = CreateHttpClient(HttpStatusCode.BadGateway, "Bad Gateway");
+        var service = new UpdateService("TestApp", httpClient);
+        var logMessages = new List<string>();
+        var statusMessages = new List<string>();
+
+        var currentVersion = new Version(2, 7, 0);
+
+        var method = typeof(UpdateService).GetMethod("CheckForNewVersionAsync",
+            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance,
+            [typeof(HttpClient), typeof(Version), typeof(Action<string>), typeof(Action<string>), typeof(Func<string, Exception?, Task>)]);
+        Assert.NotNull(method);
+
+        var task = (Task)method.Invoke(service, [
+            httpClient,
+            currentVersion,
+            (Action<string>)(logMessages.Add),
+            (Action<string>)(statusMessages.Add),
+            (Func<string, Exception?, Task>)(static (_, _) => Task.CompletedTask)
+        ])!;
+        await task;
+
+        Assert.Contains(logMessages, static m => m.Contains("502") || m.Contains("server error", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(statusMessages, static m => m.Contains("server error", StringComparison.OrdinalIgnoreCase));
     }
 
     [Fact]
