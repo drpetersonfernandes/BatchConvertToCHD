@@ -357,7 +357,14 @@ public class ArchiveService : IDisposable
 
             if (process.ExitCode != 0)
             {
-                throw new InvalidOperationException($"7za.exe extraction failed with exit code {process.ExitCode}. Output: {outputBuilder}");
+                var outputText = outputBuilder.ToString();
+                if (process.ExitCode == 2 || outputText.Contains("Is not archive", StringComparison.OrdinalIgnoreCase) ||
+                    outputText.Contains("Cannot open", StringComparison.OrdinalIgnoreCase))
+                {
+                    throw new InvalidDataException($"7za.exe: archive is invalid or corrupt ({Path.GetFileName(archivePath)}). Output: {outputText}");
+                }
+
+                throw new InvalidOperationException($"7za.exe extraction failed with exit code {process.ExitCode}. Output: {outputText}");
             }
 
             onLog($"Successfully extracted {Path.GetFileName(archivePath)} with 7za.exe");

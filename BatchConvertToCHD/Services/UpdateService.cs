@@ -55,7 +55,18 @@ public class UpdateService(string applicationName)
                 }
             }
 
-            response.EnsureSuccessStatusCode();
+            if (!response.IsSuccessStatusCode)
+            {
+                var statusCode = (int)response.StatusCode;
+                if (statusCode is >= 500 and < 600)
+                {
+                    onLog($"Update check skipped: GitHub server error ({statusCode}).");
+                    onStatusUpdate("Update check skipped (server error)");
+                    return;
+                }
+
+                response.EnsureSuccessStatusCode();
+            }
 
             var responseBody = await response.Content.ReadAsStringAsync();
             var latestRelease = JsonSerializer.Deserialize<GitHubRelease>(responseBody, JsonSerializerOptions);
