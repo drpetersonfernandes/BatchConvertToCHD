@@ -2,9 +2,11 @@ using System.ComponentModel;
 using System.Diagnostics;
 using System.Globalization;
 using System.IO;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Interop;
 using Microsoft.Win32;
 using System.Collections.ObjectModel;
 using BatchConvertToCHD.Models;
@@ -43,6 +45,19 @@ public partial class MainWindow : IDisposable
     // Services
     private readonly UpdateService _updateService;
     private readonly ArchiveService _archiveService;
+    private readonly ScreenshotService _screenshotService;
+
+    // Global hotkey for F8 screenshot
+    private const int HotkeyId = 9001;
+    private const int VkF8 = 0x77;
+    private const int WmHotkey = 0x0312;
+    private HwndSource? _hwndSource;
+
+    [DllImport("user32.dll")]
+    private static extern bool RegisterHotKey(IntPtr hWnd, int id, uint fsModifiers, uint vk);
+
+    [DllImport("user32.dll")]
+    private static extern bool UnregisterHotKey(IntPtr hWnd, int id);
 
     // Temp Directory Prefix
     private const string TempDirPrefix = "BatchConvertToCHD_Temp_";
@@ -87,6 +102,10 @@ public partial class MainWindow : IDisposable
         // Initialize Services
         _updateService = new UpdateService(AppConfig.ApplicationName);
         _archiveService = new ArchiveService(maxCsoPath, _isMaxCsoAvailable, sevenZipExePath, _isSevenZipAvailable);
+        _screenshotService = new ScreenshotService();
+
+        // Register global F8 hotkey once the window handle is available
+        SourceInitialized += MainWindow_SourceInitialized;
 
         InitializeStatusBar();
         Task.Run(static async () =>
@@ -148,6 +167,45 @@ public partial class MainWindow : IDisposable
         {
             _ = ReportBugAsync("MainWindow_Loaded error", ex);
         }
+    }
+
+    private void MainWindow_SourceInitialized(object? sender, EventArgs e)
+    {
+        _hwndSource = PresentationSource.FromVisual(this) as HwndSource;
+        _hwndSource?.AddHook(WndProc);
+
+        var handle = new WindowInteropHelper(this).Handle;
+        RegisterHotKey(handle, HotkeyId, 0, VkF8);
+    }
+
+    private IntPtr WndProc(IntPtr hWnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
+    {
+        if (msg == WmHotkey && wParam.ToInt32() == HotkeyId)
+        {
+            try
+            {
+                var filePath = _screenshotService.TakeScreenshot();
+                if (filePath != null)
+                {
+                    LogMessage($"Screenshot saved: {filePath}");
+                    UpdateStatusBarMessage("Screenshot captured");
+                }
+                else
+                {
+                    LogMessage("Screenshot failed: could not capture active window.");
+                    UpdateStatusBarMessage("Screenshot failed");
+                }
+            }
+            catch (Exception ex)
+            {
+                LogMessage($"Screenshot error: {ex.Message}");
+                _ = ReportBugAsync("Screenshot capture failed", ex);
+            }
+
+            handled = true;
+        }
+
+        return IntPtr.Zero;
     }
 
     private void CheckDependenciesAndNotifyUser()
@@ -2981,6 +3039,14 @@ public partial class MainWindow : IDisposable
     /// </summary>
     public void Dispose()
     {
+        if (_hwndSource != null)
+        {
+            var handle = new WindowInteropHelper(this).Handle;
+            UnregisterHotKey(handle, HotkeyId);
+            _hwndSource.RemoveHook(WndProc);
+            _hwndSource = null;
+        }
+
         lock (_ctsLock)
         {
             _cts.Cancel();
