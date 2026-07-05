@@ -274,7 +274,7 @@ public class ArchiveService : IDisposable
 
             var destinationPath = Path.Combine(outputDirectory, entry.FullName);
             var directory = Path.GetDirectoryName(destinationPath);
-            if (!string.IsNullOrEmpty(directory))
+            if (!string.IsNullOrEmpty(directory) && !Directory.Exists(directory))
             {
                 Directory.CreateDirectory(directory);
             }
@@ -500,7 +500,7 @@ public class ArchiveService : IDisposable
 
             var destinationPath = Path.Combine(outputDirectory, entry.Key);
             var directory = Path.GetDirectoryName(destinationPath);
-            if (!string.IsNullOrEmpty(directory))
+            if (!string.IsNullOrEmpty(directory) && !Directory.Exists(directory))
             {
                 Directory.CreateDirectory(directory);
             }

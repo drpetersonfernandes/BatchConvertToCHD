@@ -87,13 +87,17 @@ public static class GameFileParser
         {
             onLog($"[WARNING] Could not parse GDI file: {Path.GetFileName(gdiPath)}. Error: {ex.Message}");
 
-            try
+            // Don't report hardware-related IO errors (device not ready, wrong diskette, etc.)
+            if (ex is not IOException)
             {
-                _ = App.SharedBugReportService?.SendBugReportAsync($"Error parsing GDI file: {Path.GetFileName(gdiPath)}", ex);
-            }
-            catch
-            {
-                // Silently fail to avoid cascading errors
+                try
+                {
+                    _ = App.SharedBugReportService?.SendBugReportAsync($"Error parsing GDI file: {Path.GetFileName(gdiPath)}", ex);
+                }
+                catch
+                {
+                    // Silently fail to avoid cascading errors
+                }
             }
         }
 
@@ -181,13 +185,17 @@ public static class GameFileParser
         {
             onLog($"[WARNING] Could not parse {fileType} file: {Path.GetFileName(filePath)}. Error: {ex.Message}");
 
-            try
+            // Don't report hardware-related IO errors (device not ready, wrong diskette, etc.)
+            if (ex is not IOException)
             {
-                _ = App.SharedBugReportService?.SendBugReportAsync($"Error parsing {fileType} file: {Path.GetFileName(filePath)}", ex);
-            }
-            catch
-            {
-                // Silently fail to avoid cascading errors
+                try
+                {
+                    _ = App.SharedBugReportService?.SendBugReportAsync($"Error parsing {fileType} file: {Path.GetFileName(filePath)}", ex);
+                }
+                catch
+                {
+                    // Silently fail to avoid cascading errors
+                }
             }
         }
 

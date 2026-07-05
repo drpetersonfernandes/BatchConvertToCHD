@@ -4,19 +4,10 @@
              StartupUri="MainWindow.xaml">
     <Application.Resources>
 
-        <!-- ==================== COLOR PALETTE ==================== -->
-        <!--
-            Harmonious Dark Theme with Green Terminal Accent
-            Primary: Deep Slate (#1a1d21)
-            Secondary: Teal/Cyan (#00bcd4) - complements the green terminal
-            Accent: Soft Green (#4caf50) - harmonizes with terminal green
-            Terminal: Black (#0a0a0a) + Neon Green (#39FF14) - PRESERVED
-        -->
-
         <!-- ==================== TERMINAL COLORS (PRESERVED) ==================== -->
         <SolidColorBrush x:Key="TerminalBackgroundBrush" Color="#0a0a0a"/>
         <SolidColorBrush x:Key="TerminalBorderBrush" Color="#1a1a1a"/>
-        <SolidColorBrush x:Key="TerminalForegroundBrush" Color="#39FF14"/>
+        <SolidColorBrush x:Key="TerminalForegroundBrush" Color="#ffffff"/>
         <SolidColorBrush x:Key="TerminalSelectedBrush" Color="#2a2a2a"/>
 
         <!-- ==================== WINDOW & BACKGROUND COLORS ==================== -->
@@ -50,9 +41,9 @@
         <SolidColorBrush x:Key="PrimaryAccentDarkBrush" Color="#008ba3"/>
 
         <!-- Secondary accent - Soft Green (harmonizes with terminal) -->
-        <SolidColorBrush x:Key="SecondaryAccentBrush" Color="#4caf50"/>
-        <SolidColorBrush x:Key="SecondaryAccentHoverBrush" Color="#66bb6a"/>
-        <SolidColorBrush x:Key="SecondaryAccentDarkBrush" Color="#388e3c"/>
+        <SolidColorBrush x:Key="SecondaryAccentBrush" Color="#00bcd4"/>
+        <SolidColorBrush x:Key="SecondaryAccentHoverBrush" Color="#00e5ff"/>
+        <SolidColorBrush x:Key="SecondaryAccentDarkBrush" Color="#008ba3"/>
 
         <!-- ==================== BUTTON COLORS ==================== -->
         <!-- Action Button (Teal) -->
@@ -61,9 +52,9 @@
         <SolidColorBrush x:Key="ActionButtonPressedBrush" Color="#008ba3"/>
 
         <!-- Start/Success Button (Green - harmonizes with terminal) -->
-        <SolidColorBrush x:Key="StartButtonBrush" Color="#4caf50"/>
-        <SolidColorBrush x:Key="StartButtonHoverBrush" Color="#66bb6a"/>
-        <SolidColorBrush x:Key="StartButtonPressedBrush" Color="#388e3c"/>
+        <SolidColorBrush x:Key="StartButtonBrush" Color="#00bcd4"/>
+        <SolidColorBrush x:Key="StartButtonHoverBrush" Color="#00e5ff"/>
+        <SolidColorBrush x:Key="StartButtonPressedBrush" Color="#008ba3"/>
 
         <!-- Cancel/Error Button (Soft Red) -->
         <SolidColorBrush x:Key="CancelButtonBrush" Color="#f85149"/>
@@ -71,14 +62,14 @@
         <SolidColorBrush x:Key="CancelButtonPressedBrush" Color="#da3633"/>
 
         <!-- About/Info Button (Purple - complementary to teal) -->
-        <SolidColorBrush x:Key="AboutButtonBrush" Color="#7c4dff"/>
-        <SolidColorBrush x:Key="AboutButtonHoverBrush" Color="#9e7bff"/>
-        <SolidColorBrush x:Key="AboutButtonPressedBrush" Color="#5e35b1"/>
+        <SolidColorBrush x:Key="AboutButtonBrush" Color="#00bcd4"/>
+        <SolidColorBrush x:Key="AboutButtonHoverBrush" Color="#00e5ff"/>
+        <SolidColorBrush x:Key="AboutButtonPressedBrush" Color="#008ba3"/>
 
         <!-- Exit Button (Slate Gray) -->
-        <SolidColorBrush x:Key="ExitButtonBrush" Color="#607d8b"/>
-        <SolidColorBrush x:Key="ExitButtonHoverBrush" Color="#78909c"/>
-        <SolidColorBrush x:Key="ExitButtonPressedBrush" Color="#455a64"/>
+        <SolidColorBrush x:Key="ExitButtonBrush" Color="#00bcd4"/>
+        <SolidColorBrush x:Key="ExitButtonHoverBrush" Color="#00e5ff"/>
+        <SolidColorBrush x:Key="ExitButtonPressedBrush" Color="#008ba3"/>
 
         <!-- Disabled State -->
         <SolidColorBrush x:Key="DisabledButtonBrush" Color="#3d454f"/>
@@ -386,7 +377,7 @@
                         <Style.Triggers>
                             <Trigger Property="IsSelected" Value="True">
                                 <Setter Property="Background" Value="{StaticResource PrimaryAccentBrush}"/>
-                                <Setter Property="Foreground" Value="#121518"/>
+            <Setter Property="Foreground" Value="Black"/>
                             </Trigger>
                         </Style.Triggers>
                     </Style>
@@ -443,6 +434,11 @@
 
         <!-- ==================== NAMED STYLES ==================== -->
 
+        <!-- Default Button Style - All buttons have black text -->
+        <Style TargetType="Button">
+            <Setter Property="Foreground" Value="Black"/>
+        </Style>
+
         <!-- Primary Action Button Style -->
         <Style x:Key="ActionButtonStyle" TargetType="Button">
             <Setter Property="Height" Value="30"/>
@@ -451,7 +447,7 @@
             <Setter Property="FontSize" Value="13"/>
             <Setter Property="FontWeight" Value="SemiBold"/>
             <Setter Property="BorderThickness" Value="0"/>
-            <Setter Property="Foreground" Value="#121518"/>
+            <Setter Property="Foreground" Value="Black"/>
             <Setter Property="Background" Value="{StaticResource ActionButtonBrush}"/>
             <Setter Property="Cursor" Value="Hand"/>
             <Setter Property="Template">
@@ -463,12 +459,22 @@
                                  BorderThickness="0">
                             <ContentPresenter HorizontalAlignment="Center"
                                                VerticalAlignment="Center"
-                                               Margin="{TemplateBinding Padding}"/>
+                                               Margin="{TemplateBinding Padding}">
+                                <ContentPresenter.Resources>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="Foreground" Value="Black"/>
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding IsEnabled, RelativeSource={RelativeSource AncestorType=Button}}" Value="False">
+                                                <Setter Property="Foreground" Value="{StaticResource DisabledTextBrush}"/>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </ContentPresenter.Resources>
+                            </ContentPresenter>
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsEnabled" Value="False">
                                 <Setter TargetName="Border" Property="Background" Value="{StaticResource DisabledButtonBrush}"/>
-                                <Setter Property="Foreground" Value="{StaticResource DisabledTextBrush}"/>
                                 <Setter Property="Opacity" Value="0.7"/>
                             </Trigger>
                             <Trigger Property="IsMouseOver" Value="True">
@@ -486,6 +492,7 @@
         <!-- Start Button Style -->
         <Style x:Key="StartButtonStyle" BasedOn="{StaticResource ActionButtonStyle}" TargetType="Button">
             <Setter Property="Background" Value="{StaticResource StartButtonBrush}"/>
+            <Setter Property="Foreground" Value="Black"/>
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="Button">
@@ -495,12 +502,22 @@
                                  BorderThickness="0">
                             <ContentPresenter HorizontalAlignment="Center"
                                                VerticalAlignment="Center"
-                                               Margin="{TemplateBinding Padding}"/>
+                                               Margin="{TemplateBinding Padding}">
+                                <ContentPresenter.Resources>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="Foreground" Value="Black"/>
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding IsEnabled, RelativeSource={RelativeSource AncestorType=Button}}" Value="False">
+                                                <Setter Property="Foreground" Value="{StaticResource DisabledTextBrush}"/>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </ContentPresenter.Resources>
+                            </ContentPresenter>
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsEnabled" Value="False">
                                 <Setter TargetName="Border" Property="Background" Value="{StaticResource DisabledButtonBrush}"/>
-                                <Setter Property="Foreground" Value="{StaticResource DisabledTextBrush}"/>
                                 <Setter Property="Opacity" Value="0.7"/>
                             </Trigger>
                             <Trigger Property="IsMouseOver" Value="True">
@@ -518,6 +535,7 @@
         <!-- Cancel Button Style -->
         <Style x:Key="CancelButtonStyle" BasedOn="{StaticResource ActionButtonStyle}" TargetType="Button">
             <Setter Property="Background" Value="{StaticResource CancelButtonBrush}"/>
+            <Setter Property="Foreground" Value="Black"/>
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="Button">
@@ -527,12 +545,22 @@
                                  BorderThickness="0">
                             <ContentPresenter HorizontalAlignment="Center"
                                                VerticalAlignment="Center"
-                                               Margin="{TemplateBinding Padding}"/>
+                                               Margin="{TemplateBinding Padding}">
+                                <ContentPresenter.Resources>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="Foreground" Value="Black"/>
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding IsEnabled, RelativeSource={RelativeSource AncestorType=Button}}" Value="False">
+                                                <Setter Property="Foreground" Value="{StaticResource DisabledTextBrush}"/>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </ContentPresenter.Resources>
+                            </ContentPresenter>
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsEnabled" Value="False">
                                 <Setter TargetName="Border" Property="Background" Value="{StaticResource DisabledButtonBrush}"/>
-                                <Setter Property="Foreground" Value="{StaticResource DisabledTextBrush}"/>
                                 <Setter Property="Opacity" Value="0.7"/>
                             </Trigger>
                             <Trigger Property="IsMouseOver" Value="True">
@@ -615,7 +643,7 @@
 
         <!-- ==================== BUTTON CONTENT COLORS ==================== -->
         <!-- Dark text color for buttons with light backgrounds -->
-        <SolidColorBrush x:Key="ButtonTextDarkBrush" Color="#121518"/>
+        <SolidColorBrush x:Key="ButtonTextDarkBrush" Color="Black"/>
 
         <!-- ==================== TABCONTROL STYLE ==================== -->
         <Style TargetType="TabControl">

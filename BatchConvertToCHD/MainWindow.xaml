@@ -97,8 +97,9 @@
                                     <Button x:Name="BrowseConversionOutputButton" Grid.Column="2" Content="Browse" Click="BrowseConversionOutputButton_Click" Style="{StaticResource ActionButtonStyle}" ToolTip="Browse" />
                                 </Grid>
 
-                                <GroupBox Grid.Row="2" Header="Options" Margin="0,5,0,10" Padding="10" ToolTip="Configure conversion settings">
-                                    <StackPanel>
+                                <Expander Grid.Row="2" Header="Options" Margin="0,5,0,5" IsExpanded="False" ToolTip="Configure conversion settings">
+                                    <GroupBox Padding="10" Margin="0,5,0,0">
+                                        <StackPanel>
                                         <CheckBox x:Name="SearchSubfoldersConversionCheckBox" Content="Search subfolders (recursive search)" Margin="0,2" HorizontalAlignment="Left" ToolTip="Recursively search for files in all subfolders"
                                                   Checked="SearchSubfoldersCheckBox_Changed" Unchecked="SearchSubfoldersCheckBox_Changed" />
                                         <CheckBox x:Name="DeleteOriginalsCheckBox" Content="Delete originals after a successful conversion" Margin="0,2" HorizontalAlignment="Left" VerticalAlignment="Top"
@@ -114,7 +115,8 @@
                                             <CheckBox x:Name="ForceCreateDvdCheckBox" Content="Force DVD" Checked="ForceCreateDvdCheckBox_Checked" ToolTip="Force CHDMAN to use the 'createdvd' command" />
                                         </StackPanel>
                                     </StackPanel>
-                                </GroupBox>
+                                    </GroupBox>
+                                </Expander>
 
                                 <Label Grid.Row="3" Content="Select Files to Convert:" Margin="0,5,0,0" Style="{StaticResource SectionLabelStyle}" ToolTip="Mark or unmark files to include in the batch conversion" />
                                 <DataGrid Grid.Row="4" x:Name="ConversionFilesDataGrid" Margin="0,5" AutoGenerateColumns="False" ToolTip="List of files available for conversion. Select files to include in batch processing.">
@@ -157,14 +159,16 @@
                                     <Button x:Name="BrowseVerificationInputButton" Grid.Column="2" Content="Browse" Click="BrowseVerificationInputButton_Click" Style="{StaticResource ActionButtonStyle}" ToolTip="Browse" />
                                 </Grid>
 
-                                <GroupBox Grid.Row="1" Header="Options" Margin="0,5,0,10" Padding="10" ToolTip="Configure verification settings">
-                                    <StackPanel>
-                                        <CheckBox x:Name="SearchSubfoldersVerificationCheckBox" Content="Search subfolders (recursive search)" Margin="0,2" HorizontalAlignment="Left" ToolTip="Recursively search for files in all subfolders"
-                                                  Checked="SearchSubfoldersCheckBox_Changed" Unchecked="SearchSubfoldersCheckBox_Changed" />
-                                        <CheckBox x:Name="MoveSuccessFilesCheckBox" Content="Move successful to 'Success' folder" Margin="0,2" HorizontalAlignment="Left" ToolTip="Move CHD files that pass verification into a 'Success' subfolder" />
-                                        <CheckBox x:Name="MoveFailedFilesCheckBox" Content="Move failed to 'Failed' folder" Margin="0,2" HorizontalAlignment="Left" ToolTip="Move CHD files that fail verification into a 'Failed' subfolder" />
-                                    </StackPanel>
-                                </GroupBox>
+                                <Expander Grid.Row="1" Header="Options" Margin="0,5,0,5" IsExpanded="False" ToolTip="Configure verification settings">
+                                    <GroupBox Padding="10" Margin="0,5,0,0">
+                                        <StackPanel>
+                                            <CheckBox x:Name="SearchSubfoldersVerificationCheckBox" Content="Search subfolders (recursive search)" Margin="0,2" HorizontalAlignment="Left" ToolTip="Recursively search for files in all subfolders"
+                                                      Checked="SearchSubfoldersCheckBox_Changed" Unchecked="SearchSubfoldersCheckBox_Changed" />
+                                            <CheckBox x:Name="MoveSuccessFilesCheckBox" Content="Move successful to 'Success' folder" Margin="0,2" HorizontalAlignment="Left" ToolTip="Move CHD files that pass verification into a 'Success' subfolder" />
+                                            <CheckBox x:Name="MoveFailedFilesCheckBox" Content="Move failed to 'Failed' folder" Margin="0,2" HorizontalAlignment="Left" ToolTip="Move CHD files that fail verification into a 'Failed' subfolder" />
+                                        </StackPanel>
+                                    </GroupBox>
+                                </Expander>
 
                                 <Label Grid.Row="2" Content="Select Files to Verify:" Margin="0,5,0,0" Style="{StaticResource SectionLabelStyle}" ToolTip="Mark or unmark files to include in the batch verification" />
                                 <DataGrid Grid.Row="3" x:Name="VerificationFilesDataGrid" Margin="0,5" AutoGenerateColumns="False" ToolTip="List of CHD files available for verification. Select files to include in batch verification.">
@@ -219,35 +223,36 @@
                                     <Button x:Name="BrowseExtractionOutputButton" Grid.Column="2" Content="Browse" Click="BrowseExtractionOutputButton_Click" Style="{StaticResource ActionButtonStyle}" ToolTip="Browse" />
                                 </Grid>
 
-                                <Grid Grid.Row="2">
-                                    <Grid.RowDefinitions>
-                                        <RowDefinition />
-                                        <RowDefinition />
-                                        <RowDefinition />
-                                    </Grid.RowDefinitions>
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="*" />
-                                        <ColumnDefinition Width="*" />
-                                    </Grid.ColumnDefinitions>
-                                    <GroupBox Grid.Row="0" Grid.Column="0" Header="Format" Margin="0,5,5,10" Padding="10" ToolTip="Select the output format for extracted files">
-                                        <StackPanel Orientation="Vertical">
-                                            <RadioButton x:Name="ExtractAutoRadioButton" Content="Auto" IsChecked="True" Margin="0,1" ToolTip="Detect automatically" GroupName="ExtractFormat" />
-                                            <RadioButton x:Name="ExtractCdRadioButton" Content="CD (.cue)" Margin="0,1" ToolTip="Force CD image extraction" GroupName="ExtractFormat" />
-                                            <RadioButton x:Name="ExtractDvdRadioButton" Content="DVD (.iso)" Margin="0,1" ToolTip="Force DVD image extraction" GroupName="ExtractFormat" />
-                                            <RadioButton x:Name="ExtractGdiRadioButton" Content="GDI (.gdi)" Margin="0,1" ToolTip="Force Dreamcast GDI extraction" GroupName="ExtractFormat" />
-                                            <RadioButton x:Name="ExtractHdRadioButton" Content="HDD (.img)" Margin="0,1" ToolTip="Force Hard Disk extraction" GroupName="ExtractFormat" />
-                                        </StackPanel>
-                                    </GroupBox>
+                                <Expander Grid.Row="2" Header="Options" Margin="0,5,0,5" IsExpanded="False" ToolTip="Configure extraction settings">
+                                    <Grid Margin="0,5,0,0">
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition />
+                                            <RowDefinition />
+                                            <RowDefinition />
+                                        </Grid.RowDefinitions>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="*" />
+                                        </Grid.ColumnDefinitions>
+                                        <GroupBox Grid.Row="0" Grid.Column="0" Header="Format" Margin="0,0,5,0" Padding="10" ToolTip="Select the output format for extracted files">
+                                            <StackPanel Orientation="Vertical">
+                                                <RadioButton x:Name="ExtractAutoRadioButton" Content="Auto" IsChecked="True" Margin="0,1" ToolTip="Detect automatically" GroupName="ExtractFormat" />
+                                                <RadioButton x:Name="ExtractCdRadioButton" Content="CD (.cue)" Margin="0,1" ToolTip="Force CD image extraction" GroupName="ExtractFormat" />
+                                                <RadioButton x:Name="ExtractDvdRadioButton" Content="DVD (.iso)" Margin="0,1" ToolTip="Force DVD image extraction" GroupName="ExtractFormat" />
+                                                <RadioButton x:Name="ExtractGdiRadioButton" Content="GDI (.gdi)" Margin="0,1" ToolTip="Force Dreamcast GDI extraction" GroupName="ExtractFormat" />
+                                                <RadioButton x:Name="ExtractHdRadioButton" Content="HDD (.img)" Margin="0,1" ToolTip="Force Hard Disk extraction" GroupName="ExtractFormat" />
+                                            </StackPanel>
+                                        </GroupBox>
 
-
-                                    <GroupBox Grid.Row="0" Grid.Column="1" Header="Options" Margin="5,5,0,10" Padding="10" ToolTip="Configure extraction settings">
-                                        <StackPanel>
-                                            <CheckBox x:Name="SearchSubfoldersExtractionCheckBox" Content="Search subfolders (recursive search)" Margin="0,2" HorizontalAlignment="Left" ToolTip="Recursively search for files in all subfolders"
-                                                      Checked="SearchSubfoldersCheckBox_Changed" Unchecked="SearchSubfoldersCheckBox_Changed" />
-                                            <CheckBox x:Name="DeleteOriginalChdCheckBox" Content="Delete original CHD after a successful extraction" Margin="0,2" HorizontalAlignment="Left" VerticalAlignment="Top" ToolTip="Delete original CHD after a successful extraction" />
-                                        </StackPanel>
-                                    </GroupBox>
-                                </Grid>
+                                        <GroupBox Grid.Row="0" Grid.Column="1" Header="Options" Margin="5,0,0,0" Padding="10" ToolTip="Configure extraction settings">
+                                            <StackPanel>
+                                                <CheckBox x:Name="SearchSubfoldersExtractionCheckBox" Content="Search subfolders (recursive search)" Margin="0,2" HorizontalAlignment="Left" ToolTip="Recursively search for files in all subfolders"
+                                                          Checked="SearchSubfoldersCheckBox_Changed" Unchecked="SearchSubfoldersCheckBox_Changed" />
+                                                <CheckBox x:Name="DeleteOriginalChdCheckBox" Content="Delete original CHD after a successful extraction" Margin="0,2" HorizontalAlignment="Left" VerticalAlignment="Top" ToolTip="Delete original CHD after a successful extraction" />
+                                            </StackPanel>
+                                        </GroupBox>
+                                    </Grid>
+                                </Expander>
 
                                 <Label Grid.Row="3" Content="Select Files to Extract:" Margin="0,5,0,0" Style="{StaticResource SectionLabelStyle}" ToolTip="Mark or unmark files to include in the batch extraction" />
                                 <DataGrid Grid.Row="4" x:Name="ExtractionFilesDataGrid" Margin="0,5" AutoGenerateColumns="False" ToolTip="List of CHD files available for extraction. Select files to include in batch extraction.">

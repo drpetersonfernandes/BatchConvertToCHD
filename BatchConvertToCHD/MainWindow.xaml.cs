@@ -54,8 +54,8 @@ public partial class MainWindow : IDisposable
 
     // Performance counter for write speed monitoring
     private const int MaxLogLength = 100000; // Maximum characters before log truncation
-    private readonly PerformanceCounter? _writeBytesCounter;
-    private readonly PerformanceCounter? _readBytesCounter;
+    private PerformanceCounter? _writeBytesCounter;
+    private PerformanceCounter? _readBytesCounter;
     private readonly object _performanceCounterLock = new();
 
     /// <summary>
@@ -88,10 +88,6 @@ public partial class MainWindow : IDisposable
         _updateService = new UpdateService(AppConfig.ApplicationName);
         _archiveService = new ArchiveService(maxCsoPath, _isMaxCsoAvailable, sevenZipExePath, _isSevenZipAvailable);
 
-        // Initialize performance counters
-        _writeBytesCounter = CreateWritePerformanceCounter();
-        _readBytesCounter = CreateReadPerformanceCounter();
-
         InitializeStatusBar();
         Task.Run(static async () =>
         {
@@ -120,6 +116,13 @@ public partial class MainWindow : IDisposable
     {
         try
         {
+            // Initialize performance counters off the UI thread (WMI queries are slow)
+            await Task.Run(() =>
+            {
+                _writeBytesCounter = CreateWritePerformanceCounter();
+                _readBytesCounter = CreateReadPerformanceCounter();
+            });
+
             // Apply command-line argument for input folder path if provided
             var args = Environment.GetCommandLineArgs();
             if (args.Length > 1)
@@ -2982,6 +2985,8 @@ public partial class MainWindow : IDisposable
         {
             _cts.Cancel();
             _cts.Dispose();
+            _cts = new CancellationTokenSource();
+            _cts.Cancel();
         }
 
         _writeBytesCounter?.Dispose();

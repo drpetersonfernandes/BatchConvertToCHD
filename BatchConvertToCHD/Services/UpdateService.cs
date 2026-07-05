@@ -140,11 +140,16 @@ public class UpdateService(string applicationName)
                 onStatusUpdate("Application is up to date");
             }
         }
-        catch (HttpRequestException ex)
+        catch (HttpRequestException ex) when (ex.StatusCode == null)
         {
             onLog($"Update check failed (Network/SSL): {ex.Message}");
             onStatusUpdate("Update check failed (network)");
-            await onBugReport("Update check failed (network/SSL)", ex);
+        }
+        catch (HttpRequestException ex)
+        {
+            onLog($"Update check failed: {ex.Message}");
+            onStatusUpdate("Update check failed");
+            await onBugReport("Update check failed", ex);
         }
         catch (Exception ex)
         {

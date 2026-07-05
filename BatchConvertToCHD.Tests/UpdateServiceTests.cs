@@ -469,7 +469,7 @@ public class UpdateServiceTests
         var service = new UpdateService("TestApp", httpClient);
         var logMessages = new List<string>();
         var statusMessages = new List<string>();
-        string? reportedError = null;
+        var bugReportCalled = false;
 
         var currentVersion = new Version(2, 7, 0);
 
@@ -483,9 +483,9 @@ public class UpdateServiceTests
             currentVersion,
             (Action<string>)(logMessages.Add),
             (Action<string>)(statusMessages.Add),
-            (Func<string, Exception?, Task>)((msg, _) =>
+            (Func<string, Exception?, Task>)((_, _) =>
             {
-                reportedError = msg;
+                bugReportCalled = true;
                 return Task.CompletedTask;
             })
         ])!;
@@ -493,7 +493,7 @@ public class UpdateServiceTests
 
         Assert.Contains(logMessages, static m => m.Contains("Network unreachable"));
         Assert.Contains(statusMessages, static m => m.Contains("network"));
-        Assert.NotNull(reportedError);
+        Assert.False(bugReportCalled);
     }
 
     [Fact]

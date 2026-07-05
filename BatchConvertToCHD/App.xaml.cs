@@ -144,6 +144,14 @@ public partial class App
 
     private void App_DispatcherUnhandledException(object sender, DispatcherUnhandledExceptionEventArgs e)
     {
+        // Suppress WPF internal font rendering errors (UriFormatException from GlyphTypeface)
+        // These are caused by system fonts with invalid paths and are not actionable by us
+        if (e.Exception is UriFormatException uriEx && uriEx.StackTrace?.Contains("GlyphTypeface") == true)
+        {
+            e.Handled = true;
+            return;
+        }
+
         ReportException(e.Exception, "Application.DispatcherUnhandledException");
         e.Handled = true;
     }
