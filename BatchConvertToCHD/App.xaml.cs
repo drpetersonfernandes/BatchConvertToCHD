@@ -144,16 +144,23 @@ public partial class App
 
     private void App_DispatcherUnhandledException(object sender, DispatcherUnhandledExceptionEventArgs e)
     {
-        // Suppress WPF internal font rendering errors (UriFormatException from GlyphTypeface)
-        // These are caused by system fonts with invalid paths and are not actionable by us
-        if (e.Exception is UriFormatException uriEx && uriEx.StackTrace?.Contains("GlyphTypeface") == true)
+        switch (e.Exception)
         {
-            e.Handled = true;
-            return;
+            // Suppress WPF internal font rendering errors (UriFormatException from GlyphTypeface)
+            // These are caused by system fonts with invalid paths and are not actionable by us
+            case UriFormatException uriEx when (uriEx.StackTrace?.Contains("GlyphTypeface") == true):
+            // Suppress WPF internal rendering OutOfMemoryException (DUCE.Channel.SyncFlush)
+            // These occur during window resize/update when system memory is low and are not actionable
+            case OutOfMemoryException { Source: "PresentationCore" } oomEx when
+                (oomEx.StackTrace?.Contains("DUCE.Channel") == true ||
+                 oomEx.StackTrace?.Contains("HwndTarget") == true):
+                e.Handled = true;
+                return;
+            default:
+                ReportException(e.Exception, "Application.DispatcherUnhandledException");
+                e.Handled = true;
+                break;
         }
-
-        ReportException(e.Exception, "Application.DispatcherUnhandledException");
-        e.Handled = true;
     }
 
     private void TaskScheduler_UnobservedTaskException(object? sender, UnobservedTaskExceptionEventArgs e)

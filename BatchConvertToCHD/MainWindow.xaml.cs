@@ -1301,8 +1301,15 @@ public partial class MainWindow : IDisposable
 
     private static string? SelectFolder(string description)
     {
-        var dialog = new OpenFolderDialog { Title = description };
-        return dialog.ShowDialog() == true ? dialog.FolderName : null;
+        try
+        {
+            var dialog = new OpenFolderDialog { Title = description };
+            return dialog.ShowDialog() == true ? dialog.FolderName : null;
+        }
+        catch (COMException)
+        {
+            return null;
+        }
     }
 
     private async Task PerformBatchConversionAsync(string chdmanPath, string inputFolder, string outputFolder, bool deleteFiles, bool processSmallerFirst, bool forceCd, bool forceDvd, int? timeoutMinutes, string[] selectedFiles, CancellationToken token)

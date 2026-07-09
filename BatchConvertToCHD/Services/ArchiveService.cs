@@ -239,6 +239,13 @@ public class ArchiveService : IDisposable
             return (false, [], tempDirectoryRoot,
                 $"Not enough disk space on {driveRoot}. The archive ({archiveFileName}, {archiveSizeGb:F1} GB uncompressed) cannot be extracted. Free up space on {driveRoot} or change your system TEMP directory to a drive with more space.");
         }
+        catch (IOException ex) when (!IsDiskFullException(ex))
+        {
+            var errorMsg = ex.Message.Contains("being used by another process", StringComparison.OrdinalIgnoreCase)
+                ? $"The archive file '{archiveFileName}' is locked by another application. Close any programs that may be using the file (e.g., antivirus, file explorer, another instance) and try again. Details: {ex.Message}"
+                : $"File access error while extracting '{archiveFileName}': {ex.Message}";
+            return (false, [], tempDirectoryRoot, errorMsg);
+        }
         catch (Exception ex)
         {
             // Report bug if service is available
