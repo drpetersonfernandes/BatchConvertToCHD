@@ -12,6 +12,7 @@ using System.Collections.ObjectModel;
 using BatchConvertToCHD.Models;
 using BatchConvertToCHD.Services;
 using BatchConvertToCHD.Utilities;
+using Serilog;
 
 namespace BatchConvertToCHD;
 
@@ -224,7 +225,7 @@ public partial class MainWindow : IDisposable
                       $"Please ensure it is placed in the application folder.\n" +
                       $"Conversion, Verification and Extraction will NOT work without it.";
 
-            LogMessage("!!! CRITICAL ERROR: " + msg.Replace("\n", " "));
+            LogError("CRITICAL ERROR: " + msg.Replace("\n", " "));
             ShowMessageBox(msg, "Missing Dependency", MessageBoxButton.OK, MessageBoxImage.Error);
         }
 
@@ -364,7 +365,7 @@ public partial class MainWindow : IDisposable
         {
             if (!File.Exists(exePath))
             {
-                LogMessage($"ERROR: {exeName} not found at: {exePath}");
+                LogError($" {exeName} not found at: {exePath}");
                 ShowError($"{exeName} not found.");
                 return false;
             }
@@ -372,7 +373,7 @@ public partial class MainWindow : IDisposable
             // Check if file has executable extension
             if (!exePath.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
             {
-                LogMessage($"ERROR: {exeName} is not an executable file.");
+                LogError($" {exeName} is not an executable file.");
                 ShowError($"{exeName} is not a valid executable.");
                 return false;
             }
@@ -387,7 +388,7 @@ public partial class MainWindow : IDisposable
             }
             catch (IOException ioEx) when (ioEx.Message.Contains("being used by another process", StringComparison.OrdinalIgnoreCase))
             {
-                LogMessage($"ERROR: {exeName} is locked by another process.");
+                LogError($" {exeName} is locked by another process.");
                 ShowError($"{exeName} is currently in use by another process.");
                 return false;
             }
@@ -397,20 +398,20 @@ public partial class MainWindow : IDisposable
             if (fileInfo.Attributes.HasFlag(FileAttributes.ReadOnly) && !IsRunningAsAdmin())
             {
                 // Read-only files can still be executed, but log a warning
-                LogMessage($"WARNING: {exeName} is read-only.");
+                LogWarning($" {exeName} is read-only.");
             }
 
             return true;
         }
         catch (UnauthorizedAccessException)
         {
-            LogMessage($"PERMISSION ERROR: Cannot access {exeName}. Insufficient permissions.");
+            LogError($" Cannot access {exeName}. Insufficient permissions.");
             ShowError($"Access denied to {exeName}. Check antivirus or permissions.");
             return false;
         }
         catch (Exception ex)
         {
-            LogMessage($"ERROR: Cannot access {exeName}. {ex.Message}");
+            LogError($" Cannot access {exeName}. {ex.Message}");
             ShowError($"Cannot access {exeName}. Check antivirus or permissions.");
             _ = ReportBugAsync($"Cannot access {exeName}", ex);
             return false;
@@ -477,7 +478,7 @@ public partial class MainWindow : IDisposable
         }
         catch (Win32Exception ex) when (ex.NativeErrorCode == 193 || ex.Message.Contains("not a valid application"))
         {
-            LogMessage("ERROR: The bundled chdman.exe is not compatible with this version of Windows.");
+            LogError(" The bundled chdman.exe is not compatible with this version of Windows.");
             LogMessage("       This typically occurs when running on older Windows versions (e.g., Windows 7).");
             LogMessage("       Please download a compatible version of chdman.exe from MAME releases.");
             ShowError("chdman.exe is not compatible with this OS.\n\n" +
@@ -487,7 +488,7 @@ public partial class MainWindow : IDisposable
         }
         catch (Win32Exception ex) when (ex.NativeErrorCode == 5)
         {
-            LogMessage($"ERROR: Access denied when trying to start {Path.GetFileName(chdmanPath)}.");
+            LogError($" Access denied when trying to start {Path.GetFileName(chdmanPath)}.");
             LogMessage("       This can be caused by antivirus blocking the executable or insufficient file permissions.");
             ShowError($"Access denied to {Path.GetFileName(chdmanPath)}.\n\nPlease check your antivirus settings or file permissions.");
             return false;
@@ -509,7 +510,7 @@ public partial class MainWindow : IDisposable
             }
 
             // Other errors are acceptable - at least the exe started or we have a generic error
-            LogMessage($"WARNING: Could not validate chdman compatibility: {ex.Message}");
+            LogWarning($" Could not validate chdman compatibility: {ex.Message}");
             _ = ReportBugAsync("Could not validate chdman compatibility", ex);
             return true;
         }
@@ -536,17 +537,17 @@ public partial class MainWindow : IDisposable
         LogMessage($"Welcome to {AppConfig.ApplicationName}. (Conversion Mode)");
         if (!_isChdmanAvailable)
         {
-            LogMessage("WARNING: chdman.exe not found!");
+            LogWarning(" chdman.exe not found!");
         }
 
         if (!_isMaxCsoAvailable)
         {
-            LogMessage("WARNING: maxcso.exe not found.");
+            LogWarning(" maxcso.exe not found.");
         }
 
         if (!_isPsxPackagerAvailable)
         {
-            LogMessage("WARNING: psxpackager.exe not found. PBP conversion unavailable.");
+            LogWarning(" psxpackager.exe not found. PBP conversion unavailable.");
         }
 
         LogMessage("--- Ready for Conversion ---");
@@ -557,7 +558,7 @@ public partial class MainWindow : IDisposable
         LogMessage($"Welcome to {AppConfig.ApplicationName}. (Verification Mode)");
         if (!_isChdmanAvailable)
         {
-            LogMessage("WARNING: chdman.exe not found!");
+            LogWarning(" chdman.exe not found!");
         }
 
         LogMessage("--- Ready for Verification ---");
@@ -568,7 +569,7 @@ public partial class MainWindow : IDisposable
         LogMessage($"Welcome to {AppConfig.ApplicationName}. (Extraction Mode)");
         if (!_isChdmanAvailable)
         {
-            LogMessage("WARNING: chdman.exe not found!");
+            LogWarning(" chdman.exe not found!");
         }
 
         LogMessage("This feature extracts CHD files back to their original format (ISO/BIN/CUE etc.)");
@@ -640,15 +641,30 @@ public partial class MainWindow : IDisposable
 
     private void LogMessage(string message)
     {
+        Log.Information(message);
+        AppendToUiLog(message);
+    }
+
+    private void LogError(string message)
+    {
+        Log.Error(message);
+        AppendToUiLog($"ERROR: {message}");
+    }
+
+    private void LogWarning(string message)
+    {
+        Log.Warning(message);
+        AppendToUiLog($"WARNING: {message}");
+    }
+
+    private void AppendToUiLog(string message)
+    {
         var timestampedMessage = $"[{DateTime.Now:HH:mm:ss.fff}] {message}";
 
         Application.Current.Dispatcher.BeginInvoke(new Action(() =>
         {
             try
             {
-                // Optimization: Don't get the whole LogViewer.Text (slow for large strings)
-                // Use Selection properties for smarter truncation if possible,
-                // but at minimum, check length directly
                 if (LogViewer.Text.Length > MaxLogLength)
                 {
                     var excess = LogViewer.Text.Length - MaxLogLength / 2;
@@ -785,7 +801,7 @@ public partial class MainWindow : IDisposable
             }
             catch (Exception ex)
             {
-                LogMessage($"Error: {ex.Message}");
+                LogError($"Error: {ex.Message}");
                 await ReportBugAsync("Batch extraction error", ex);
             }
             finally
@@ -1111,7 +1127,7 @@ public partial class MainWindow : IDisposable
             }
             catch (Exception ex)
             {
-                LogMessage($"Error: {ex.Message}");
+                LogError($"Error: {ex.Message}");
                 await ReportBugAsync("Batch conversion error", ex);
             }
             finally
@@ -1184,7 +1200,7 @@ public partial class MainWindow : IDisposable
             }
             catch (Exception ex)
             {
-                LogMessage($"Error: {ex.Message}");
+                LogError($"Error: {ex.Message}");
                 await ReportBugAsync("Batch verification error", ex);
             }
             finally
@@ -1426,7 +1442,7 @@ public partial class MainWindow : IDisposable
 
         if (!File.Exists(inputFile))
         {
-            LogMessage($"WARNING: File not found, skipping: {inputFile}");
+            LogWarning($" File not found, skipping: {inputFile}");
             return false;
         }
 
@@ -1490,7 +1506,7 @@ public partial class MainWindow : IDisposable
                 {
                     if (!string.IsNullOrWhiteSpace(result.ErrorMessage))
                     {
-                        LogMessage($"ERROR: {result.ErrorMessage}");
+                        LogError($" {result.ErrorMessage}");
                     }
 
                     return false;
@@ -1509,7 +1525,7 @@ public partial class MainWindow : IDisposable
                     var converted = await ConvertToChdAsync(chdmanPath, extractedFile, extractedFileOutputChd, cores, forceCd, forceDvd, timeoutMinutes, token);
                     if (!converted)
                     {
-                        LogMessage($"Failed to convert: {Path.GetFileName(extractedFile)}");
+                        LogError($"Failed to convert: {Path.GetFileName(extractedFile)}");
                         await TryDeleteFileAsync(extractedFileOutputChd, "failed CHD", CancellationToken.None);
                         allSucceeded = false;
                     }
@@ -1526,7 +1542,7 @@ public partial class MainWindow : IDisposable
             {
                 if (!_isPsxPackagerAvailable)
                 {
-                    LogMessage($"ERROR: Cannot process {originalName}. psxpackager.exe not found.");
+                    LogError($" Cannot process {originalName}. psxpackager.exe not found.");
                     return false;
                 }
 
@@ -1547,7 +1563,7 @@ public partial class MainWindow : IDisposable
                 var result = await ExtractPbpToCueBinAsync(_psxPackagerPath, inputFile, tempDir, token);
                 if (!result.Success || result.CueFilePaths.Count == 0)
                 {
-                    LogMessage($"ERROR: Failed to extract PBP file: {originalName}");
+                    LogError($" Failed to extract PBP file: {originalName}");
                     return false;
                 }
 
@@ -1568,7 +1584,7 @@ public partial class MainWindow : IDisposable
                     var converted = await ConvertToChdAsync(chdmanPath, cueFile, cueFileOutputChd, cores, forceCd, forceDvd, timeoutMinutes, token);
                     if (!converted)
                     {
-                        LogMessage($"Failed to convert: {Path.GetFileName(cueFile)}");
+                        LogError($"Failed to convert: {Path.GetFileName(cueFile)}");
                         await TryDeleteFileAsync(cueFileOutputChd, "failed CHD", CancellationToken.None);
                         allSucceeded = false;
                     }
@@ -1603,13 +1619,13 @@ public partial class MainWindow : IDisposable
                     if (missingFiles.Count > 0)
                     {
                         var missingNames = string.Join(", ", missingFiles.Select(Path.GetFileName));
-                        LogMessage($"SKIPPING: {originalName} — referenced files are missing: {missingNames}");
+                        LogWarning($" {originalName} — referenced files are missing: {missingNames}");
                         return false;
                     }
                 }
                 catch (Exception ex) when (ex is not OperationCanceledException)
                 {
-                    LogMessage($"SKIPPING: {originalName} — could not validate referenced files: {ex.Message}");
+                    LogWarning($" {originalName} — could not validate referenced files: {ex.Message}");
                     return false;
                 }
             }
@@ -1630,7 +1646,7 @@ public partial class MainWindow : IDisposable
 
                 if (IsDiskSpaceException(ex))
                 {
-                    LogMessage($"ERROR: Not enough disk space to convert {originalName}. Free up disk space and try again.");
+                    LogError($" Not enough disk space to convert {originalName}. Free up disk space and try again.");
                 }
                 else
                 {
@@ -1681,7 +1697,7 @@ public partial class MainWindow : IDisposable
                         if (missingFiles.Count > 0)
                         {
                             var missingNames = string.Join(", ", missingFiles.Select(Path.GetFileName));
-                            LogMessage($"WARNING: Skipping temp retry for {originalName} because referenced files are missing: {missingNames}");
+                            LogWarning($" Skipping temp retry for {originalName} because referenced files are missing: {missingNames}");
                             return false;
                         }
                     }
@@ -1720,7 +1736,7 @@ public partial class MainWindow : IDisposable
                             {
                                 var availableGb = tempDrive.AvailableFreeSpace / (1024.0 * 1024.0 * 1024.0);
                                 var neededGb = totalBytesNeeded / (1024.0 * 1024.0 * 1024.0);
-                                LogMessage($"ERROR: Not enough disk space for temp copy of {originalName}. Need {neededGb:F1} GB but only {availableGb:F1} GB available on {tempDriveRoot.TrimEnd('\\')}.");
+                                LogError($" Not enough disk space for temp copy of {originalName}. Need {neededGb:F1} GB but only {availableGb:F1} GB available on {tempDriveRoot.TrimEnd('\\')}.");
                                 return false;
                             }
                         }
@@ -1760,11 +1776,11 @@ public partial class MainWindow : IDisposable
 
                     if (IsDiskSpaceException(ex))
                     {
-                        LogMessage($"ERROR: Not enough disk space to convert {originalName} (via temp). Free up disk space and try again.");
+                        LogError($" Not enough disk space to convert {originalName} (via temp). Free up disk space and try again.");
                     }
                     else if (IsCorruptionException(ex) || IsCrcErrorException(ex))
                     {
-                        LogMessage($"ERROR: Source file appears to be corrupt: {originalName}");
+                        LogError($" Source file appears to be corrupt: {originalName}");
                     }
                     else
                     {
@@ -1828,15 +1844,15 @@ public partial class MainWindow : IDisposable
         {
             if (IsDiskSpaceException(ex))
             {
-                LogMessage($"ERROR: Not enough disk space to process {originalName}. Free up disk space and try again.");
+                LogError($" Not enough disk space to process {originalName}. Free up disk space and try again.");
             }
             else if (IsCorruptionException(ex))
             {
-                LogMessage($"ERROR: Archive appears to be corrupt or unsupported: {originalName}");
+                LogError($" Archive appears to be corrupt or unsupported: {originalName}");
             }
             else
             {
-                LogMessage($"Error processing {originalName}: {ex.Message}");
+                LogError($"Error processing {originalName}: {ex.Message}");
             }
 
             if (!IsDiskSpaceException(ex) && !IsCorruptionException(ex))
@@ -2123,7 +2139,7 @@ public partial class MainWindow : IDisposable
         switch (success)
         {
             case false when !token.IsCancellationRequested && IsDiskSpaceError(errorBuffer.ToString()):
-                LogMessage($"ERROR: Extraction of '{Path.GetFileName(chdFile)}' failed due to insufficient disk space.");
+                LogError($" Extraction of '{Path.GetFileName(chdFile)}' failed due to insufficient disk space.");
                 LogMessage("       Free up disk space on the output drive and try again.");
                 break;
             case true when deleteOriginal:
@@ -2318,7 +2334,7 @@ public partial class MainWindow : IDisposable
     {
         if (!File.Exists(chdmanPath))
         {
-            LogMessage($"ERROR: chdman.exe not found at '{chdmanPath}'. Please verify the path in settings.");
+            LogError($" chdman.exe not found at '{chdmanPath}'. Please verify the path in settings.");
             return false;
         }
 
@@ -2454,7 +2470,7 @@ public partial class MainWindow : IDisposable
 
         if (!token.IsCancellationRequested && IsDiskSpaceError(errorBuffer.ToString()))
         {
-            LogMessage($"ERROR: Conversion of '{Path.GetFileName(inputFile)}' failed due to insufficient disk space.");
+            LogError($" Conversion of '{Path.GetFileName(inputFile)}' failed due to insufficient disk space.");
             LogMessage("       Free up disk space on the output drive and try again.");
         }
 
@@ -2874,7 +2890,7 @@ public partial class MainWindow : IDisposable
                 // CHD compression typically reduces size, but warn if available space < 50% of input
                 if (availableGb < totalInputGb * 0.5)
                 {
-                    LogMessage($"WARNING: Output drive ({outputRoot.TrimEnd('\\')}) has {availableGb:F1} GB free, input files total {totalInputGb:F1} GB.");
+                    LogWarning($" Output drive ({outputRoot.TrimEnd('\\')}) has {availableGb:F1} GB free, input files total {totalInputGb:F1} GB.");
                     LogMessage("         CHD compression usually reduces file size, but you may run out of disk space.");
                 }
             }
@@ -2883,7 +2899,7 @@ public partial class MainWindow : IDisposable
                 // Extraction: output can be larger than CHD input
                 if (availableGb < totalInputGb)
                 {
-                    LogMessage($"WARNING: Output drive ({outputRoot.TrimEnd('\\')}) has {availableGb:F1} GB free, CHD files total {totalInputGb:F1} GB.");
+                    LogWarning($" Output drive ({outputRoot.TrimEnd('\\')}) has {availableGb:F1} GB free, CHD files total {totalInputGb:F1} GB.");
                     LogMessage("         Extracted files are typically larger than CHD files. You may run out of disk space.");
                 }
             }
@@ -2900,7 +2916,7 @@ public partial class MainWindow : IDisposable
                         var tempFreeGb = tempDrive.AvailableFreeSpace / (1024.0 * 1024.0 * 1024.0);
                         if (tempFreeGb < totalInputGb)
                         {
-                            LogMessage($"WARNING: Temp drive ({tempRoot.TrimEnd('\\')}) has {tempFreeGb:F1} GB free, input files total {totalInputGb:F1} GB.");
+                            LogWarning($" Temp drive ({tempRoot.TrimEnd('\\')}) has {tempFreeGb:F1} GB free, input files total {totalInputGb:F1} GB.");
                             LogMessage("         Temporary files are created during conversion. You may run out of disk space.");
                         }
                     }
@@ -2927,7 +2943,7 @@ public partial class MainWindow : IDisposable
         }
         catch
         {
-            LogMessage($"Failed to delete {desc}: {Path.GetFileName(path)}");
+            LogError($"Failed to delete {desc}: {Path.GetFileName(path)}");
         }
     }
 
@@ -2944,7 +2960,7 @@ public partial class MainWindow : IDisposable
         }
         catch
         {
-            LogMessage($"Failed to delete {desc}: {path}");
+            LogError($"Failed to delete {desc}: {path}");
         }
     }
 

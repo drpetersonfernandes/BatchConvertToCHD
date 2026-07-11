@@ -1,5 +1,6 @@
 using System.IO;
 using System.Text;
+using Serilog;
 
 namespace BatchConvertToCHD.Utilities;
 
@@ -8,8 +9,8 @@ namespace BatchConvertToCHD.Utilities;
 /// </summary>
 public static class PathUtils
 {
-    // Cache invalid filename chars to avoid repeated allocation
     private static readonly char[] InvalidFileNameChars = Path.GetInvalidFileNameChars();
+    private static readonly ILogger Logger = Log.ForContext(typeof(PathUtils));
 
     /// <summary>
     /// Sanitizes a file name by replacing invalid characters with underscores.
@@ -27,7 +28,6 @@ public static class PathUtils
         var sb = new StringBuilder(name.Length);
         foreach (var c in name)
         {
-            // Replace invalid filename chars with underscore
             if (Array.IndexOf(InvalidFileNameChars, c) >= 0)
             {
                 sb.Append('_');
@@ -38,7 +38,6 @@ public static class PathUtils
             }
         }
 
-        // Remove trailing periods (problematic on Windows)
         while (sb.Length > 0 && sb[^1] == '.')
         {
             sb.Length--;
@@ -48,7 +47,6 @@ public static class PathUtils
 
         var sanitizedName = sb.ToString();
 
-        // Replace common problematic Unicode ellipsis characters
         sanitizedName = sanitizedName.Replace("…", "_ellipsis_")
             .Replace("â€¦", "_ellipsis_");
 
@@ -87,7 +85,7 @@ public static class PathUtils
         }
         catch
         {
-            // If GetPathRoot or GetRelativePath itself throws for any reason
+            // ignored
         }
 
         return ".";
@@ -101,11 +99,6 @@ public static class PathUtils
     /// enough free space for the operation, even if it is not the drive with the most
     /// total free space. Falls back to the system temp path if no suitable alternative is found.
     /// </summary>
-    /// <param name="inputFilePath">Path to the input file (used to prioritize its drive).</param>
-    /// <param name="outputFolderPath">Path to the output folder (used to prioritize its drive).</param>
-    /// <param name="tempDirPrefix">Prefix for the temporary directory name (e.g., "BatchConvertToCHD_Temp_").</param>
-    /// <param name="requiredBytes">Minimum free space required in bytes. When &gt; 0, a drive meeting this requirement is preferred over the drive with the most total free space.</param>
-    /// <returns>The full path to a new temporary directory that has not yet been created on disk.</returns>
     public static string GetBestTempDirectory(string? inputFilePath, string? outputFolderPath, string tempDirPrefix, long requiredBytes = 0)
     {
         const long minFreeBytes = 1024L * 1024 * 1024; // 1 GB minimum to consider a drive viable
@@ -164,7 +157,6 @@ public static class PathUtils
             }
         }
 
-        // Prefer a drive that meets the space requirement; fall back to best overall
         var selectedRoot = bestRootMeetingRequirement ?? bestRoot;
         var selectedFree = bestRootMeetingRequirement != null ? bestFreeMeetingRequirement : bestFree;
 
@@ -250,24 +242,21 @@ public static class PathUtils
 
             if (!Directory.Exists(normalizedPath))
             {
+                Logger.Error("{PathName} does not exist: {Path}", pathName, normalizedPath);
                 onLog($"ERROR: {pathName} does not exist: {normalizedPath}");
                 onError($"The {pathName} does not exist or is not accessible:\n\n{normalizedPath}\n\nPlease verify the path and try again.");
                 return null;
             }
 
+            Logger.Information("Validated {PathName}: {Path}", pathName, normalizedPath);
             onLog($"Validated {pathName}: {normalizedPath}");
             return normalizedPath;
         }
         catch (Exception ex)
         {
+            Logger.Error(ex, "Invalid path for {PathName}: {Path}", pathName, path);
             onLog($"ERROR: Invalid path for {pathName}: {path}. {ex.Message}");
             onError($"The {pathName} path is invalid:\n\n{path}\n\nError: {ex.Message}");
-
-            if (App.SharedBugReportService != null)
-            {
-                _ = App.SharedBugReportService.SendBugReportAsync($"Invalid path for {pathName}", ex);
-            }
-
             return null;
         }
     }

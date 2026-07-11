@@ -4,29 +4,21 @@ using System.IO.Compression;
 using System.Text;
 using System.Security;
 using BatchConvertToCHD.Utilities;
+using Serilog;
 using SharpCompress.Archives;
 using SharpCompress.Archives.SevenZip;
 using SharpCompress.Archives.Rar;
 
 namespace BatchConvertToCHD.Services;
 
-/// <summary>
-/// Service for extracting various archive formats (ZIP, 7Z, RAR, CSO) used in the conversion process.
-/// </summary>
 public class ArchiveService : IDisposable
 {
     private readonly string _maxCsoPath;
     private readonly bool _isMaxCsoAvailable;
     private readonly string _sevenZipExePath;
     private readonly bool _isSevenZipAvailable;
+    private static readonly ILogger Logger = Log.ForContext<ArchiveService>();
 
-    /// <summary>
-    /// Initializes a new instance of the <see cref="ArchiveService"/> class.
-    /// </summary>
-    /// <param name="maxCsoPath">The path to the maxcso executable for CSO decompression.</param>
-    /// <param name="isMaxCsoAvailable">Whether maxcso is available on the system.</param>
-    /// <param name="sevenZipExePath">The path to the 7za executable for 7z fallback extraction.</param>
-    /// <param name="isSevenZipAvailable">Whether 7za is available on the system.</param>
     public ArchiveService(string maxCsoPath, bool isMaxCsoAvailable, string sevenZipExePath, bool isSevenZipAvailable)
     {
         _maxCsoPath = maxCsoPath;
@@ -35,15 +27,6 @@ public class ArchiveService : IDisposable
         _isSevenZipAvailable = isSevenZipAvailable;
     }
 
-    /// <summary>
-    /// Extracts a CSO (Compressed ISO) file to a temporary ISO file.
-    /// </summary>
-    /// <param name="originalCsoPath">The path to the CSO file to extract.</param>
-    /// <param name="tempOutputIsoPath">The path where the extracted ISO should be saved.</param>
-    /// <param name="tempDirectoryRoot">The root temporary directory for extraction.</param>
-    /// <param name="onLog">Callback for logging messages.</param>
-    /// <param name="token">Cancellation token to cancel the operation.</param>
-    /// <returns>A tuple containing success status, file path, temp directory, and error message.</returns>
     public async Task<(bool Success, string FilePath, string TempDir, string ErrorMessage)> ExtractCsoAsync(
         string originalCsoPath,
         string tempOutputIsoPath,
@@ -52,9 +35,7 @@ public class ArchiveService : IDisposable
         CancellationToken token)
     {
         if (!_isMaxCsoAvailable)
-        {
             return (false, string.Empty, tempDirectoryRoot, "maxcso.exe is not available.");
-        }
 
         var csoFileName = Path.GetFileName(originalCsoPath);
         using var process = new Process();
@@ -62,6 +43,7 @@ public class ArchiveService : IDisposable
         try
         {
             token.ThrowIfCancellationRequested();
+            Logger.Information("Decompressing {FileName} to temporary ISO: {Path}", csoFileName, tempOutputIsoPath);
             onLog($"Decompressing {csoFileName} to temporary ISO: {tempOutputIsoPath}");
 
             process.StartInfo = new ProcessStartInfo
@@ -78,63 +60,36 @@ public class ArchiveService : IDisposable
             var outputBuilder = new StringBuilder();
             process.OutputDataReceived += (_, args) =>
             {
-                if (args.Data != null)
-                {
-                    outputBuilder.AppendLine(args.Data);
-                }
+                if (args.Data != null) outputBuilder.AppendLine(args.Data);
             };
             process.ErrorDataReceived += (_, args) =>
             {
-                if (args.Data == null)
-                {
-                    return;
-                }
+                if (args.Data == null) return;
 
                 outputBuilder.AppendLine(args.Data);
+                Logger.Information("[MAXCSO STDERR] {Data}", args.Data);
                 onLog($"[MAXCSO STDERR] {args.Data}");
             };
 
             process.Start();
             process.BeginOutputReadLine();
             process.BeginErrorReadLine();
-
-            // Wait for process to exit - WaitForExitAsync is efficient and handles cancellation
             await process.WaitForExitAsync(token);
 
             if (process.ExitCode != 0 || !File.Exists(tempOutputIsoPath))
-            {
                 return (false, string.Empty, tempDirectoryRoot, $"MaxCSO failed. Exit code: {process.ExitCode}. Output: {outputBuilder}");
-            }
 
+            Logger.Information("Successfully decompressed {FileName}", csoFileName);
             onLog($"Successfully decompressed {csoFileName}");
             return (true, tempOutputIsoPath, tempDirectoryRoot, string.Empty);
         }
         catch (OperationCanceledException)
         {
-            try
-            {
-                if (!process.HasExited)
-                {
-                    process.Kill(true);
-                }
-            }
-            catch
-            {
-                /* ignore */
-            }
-
+            try { if (!process.HasExited) process.Kill(true); } catch { /* ignore */ }
             throw;
         }
     }
 
-    /// <summary>
-    /// Extracts an archive file (ZIP, 7Z, or RAR) to a temporary directory.
-    /// </summary>
-    /// <param name="originalArchivePath">The path to the archive file to extract.</param>
-    /// <param name="tempDirectoryRoot">The root temporary directory for extraction.</param>
-    /// <param name="onLog">Callback for logging messages.</param>
-    /// <param name="token">Cancellation token to cancel the operation.</param>
-    /// <returns>A tuple containing success status, list of extracted file paths, temp directory, and error message.</returns>
     public async Task<(bool Success, List<string> FilePaths, string TempDir, string ErrorMessage)> ExtractArchiveAsync(
         string originalArchivePath,
         string tempDirectoryRoot,
@@ -146,6 +101,7 @@ public class ArchiveService : IDisposable
 
         if (!File.Exists(originalArchivePath))
         {
+            Logger.Warning("File not found, skipping extraction: {Path}", originalArchivePath);
             onLog($"WARNING: File not found, skipping extraction: {originalArchivePath}");
             return (false, [], tempDirectoryRoot, $"File not found: {originalArchivePath}");
         }
@@ -157,40 +113,29 @@ public class ArchiveService : IDisposable
             var spaceError = CheckTempDiskSpace(originalArchivePath, tempDirectoryRoot, archiveFileName);
             if (spaceError != null)
             {
+                Logger.Error("{Error}", spaceError);
                 onLog($"ERROR: {spaceError}");
                 return (false, [], tempDirectoryRoot, spaceError);
             }
 
             Directory.CreateDirectory(tempDirectoryRoot);
+            Logger.Information("Extracting {FileName} to: {Path}", archiveFileName, tempDirectoryRoot);
             onLog($"Extracting {archiveFileName} to: {tempDirectoryRoot}");
 
             if (extension.Equals(FileExtensions.Zip, StringComparison.OrdinalIgnoreCase))
-            {
                 await Task.Run(() => ExtractZipArchive(originalArchivePath, tempDirectoryRoot, token), token);
-            }
             else if (extension.Equals(FileExtensions.SevenZip, StringComparison.OrdinalIgnoreCase))
-            {
-                await Task.Run(async () => await ExtractSevenZipArchive(originalArchivePath, tempDirectoryRoot, onLog, token), token);
-            }
+                await Task.Run(async () => await ExtractSevenZipArchiveAsync(originalArchivePath, tempDirectoryRoot, onLog, token), token);
             else if (extension.Equals(FileExtensions.Rar, StringComparison.OrdinalIgnoreCase))
-            {
                 await Task.Run(() => ExtractRarArchive(originalArchivePath, tempDirectoryRoot, onLog, token), token);
-            }
             else
-            {
                 return (false, [], tempDirectoryRoot, $"Unsupported archive type: {extension}");
-            }
 
             token.ThrowIfCancellationRequested();
 
             var foundFiles = await Task.Run(() =>
             {
-                var options = new EnumerationOptions
-                {
-                    RecurseSubdirectories = true,
-                    IgnoreInaccessible = true
-                };
-
+                var options = new EnumerationOptions { RecurseSubdirectories = true, IgnoreInaccessible = true };
                 return Directory.GetFiles(tempDirectoryRoot, "*.*", options)
                     .Where(static f => FileExtensions.PrimaryTargetExtensionsSet.Contains(Path.GetExtension(f)))
                     .ToList();
@@ -200,44 +145,19 @@ public class ArchiveService : IDisposable
                 ? (true, foundFiles, tempDirectoryRoot, string.Empty)
                 : (false, new List<string>(), tempDirectoryRoot, "No supported primary files found in archive.");
         }
-        catch (OperationCanceledException)
-        {
-            throw;
-        }
-        catch (InvalidDataException ex)
-        {
-            return (false, [], tempDirectoryRoot, $"The archive file may be corrupted or incomplete and could not be extracted. Try re-downloading or re-copying the file, then attempt the conversion again. Details: {ex.Message}");
-        }
-        catch (SharpCompress.Common.IncompleteArchiveException ex)
-        {
-            return (false, [], tempDirectoryRoot, $"The archive file appears to be incomplete and could not be fully extracted. Try re-downloading or re-copying the file, then attempt the conversion again. Details: {ex.Message}");
-        }
-        catch (Exception ex) when (ex.GetType().FullName == "SharpCompress.Compressors.LZMA.DataErrorException")
-        {
-            return (false, [], tempDirectoryRoot, $"The archive file may be corrupted and could not be extracted. Try re-downloading or re-copying the file, then attempt the conversion again. Details: {ex.Message}");
-        }
-        catch (SharpCompress.Common.CryptographicException ex)
-        {
-            return (false, [], tempDirectoryRoot, $"Archive is encrypted/password-protected and cannot be processed. Please extract it manually and add the extracted files. Details: {ex.Message}");
-        }
-        catch (SharpCompress.Common.InvalidFormatException ex)
-        {
-            return (false, [], tempDirectoryRoot, $"The archive file may be corrupted or in an unsupported format and could not be extracted. Try re-downloading or re-copying the file, then attempt the conversion again. Details: {ex.Message}");
-        }
-        catch (SharpCompress.Common.ArchiveOperationException ex)
-        {
-            return (false, [], tempDirectoryRoot, $"The archive file may be corrupted or unsupported and could not be extracted. Try re-downloading or re-copying the file, then attempt the conversion again. Details: {ex.Message}");
-        }
-        catch (IndexOutOfRangeException)
-        {
-            return (false, [], tempDirectoryRoot, "The archive file may be corrupted or incomplete and could not be extracted. Try re-downloading or re-copying the file, then attempt the conversion again.");
-        }
+        catch (OperationCanceledException) { throw; }
+        catch (InvalidDataException ex) { return (false, [], tempDirectoryRoot, $"The archive file may be corrupted or incomplete and could not be extracted. Try re-downloading or re-copying the file, then attempt the conversion again. Details: {ex.Message}"); }
+        catch (SharpCompress.Common.IncompleteArchiveException ex) { return (false, [], tempDirectoryRoot, $"The archive file appears to be incomplete and could not be fully extracted. Try re-downloading or re-copying the file, then attempt the conversion again. Details: {ex.Message}"); }
+        catch (Exception ex) when (ex.GetType().FullName == "SharpCompress.Compressors.LZMA.DataErrorException") { return (false, [], tempDirectoryRoot, $"The archive file may be corrupted and could not be extracted. Try re-downloading or re-copying the file, then attempt the conversion again. Details: {ex.Message}"); }
+        catch (SharpCompress.Common.CryptographicException ex) { return (false, [], tempDirectoryRoot, $"Archive is encrypted/password-protected and cannot be processed. Please extract it manually and add the extracted files. Details: {ex.Message}"); }
+        catch (SharpCompress.Common.InvalidFormatException ex) { return (false, [], tempDirectoryRoot, $"The archive file may be corrupted or in an unsupported format and could not be extracted. Try re-downloading or re-copying the file, then attempt the conversion again. Details: {ex.Message}"); }
+        catch (SharpCompress.Common.ArchiveOperationException ex) { return (false, [], tempDirectoryRoot, $"The archive file may be corrupted or unsupported and could not be extracted. Try re-downloading or re-copying the file, then attempt the conversion again. Details: {ex.Message}"); }
+        catch (IndexOutOfRangeException) { return (false, [], tempDirectoryRoot, "The archive file may be corrupted or incomplete and could not be extracted. Try re-downloading or re-copying the file, then attempt the conversion again."); }
         catch (IOException ex) when (IsDiskFullException(ex))
         {
             var driveRoot = Path.GetPathRoot(Path.GetFullPath(tempDirectoryRoot))?.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar) ?? "temp drive";
             var archiveSizeGb = new FileInfo(originalArchivePath).Length / (1024.0 * 1024.0 * 1024.0);
-            return (false, [], tempDirectoryRoot,
-                $"Not enough disk space on {driveRoot}. The archive ({archiveFileName}, {archiveSizeGb:F1} GB uncompressed) cannot be extracted. Free up space on {driveRoot} or change your system TEMP directory to a drive with more space.");
+            return (false, [], tempDirectoryRoot, $"Not enough disk space on {driveRoot}. The archive ({archiveFileName}, {archiveSizeGb:F1} GB uncompressed) cannot be extracted. Free up space on {driveRoot} or change your system TEMP directory to a drive with more space.");
         }
         catch (IOException ex) when (!IsDiskFullException(ex))
         {
@@ -248,19 +168,7 @@ public class ArchiveService : IDisposable
         }
         catch (Exception ex)
         {
-            // Report bug if service is available
-            try
-            {
-                if (App.SharedBugReportService != null)
-                {
-                    _ = App.SharedBugReportService.SendBugReportAsync("Error extracting archive", ex);
-                }
-            }
-            catch
-            {
-                // Ignore errors in bug reporting to avoid infinite loops
-            }
-
+            Logger.Error(ex, "Error extracting archive: {FileName}", archiveFileName);
             return (false, [], tempDirectoryRoot, $"Error extracting archive: {ex.Message}");
         }
     }
@@ -268,51 +176,59 @@ public class ArchiveService : IDisposable
     private static void ExtractZipArchive(string archivePath, string outputDirectory, CancellationToken token)
     {
         var fullOutputDirectory = Path.GetFullPath(outputDirectory).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar) + Path.DirectorySeparatorChar;
+        var directExtractionSuccess = false;
+        try { ExtractZipWithOpenRead(archivePath, outputDirectory, fullOutputDirectory, token);
+            directExtractionSuccess = true; }
+        catch (IOException) when (!directExtractionSuccess) { }
 
-        using var archive = ZipFile.OpenRead(archivePath);
-        foreach (var entry in archive.Entries)
-        {
-            token.ThrowIfCancellationRequested();
+        if (directExtractionSuccess) return;
 
-            if (string.IsNullOrEmpty(entry.Name))
-            {
-                continue; // Skip directories
-            }
-
-            var destinationPath = Path.Combine(outputDirectory, entry.FullName);
-            var directory = Path.GetDirectoryName(destinationPath);
-            if (!string.IsNullOrEmpty(directory) && !Directory.Exists(directory))
-            {
-                Directory.CreateDirectory(directory);
-            }
-
-            if (!Path.GetFullPath(destinationPath).StartsWith(fullOutputDirectory, StringComparison.OrdinalIgnoreCase))
-            {
-                throw new SecurityException("Attempted to extract file outside of the target directory.");
-            }
-
-            entry.ExtractToFile(destinationPath, true);
-        }
+        var tempCopyPath = Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}{FileExtensions.Zip}");
+        try { File.Copy(archivePath, tempCopyPath, true);
+            ExtractZipWithOpenRead(tempCopyPath, outputDirectory, fullOutputDirectory, token); }
+        finally { TryDeleteFile(tempCopyPath); }
     }
 
-    private async Task ExtractSevenZipArchive(string archivePath, string outputDirectory, Action<string> onLog, CancellationToken token)
+    private static void ExtractZipWithOpenRead(string archivePath, string outputDirectory, string fullOutputDirectory, CancellationToken token)
     {
-        try
+        IOException lastIoException = null!;
+        const int maxRetries = 3;
+        for (var attempt = 1; attempt <= maxRetries; attempt++)
         {
-            ExtractArchiveWithFallback(
-                archivePath,
-                outputDirectory,
-                onLog,
-                FileExtensions.SevenZip,
-                static stream => SevenZipArchive.OpenArchive(stream),
-                token);
+            try
+            {
+                using var archive = ZipFile.OpenRead(archivePath);
+                foreach (var entry in archive.Entries)
+                {
+                    token.ThrowIfCancellationRequested();
+                    if (string.IsNullOrEmpty(entry.Name)) continue;
+
+                    var destinationPath = Path.Combine(outputDirectory, entry.FullName);
+                    var directory = Path.GetDirectoryName(destinationPath);
+                    if (!string.IsNullOrEmpty(directory) && !Directory.Exists(directory)) Directory.CreateDirectory(directory);
+                    if (!Path.GetFullPath(destinationPath).StartsWith(fullOutputDirectory, StringComparison.OrdinalIgnoreCase))
+                        throw new SecurityException("Attempted to extract file outside of the target directory.");
+
+                    entry.ExtractToFile(destinationPath, true);
+                }
+                return;
+            }
+            catch (IOException ex) when (attempt < maxRetries) { lastIoException = ex;
+                Thread.Sleep(attempt * 1000); }
         }
+        throw lastIoException;
+    }
+
+    private async Task ExtractSevenZipArchiveAsync(string archivePath, string outputDirectory, Action<string> onLog, CancellationToken token)
+    {
+        try { ExtractArchiveWithFallback(archivePath, outputDirectory, onLog, FileExtensions.SevenZip, static stream => SevenZipArchive.OpenArchive(stream), token); }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             if (_isSevenZipAvailable)
             {
+                Logger.Information("SharpCompress extraction failed ({Error}). Trying 7za.exe fallback...", ex.Message);
                 onLog($"SharpCompress extraction failed ({ex.Message}). Trying 7za.exe fallback...");
-                await ExtractWith7Za(archivePath, outputDirectory, onLog, token);
+                await ExtractWith7ZaAsync(archivePath, outputDirectory, onLog, token);
             }
             else
             {
@@ -321,8 +237,9 @@ public class ArchiveService : IDisposable
         }
     }
 
-    private async Task ExtractWith7Za(string archivePath, string outputDirectory, Action<string> onLog, CancellationToken token)
+    private async Task ExtractWith7ZaAsync(string archivePath, string outputDirectory, Action<string> onLog, CancellationToken token)
     {
+        Logger.Information("Extracting with 7za.exe: {FileName}", Path.GetFileName(archivePath));
         onLog($"Extracting with 7za.exe: {Path.GetFileName(archivePath)}");
 
         using var process = new Process();
@@ -335,32 +252,20 @@ public class ArchiveService : IDisposable
             {
                 FileName = _sevenZipExePath,
                 Arguments = $"x \"{archivePath}\" -o\"{outputDirectory}\" -y",
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                UseShellExecute = false,
-                CreateNoWindow = true,
-                ErrorDialog = false
+                RedirectStandardOutput = true, RedirectStandardError = true,
+                UseShellExecute = false, CreateNoWindow = true, ErrorDialog = false
             };
-
             process.OutputDataReceived += (_, args) =>
             {
-                if (args.Data != null)
-                {
-                    lock (outputLock) { outputBuilder.AppendLine(args.Data); }
-                }
+                if (args.Data != null) { lock (outputLock) { outputBuilder.AppendLine(args.Data); } }
             };
             process.ErrorDataReceived += (_, args) =>
             {
-                if (args.Data != null)
-                {
-                    lock (outputLock) { outputBuilder.AppendLine(args.Data); }
-                }
+                if (args.Data != null) { lock (outputLock) { outputBuilder.AppendLine(args.Data); } }
             };
-
             process.Start();
             process.BeginOutputReadLine();
             process.BeginErrorReadLine();
-
             await process.WaitForExitAsync(token);
 
             string outputText;
@@ -370,55 +275,28 @@ public class ArchiveService : IDisposable
             {
                 if (process.ExitCode == 2 || outputText.Contains("Is not archive", StringComparison.OrdinalIgnoreCase) ||
                     outputText.Contains("Cannot open", StringComparison.OrdinalIgnoreCase))
-                {
                     throw new InvalidDataException($"7za.exe: archive is invalid or corrupt ({Path.GetFileName(archivePath)}). Output: {outputText}");
-                }
 
                 throw new InvalidOperationException($"7za.exe extraction failed with exit code {process.ExitCode}. Output: {outputText}");
             }
-
+            Logger.Information("Successfully extracted {FileName} with 7za.exe", Path.GetFileName(archivePath));
             onLog($"Successfully extracted {Path.GetFileName(archivePath)} with 7za.exe");
         }
         catch (OperationCanceledException)
         {
-            try
-            {
-                if (!process.HasExited)
-                {
-                    process.Kill(true);
-                }
-            }
-            catch
-            {
-                /* ignore */
-            }
-
+            try { if (!process.HasExited) process.Kill(true); } catch { /* ignore */ }
             throw;
         }
     }
 
     private static void ExtractRarArchive(string archivePath, string outputDirectory, Action<string> onLog, CancellationToken token)
     {
-        ExtractArchiveWithFallback(
-            archivePath,
-            outputDirectory,
-            onLog,
-            FileExtensions.Rar,
-            static stream => RarArchive.OpenArchive(stream),
-            token);
+        ExtractArchiveWithFallback(archivePath, outputDirectory, onLog, FileExtensions.Rar, static stream => RarArchive.OpenArchive(stream), token);
     }
 
-    /// <summary>
-    /// Extracts an archive with fallback logic for handling extraction failures.
-    /// If direct extraction fails, copies the archive to a temp location and retries.
-    /// </summary>
     internal static void ExtractArchiveWithFallback<TArchive>(
-        string archivePath,
-        string outputDirectory,
-        Action<string> onLog,
-        string tempExtension,
-        Func<Stream, TArchive> openArchive,
-        CancellationToken token) where TArchive : IArchive, IDisposable
+        string archivePath, string outputDirectory, Action<string> onLog, string tempExtension,
+        Func<Stream, TArchive> openArchive, CancellationToken token) where TArchive : IArchive, IDisposable
     {
         var fullOutputDirectory = Path.GetFullPath(outputDirectory).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar) + Path.DirectorySeparatorChar;
         var directExtractionSuccess = false;
@@ -430,21 +308,18 @@ public class ArchiveService : IDisposable
             ExtractArchiveEntries(archive, outputDirectory, fullOutputDirectory, token);
             directExtractionSuccess = true;
         }
-        catch (OperationCanceledException)
-        {
-            throw;
-        }
+        catch (OperationCanceledException) { throw; }
         catch (Exception ex) when (ex is FileNotFoundException or DirectoryNotFoundException)
         {
+            Logger.Information("Direct extraction failed ({Error}). Skipping fallback because source file is missing.", ex.Message);
             onLog($"Direct extraction failed ({ex.Message}). Skipping fallback because source file is missing.");
             throw;
         }
         catch (Exception ex)
         {
+            Logger.Information("Direct extraction failed ({Error}). Attempting fallback with local copy...", ex.Message);
             onLog($"Direct extraction failed ({ex.Message}). Attempting fallback with local copy...");
 
-            // For corrupt or incomplete archives, skip fallback and re-throw immediately
-            // The fallback mechanism is designed for file locking issues, not corrupt data
             if (ex is InvalidDataException ||
                 ex is SharpCompress.Common.IncompleteArchiveException ||
                 ex is SharpCompress.Common.CryptographicException ||
@@ -457,26 +332,11 @@ public class ArchiveService : IDisposable
                 throw;
             }
 
-            // Report unexpected errors if service is available
-            try
-            {
-                if (App.SharedBugReportService != null)
-                {
-                    _ = App.SharedBugReportService.SendBugReportAsync("Direct extraction failed", ex);
-                }
-            }
-            catch
-            {
-                // Ignore errors in bug reporting to avoid infinite loops
-            }
+            Logger.Error(ex, "Direct extraction failed");
         }
 
-        if (directExtractionSuccess)
-        {
-            return;
-        }
+        if (directExtractionSuccess) return;
 
-        // Fallback: Copy to temp location and extract from there
         var sanitizedArchivePath = Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}{tempExtension}");
         try
         {
@@ -485,75 +345,40 @@ public class ArchiveService : IDisposable
             using var archive = openArchive(stream);
             ExtractArchiveEntries(archive, outputDirectory, fullOutputDirectory, token);
         }
-        finally
-        {
-            TryDeleteFile(sanitizedArchivePath);
-        }
+        finally { TryDeleteFile(sanitizedArchivePath); }
     }
 
-    /// <summary>
-    /// Extracts entries from an archive with security checks.
-    /// </summary>
     private static void ExtractArchiveEntries(IArchive archive, string outputDirectory, string fullOutputDirectory, CancellationToken token)
     {
         foreach (var entry in archive.Entries.Where(static e => !e.IsDirectory))
         {
             token.ThrowIfCancellationRequested();
-
-            if (entry.Key == null)
-            {
-                continue;
-            }
+            if (entry.Key == null) continue;
 
             var destinationPath = Path.Combine(outputDirectory, entry.Key);
             var directory = Path.GetDirectoryName(destinationPath);
-            if (!string.IsNullOrEmpty(directory) && !Directory.Exists(directory))
-            {
-                Directory.CreateDirectory(directory);
-            }
-
+            if (!string.IsNullOrEmpty(directory) && !Directory.Exists(directory)) Directory.CreateDirectory(directory);
             if (!Path.GetFullPath(destinationPath).StartsWith(fullOutputDirectory, StringComparison.OrdinalIgnoreCase))
-            {
                 throw new SecurityException("Attempted to extract file outside of the target directory.");
-            }
 
             WriteEntryWithRetry(entry, destinationPath);
         }
     }
 
-    /// <summary>
-    /// Writes an archive entry to a file with retry logic for transient I/O errors (e.g., network drops).
-    /// </summary>
     private static void WriteEntryWithRetry(IArchiveEntry entry, string destinationPath)
     {
         const int maxRetries = 3;
-        for (var attempt = 1;; attempt++)
+        for (var attempt = 1; ; attempt++)
         {
-            try
-            {
-                entry.WriteToFile(destinationPath);
-                return;
-            }
-            catch (IOException) when (attempt < maxRetries)
-            {
-                Thread.Sleep(attempt * 1000);
-            }
+            try { entry.WriteToFile(destinationPath);
+                return; }
+            catch (IOException) when (attempt < maxRetries) { Thread.Sleep(attempt * 1000); }
         }
     }
 
-    /// <summary>
-    /// Attempts to delete a file, ignoring any errors.
-    /// </summary>
     private static void TryDeleteFile(string filePath)
     {
-        try
-        {
-            File.Delete(filePath);
-        }
-        catch
-        {
-            /* ignore */
-        }
+        try { File.Delete(filePath); } catch { /* ignore */ }
     }
 
     private static bool IsDiskFullException(Exception ex)
@@ -566,28 +391,16 @@ public class ArchiveService : IDisposable
         try
         {
             var driveRoot = Path.GetPathRoot(Path.GetFullPath(tempDirectoryRoot));
-            if (string.IsNullOrEmpty(driveRoot))
-            {
-                return null;
-            }
+            if (string.IsNullOrEmpty(driveRoot)) return null;
 
             var drive = new DriveInfo(driveRoot);
-            if (!drive.IsReady)
-            {
-                return null;
-            }
+            if (!drive.IsReady) return null;
 
             var availableSpace = drive.AvailableFreeSpace;
 
             long estimatedUncompressedSize;
-            try
-            {
-                estimatedUncompressedSize = EstimateArchiveUncompressedSize(originalArchivePath);
-            }
-            catch
-            {
-                estimatedUncompressedSize = new FileInfo(originalArchivePath).Length;
-            }
+            try { estimatedUncompressedSize = EstimateArchiveUncompressedSize(originalArchivePath); }
+            catch { estimatedUncompressedSize = new FileInfo(originalArchivePath).Length; }
 
             var safetyMargin = Math.Max(estimatedUncompressedSize / 10, 100L * 1024 * 1024);
             var requiredSpace = estimatedUncompressedSize + safetyMargin;
@@ -596,14 +409,12 @@ public class ArchiveService : IDisposable
             {
                 var requiredGb = requiredSpace / (1024.0 * 1024.0 * 1024.0);
                 var availableGb = availableSpace / (1024.0 * 1024.0 * 1024.0);
-                return $"Not enough disk space on {driveRoot.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)}. " +
-                       $"Need at least {requiredGb:F1} GB to extract {archiveFileName}, but only {availableGb:F1} GB available. " +
-                       $"Free up space or change your system TEMP directory to a drive with more space.";
+                return $"Not enough disk space on {driveRoot.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)}. Need at least {requiredGb:F1} GB to extract {archiveFileName}, but only {availableGb:F1} GB available. Free up space or change your system TEMP directory to a drive with more space.";
             }
         }
         catch
         {
-            // Best effort - don't fail the operation if disk check itself fails
+            // ignored
         }
 
         return null;
@@ -612,19 +423,14 @@ public class ArchiveService : IDisposable
     private static long EstimateArchiveUncompressedSize(string archivePath)
     {
         var extension = Path.GetExtension(archivePath);
-
         if (extension.Equals(FileExtensions.Zip, StringComparison.OrdinalIgnoreCase))
         {
             using var archive = ZipFile.OpenRead(archivePath);
             return archive.Entries.Sum(static e => e.Length);
         }
-
         return new FileInfo(archivePath).Length;
     }
 
-    /// <summary>
-    /// Releases all resources used by the <see cref="ArchiveService"/>.
-    /// </summary>
     public void Dispose()
     {
         GC.SuppressFinalize(this);

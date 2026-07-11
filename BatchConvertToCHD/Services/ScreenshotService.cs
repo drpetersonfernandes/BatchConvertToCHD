@@ -4,6 +4,7 @@ using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Interop;
 using System.Windows.Media.Imaging;
+using Serilog;
 
 namespace BatchConvertToCHD.Services;
 
@@ -13,6 +14,8 @@ namespace BatchConvertToCHD.Services;
 /// </summary>
 internal class ScreenshotService
 {
+    private static readonly ILogger Logger = Log.ForContext<ScreenshotService>();
+
     [StructLayout(LayoutKind.Sequential)]
     private struct Rect
     {
@@ -62,45 +65,53 @@ internal class ScreenshotService
     /// </summary>
     public string? TakeScreenshot()
     {
-        var hWnd = GetForegroundWindow();
-        if (hWnd == IntPtr.Zero)
+        try
+        {
+            var hWnd = GetForegroundWindow();
+            if (hWnd == IntPtr.Zero)
+                return null;
+
+            if (!GetWindowRect(hWnd, out var rect))
+                return null;
+
+            var width = rect.Right - rect.Left;
+            var height = rect.Bottom - rect.Top;
+
+            if (width <= 0 || height <= 0)
+                return null;
+
+            var windowDc = GetWindowDC(hWnd);
+            var compatibleDc = CreateCompatibleDC(windowDc);
+            var bitmap = CreateCompatibleBitmap(windowDc, width, height);
+            var oldBitmap = SelectObject(compatibleDc, bitmap);
+
+            BitBlt(compatibleDc, 0, 0, width, height, windowDc, 0, 0, SrcCopy);
+
+            var bitmapSource = Imaging.CreateBitmapSourceFromHBitmap(
+                bitmap, IntPtr.Zero, Int32Rect.Empty, BitmapSizeOptions.FromEmptyOptions());
+
+            SelectObject(compatibleDc, oldBitmap);
+            DeleteObject(bitmap);
+            DeleteDC(compatibleDc);
+            ReleaseDC(hWnd, windowDc);
+
+            var screenshotDir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Screenshot");
+            Directory.CreateDirectory(screenshotDir);
+
+            var timestamp = DateTime.Now.ToString("yyyy-MM-dd_HH-mm-ss-fff", CultureInfo.InvariantCulture);
+            var filePath = Path.Combine(screenshotDir, $"screenshot_{timestamp}.png");
+
+            using var fileStream = new FileStream(filePath, FileMode.Create);
+            var encoder = new PngBitmapEncoder();
+            encoder.Frames.Add(BitmapFrame.Create(bitmapSource));
+            encoder.Save(fileStream);
+
+            return filePath;
+        }
+        catch (Exception ex)
+        {
+            Logger.Error(ex, "Failed to take screenshot");
             return null;
-
-        if (!GetWindowRect(hWnd, out var rect))
-            return null;
-
-        var width = rect.Right - rect.Left;
-        var height = rect.Bottom - rect.Top;
-
-        if (width <= 0 || height <= 0)
-            return null;
-
-        var windowDc = GetWindowDC(hWnd);
-        var compatibleDc = CreateCompatibleDC(windowDc);
-        var bitmap = CreateCompatibleBitmap(windowDc, width, height);
-        var oldBitmap = SelectObject(compatibleDc, bitmap);
-
-        BitBlt(compatibleDc, 0, 0, width, height, windowDc, 0, 0, SrcCopy);
-
-        var bitmapSource = Imaging.CreateBitmapSourceFromHBitmap(
-            bitmap, IntPtr.Zero, Int32Rect.Empty, BitmapSizeOptions.FromEmptyOptions());
-
-        SelectObject(compatibleDc, oldBitmap);
-        DeleteObject(bitmap);
-        DeleteDC(compatibleDc);
-        ReleaseDC(hWnd, windowDc);
-
-        var screenshotDir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Screenshot");
-        Directory.CreateDirectory(screenshotDir);
-
-        var timestamp = DateTime.Now.ToString("yyyy-MM-dd_HH-mm-ss-fff", CultureInfo.InvariantCulture);
-        var filePath = Path.Combine(screenshotDir, $"screenshot_{timestamp}.png");
-
-        using var fileStream = new FileStream(filePath, FileMode.Create);
-        var encoder = new PngBitmapEncoder();
-        encoder.Frames.Add(BitmapFrame.Create(bitmapSource));
-        encoder.Save(fileStream);
-
-        return filePath;
+        }
     }
 }

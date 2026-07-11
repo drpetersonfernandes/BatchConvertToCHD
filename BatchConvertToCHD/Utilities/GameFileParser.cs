@@ -1,5 +1,6 @@
 using System.IO;
 using System.Text;
+using Serilog;
 
 namespace BatchConvertToCHD.Utilities;
 
@@ -9,6 +10,7 @@ namespace BatchConvertToCHD.Utilities;
 public static class GameFileParser
 {
     private static readonly char[] Separator = [' ', '\t'];
+    private static readonly ILogger Logger = Log.ForContext(typeof(GameFileParser));
 
     /// <summary>
     /// Extracts referenced file paths from a CUE sheet file.
@@ -55,8 +57,6 @@ public static class GameFileParser
                 }
                 else
                 {
-                    // GDI format: <track> <filename> <lba> <sector_size> <offset>
-                    // The last 3 fields are always numeric — count backwards to isolate the filename
                     var parts = trimmedLine.Split(Separator, StringSplitOptions.RemoveEmptyEntries);
                     if (parts.Length < 5)
                     {
@@ -66,7 +66,6 @@ public static class GameFileParser
                     string fileName;
                     if (parts.Length > 6)
                     {
-                        // Filename contains spaces; reconstruct from parts[4..^1] (exclude trailing offset)
                         var fileNameParts = parts[4..^1];
                         fileName = string.Join(' ', fileNameParts);
                     }
@@ -85,20 +84,8 @@ public static class GameFileParser
         }
         catch (Exception ex)
         {
+            Logger.Warning(ex, "Could not parse GDI file: {FileName}", Path.GetFileName(gdiPath));
             onLog($"[WARNING] Could not parse GDI file: {Path.GetFileName(gdiPath)}. Error: {ex.Message}");
-
-            // Don't report hardware-related IO errors (device not ready, wrong diskette, etc.)
-            if (ex is not IOException)
-            {
-                try
-                {
-                    _ = App.SharedBugReportService?.SendBugReportAsync($"Error parsing GDI file: {Path.GetFileName(gdiPath)}", ex);
-                }
-                catch
-                {
-                    // Silently fail to avoid cascading errors
-                }
-            }
         }
 
         return referencedFiles;
@@ -183,20 +170,8 @@ public static class GameFileParser
         }
         catch (Exception ex)
         {
+            Logger.Warning(ex, "Could not parse {FileType} file: {FileName}", fileType, Path.GetFileName(filePath));
             onLog($"[WARNING] Could not parse {fileType} file: {Path.GetFileName(filePath)}. Error: {ex.Message}");
-
-            // Don't report hardware-related IO errors (device not ready, wrong diskette, etc.)
-            if (ex is not IOException)
-            {
-                try
-                {
-                    _ = App.SharedBugReportService?.SendBugReportAsync($"Error parsing {fileType} file: {Path.GetFileName(filePath)}", ex);
-                }
-                catch
-                {
-                    // Silently fail to avoid cascading errors
-                }
-            }
         }
 
         return referencedFiles;

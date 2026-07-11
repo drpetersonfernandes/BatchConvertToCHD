@@ -4,6 +4,7 @@ using System.Reflection;
 using System.Text.Json;
 using System.Windows;
 using BatchConvertToCHD.Models;
+using Serilog;
 
 namespace BatchConvertToCHD.Services;
 
@@ -14,6 +15,7 @@ public class UpdateService(string applicationName)
 {
     private readonly string _applicationName = applicationName;
     private readonly HttpClient _httpClient = AppHttpClient.Client;
+    private static readonly ILogger Logger = Log.ForContext<UpdateService>();
     private static readonly JsonSerializerOptions JsonSerializerOptions = new() { PropertyNameCaseInsensitive = true };
 
     internal UpdateService(string applicationName, HttpClient httpClient)
@@ -37,6 +39,7 @@ public class UpdateService(string applicationName)
     {
         try
         {
+            Logger.Information("Checking for updates on GitHub...");
             onLog("Checking for updates on GitHub...");
 
             using var request = new HttpRequestMessage(HttpMethod.Get, AppConfig.GitHubApiLatestReleaseUrl);
@@ -49,6 +52,7 @@ public class UpdateService(string applicationName)
                 var responseBody403 = await response.Content.ReadAsStringAsync();
                 if (responseBody403.Contains("rate limit exceeded", StringComparison.OrdinalIgnoreCase))
                 {
+                    Logger.Information("GitHub API rate limit exceeded. Skipping update check.");
                     onLog("GitHub API rate limit exceeded. Skipping update check.");
                     onStatusUpdate("Update check skipped (rate limit)");
                     return;
@@ -60,6 +64,7 @@ public class UpdateService(string applicationName)
                 var statusCode = (int)response.StatusCode;
                 if (statusCode is >= 500 and < 600)
                 {
+                    Logger.Information("Update check skipped: GitHub server error ({StatusCode}).", statusCode);
                     onLog($"Update check skipped: GitHub server error ({statusCode}).");
                     onStatusUpdate("Update check skipped (server error)");
                     return;
@@ -72,6 +77,7 @@ public class UpdateService(string applicationName)
             var latestRelease = JsonSerializer.Deserialize<GitHubRelease>(responseBody, JsonSerializerOptions);
             if (latestRelease == null || latestRelease.Draft || latestRelease.Prerelease || string.IsNullOrWhiteSpace(latestRelease.TagName))
             {
+                Logger.Information("Latest release is invalid, draft, or prerelease. Skipping.");
                 onLog("Latest release is invalid, draft, or prerelease. Skipping.");
                 return;
             }
@@ -80,10 +86,13 @@ public class UpdateService(string applicationName)
 
             if (!TryNormalizeVersions(currentVersion, remoteVersionString, out var normalizedCurrent, out var normalizedRemote))
             {
+                Logger.Information("Could not compare versions. Current: {Current}, Remote: {Remote}", currentVersion, remoteVersionString);
                 onLog($"Could not compare versions. Current: {currentVersion}, Remote: {remoteVersionString}");
                 return;
             }
 
+            Logger.Information("Current version: {Current}", normalizedCurrent);
+            Logger.Information("Latest version: {Remote}", normalizedRemote);
             onLog($"Current version: {normalizedCurrent}");
             onLog($"Latest version: {normalizedRemote}");
 
@@ -109,6 +118,7 @@ public class UpdateService(string applicationName)
                             }
                             catch (Exception urlEx)
                             {
+                                Logger.Error(urlEx, "Failed to open browser");
                                 onLog($"Failed to open browser: {urlEx.Message}");
                                 _ = onBugReport("Failed to open browser", urlEx);
 
@@ -118,6 +128,7 @@ public class UpdateService(string applicationName)
                                 }
                                 catch (Exception clipboardEx)
                                 {
+                                    Logger.Error(clipboardEx, "Failed to copy URL to clipboard");
                                     onLog($"Failed to copy URL to clipboard: {clipboardEx.Message}");
                                     _ = onBugReport("Failed to copy URL to clipboard", clipboardEx);
                                 }
@@ -136,23 +147,27 @@ public class UpdateService(string applicationName)
             }
             else
             {
+                Logger.Information("Application is up to date.");
                 onLog("Application is up to date.");
                 onStatusUpdate("Application is up to date");
             }
         }
         catch (HttpRequestException ex) when (ex.StatusCode == null)
         {
+            Logger.Warning(ex, "Update check failed (Network/SSL)");
             onLog($"Update check failed (Network/SSL): {ex.Message}");
             onStatusUpdate("Update check failed (network)");
         }
         catch (HttpRequestException ex)
         {
+            Logger.Error(ex, "Update check failed");
             onLog($"Update check failed: {ex.Message}");
             onStatusUpdate("Update check failed");
             await onBugReport("Update check failed", ex);
         }
         catch (Exception ex)
         {
+            Logger.Error(ex, "Update check failed");
             onLog($"Update check failed: {ex.Message}");
             onStatusUpdate("Update check failed");
             await onBugReport("Error checking for updates", ex);

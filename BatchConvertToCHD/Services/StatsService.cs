@@ -1,6 +1,7 @@
 using System.Net.Http;
 using System.Net.Http.Json;
 using System.Reflection;
+using Serilog;
 
 namespace BatchConvertToCHD.Services;
 
@@ -12,6 +13,7 @@ public class StatsService
     private readonly string _apiUrl;
     private readonly string _apiKey;
     private readonly string _applicationId;
+    private static readonly ILogger Logger = Log.ForContext<StatsService>();
 
     /// <summary>
     /// Initializes a new instance of the <see cref="StatsService"/> class.
@@ -40,16 +42,15 @@ public class StatsService
                 applicationId = _applicationId, version
             };
 
-            // Send request with Authorization header
             using var request = new HttpRequestMessage(HttpMethod.Post, _apiUrl);
             request.Headers.Add("Authorization", $"Bearer {_apiKey}");
             request.Content = JsonContent.Create(payload);
 
             await AppHttpClient.Client.SendAsync(request);
         }
-        catch
+        catch (Exception ex)
         {
-            // Silently fail to not interrupt application startup
+            Logger.Warning(ex, "Failed to record usage statistics");
         }
     }
 }

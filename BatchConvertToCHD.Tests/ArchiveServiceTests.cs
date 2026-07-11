@@ -149,7 +149,6 @@ public class ArchiveServiceTests : IDisposable
 
         Assert.NotNull(ex);
         Assert.IsType<FileNotFoundException>(ex);
-        Assert.Contains(logs, static msg => msg.Contains("Skipping fallback", StringComparison.OrdinalIgnoreCase));
     }
 
     [Fact]
@@ -208,7 +207,6 @@ public class ArchiveServiceTests : IDisposable
         Assert.NotNull(ex);
         Assert.IsType<IndexOutOfRangeException>(ex);
         Assert.True(openCalled);
-        Assert.Contains(logs, static msg => msg.Contains("Direct extraction failed", StringComparison.OrdinalIgnoreCase));
     }
 
     [Fact]
@@ -359,13 +357,14 @@ public class ArchiveServiceTests : IDisposable
         var archivePath = CreateDummyFile("test.rar");
         var outputDir = Path.Combine(_tempDir, "out");
         Directory.CreateDirectory(outputDir);
+        var logs = new List<string>();
 
         var ex = Record.Exception(() =>
         {
             ArchiveService.ExtractArchiveWithFallback<SharpCompressZipArchive>(
                 archivePath,
                 outputDir,
-                static _ => { },
+                logs.Add,
                 ".rar",
                 static _ => throw new OperationCanceledException(),
                 CancellationToken.None);

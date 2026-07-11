@@ -1,7 +1,11 @@
+using System.Globalization;
 using System.IO;
+using System.Reflection;
 using System.Windows;
 using System.Windows.Threading;
 using BatchConvertToCHD.Services;
+using Serilog;
+using Serilog.Events;
 
 namespace BatchConvertToCHD;
 
@@ -31,6 +35,8 @@ public partial class App
 
         _statsService = new StatsService(AppConfig.ApplicationStatsApiUrl, AppConfig.ApplicationStatsApiKey, AppConfig.ApplicationName);
 
+        ConfigureSerilog();
+
         // Set up global exception handling
         AppDomain.CurrentDomain.UnhandledException += CurrentDomain_UnhandledException;
         DispatcherUnhandledException += App_DispatcherUnhandledException;
@@ -38,6 +44,30 @@ public partial class App
 
         // Register the Exit event handler
         Exit += App_Exit;
+    }
+
+    private void ConfigureSerilog()
+    {
+        var logDir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "logs");
+        Directory.CreateDirectory(logDir);
+
+        Log.Logger = new LoggerConfiguration()
+            .MinimumLevel.Debug()
+            .Enrich.FromLogContext()
+            .Enrich.WithProperty("Application", AppConfig.ApplicationName)
+            .Enrich.WithProperty("Version", Assembly.GetExecutingAssembly().GetName().Version?.ToString() ?? "0.0.0.0")
+            .WriteTo.Debug(LogEventLevel.Debug, formatProvider: CultureInfo.InvariantCulture)
+            .WriteTo.File(
+                Path.Combine(logDir, "BatchConvertToCHD-.log"),
+                rollingInterval: RollingInterval.Day,
+                retainedFileCountLimit: 7,
+                restrictedToMinimumLevel: LogEventLevel.Debug,
+                outputTemplate: "{Timestamp:yyyy-MM-dd HH:mm:ss.fff} [{Level:u3}] {Message:lj}{NewLine}{Exception}",
+                formatProvider: CultureInfo.InvariantCulture)
+            .WriteTo.Sink(new BugReportApiSink(_bugReportService!))
+            .CreateLogger();
+
+        Log.Information("=== Serilog initialized ===");
     }
 
     protected override void OnStartup(StartupEventArgs e)
@@ -132,12 +162,15 @@ public partial class App
         AppDomain.CurrentDomain.UnhandledException -= CurrentDomain_UnhandledException;
         DispatcherUnhandledException -= App_DispatcherUnhandledException;
         TaskScheduler.UnobservedTaskException -= TaskScheduler_UnobservedTaskException;
+
+        Log.CloseAndFlush();
     }
 
     private void CurrentDomain_UnhandledException(object sender, UnhandledExceptionEventArgs e)
     {
         if (e.ExceptionObject is Exception exception)
         {
+            Log.Fatal(exception, "AppDomain.UnhandledException");
             ReportException(exception, "AppDomain.UnhandledException");
         }
     }
@@ -157,6 +190,7 @@ public partial class App
                 e.Handled = true;
                 return;
             default:
+                Log.Error(e.Exception, "Application.DispatcherUnhandledException");
                 ReportException(e.Exception, "Application.DispatcherUnhandledException");
                 e.Handled = true;
                 break;
@@ -165,6 +199,7 @@ public partial class App
 
     private void TaskScheduler_UnobservedTaskException(object? sender, UnobservedTaskExceptionEventArgs e)
     {
+        Log.Error(e.Exception, "TaskScheduler.UnobservedTaskException");
         ReportException(e.Exception, "TaskScheduler.UnobservedTaskException");
         e.SetObserved();
     }
