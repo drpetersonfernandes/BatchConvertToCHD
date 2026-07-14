@@ -160,6 +160,13 @@ public static class PathUtils
         var selectedRoot = bestRootMeetingRequirement ?? bestRoot;
         var selectedFree = bestRootMeetingRequirement != null ? bestFreeMeetingRequirement : bestFree;
 
+        if (selectedRoot != null && !IsRootDirectoryWritable(selectedRoot))
+        {
+            Logger.Warning("Selected temp root {Root} is not writable, falling back to system temp", selectedRoot);
+            selectedRoot = null;
+            selectedFree = 0;
+        }
+
         var guid = Guid.NewGuid().ToString("N");
         string basePath;
 
@@ -191,6 +198,21 @@ public static class PathUtils
             {
                 // ignored
             }
+        }
+    }
+
+    private static bool IsRootDirectoryWritable(string rootPath)
+    {
+        try
+        {
+            var testDir = Path.Combine(rootPath, $"writetest_{Guid.NewGuid():N}");
+            Directory.CreateDirectory(testDir);
+            Directory.Delete(testDir);
+            return true;
+        }
+        catch
+        {
+            return false;
         }
     }
 
