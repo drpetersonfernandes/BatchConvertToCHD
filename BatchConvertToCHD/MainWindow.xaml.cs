@@ -166,7 +166,7 @@ public partial class MainWindow : IDisposable
         }
         catch (Exception ex)
         {
-            _ = ReportBugAsync("MainWindow_Loaded error", ex);
+            LogError("MainWindow_Loaded error", ex);
         }
     }
 
@@ -199,8 +199,7 @@ public partial class MainWindow : IDisposable
             }
             catch (Exception ex)
             {
-                LogMessage($"Screenshot error: {ex.Message}");
-                _ = ReportBugAsync("Screenshot capture failed", ex);
+                LogError($"Screenshot error: {ex.Message}", ex);
             }
 
             handled = true;
@@ -225,7 +224,7 @@ public partial class MainWindow : IDisposable
                       $"Please ensure it is placed in the application folder.\n" +
                       $"Conversion, Verification and Extraction will NOT work without it.";
 
-            LogError("CRITICAL ERROR: " + msg.Replace("\n", " "));
+            LogError(" " + msg.Replace("\n", " "));
             ShowMessageBox(msg, "Missing Dependency", MessageBoxButton.OK, MessageBoxImage.Error);
         }
 
@@ -411,9 +410,8 @@ public partial class MainWindow : IDisposable
         }
         catch (Exception ex)
         {
-            LogError($" Cannot access {exeName}. {ex.Message}");
-            ShowError($"Cannot access {exeName}. Check antivirus or permissions.");
-            _ = ReportBugAsync($"Cannot access {exeName}", ex);
+            LogError($"Cannot access {exeName}. {ex.Message}", ex);
+            ShowError($"Access denied to {exeName}. Check antivirus or permissions.");
             return false;
         }
     }
@@ -510,7 +508,7 @@ public partial class MainWindow : IDisposable
             }
 
             // Other errors are acceptable - at least the exe started or we have a generic error
-            LogWarning($" Could not validate chdman compatibility: {ex.Message}");
+            LogWarning($"Could not validate chdman compatibility: {ex.Message}", ex);
             _ = ReportBugAsync("Could not validate chdman compatibility", ex);
             return true;
         }
@@ -645,15 +643,15 @@ public partial class MainWindow : IDisposable
         AppendToUiLog(message);
     }
 
-    private void LogError(string message)
+    private void LogError(string message, Exception? ex = null)
     {
-        Log.Error(message.TrimStart());
+        Log.Error(ex, message.TrimStart());
         AppendToUiLog($"ERROR: {message.TrimStart()}");
     }
 
-    private void LogWarning(string message)
+    private void LogWarning(string message, Exception? ex = null)
     {
-        Log.Warning(message.TrimStart());
+        Log.Warning(ex, message.TrimStart());
         AppendToUiLog($"WARNING: {message.TrimStart()}");
     }
 
@@ -801,8 +799,7 @@ public partial class MainWindow : IDisposable
             }
             catch (Exception ex)
             {
-                LogError($"Error: {ex.Message}");
-                await ReportBugAsync("Batch extraction error", ex);
+                LogError(ex.Message, ex);
             }
             finally
             {
@@ -811,7 +808,7 @@ public partial class MainWindow : IDisposable
         }
         catch (Exception ex)
         {
-            _ = ReportBugAsync("StartExtractionButton_Click error", ex);
+            LogError("StartExtractionButton_Click error", ex);
         }
     }
 
@@ -1127,8 +1124,7 @@ public partial class MainWindow : IDisposable
             }
             catch (Exception ex)
             {
-                LogError($"Error: {ex.Message}");
-                await ReportBugAsync("Batch conversion error", ex);
+                LogError(ex.Message, ex);
             }
             finally
             {
@@ -1137,7 +1133,7 @@ public partial class MainWindow : IDisposable
         }
         catch (Exception ex)
         {
-            _ = ReportBugAsync("StartConversionButton_Click error", ex);
+            LogError("StartConversionButton_Click error", ex);
         }
     }
 
@@ -1200,8 +1196,7 @@ public partial class MainWindow : IDisposable
             }
             catch (Exception ex)
             {
-                LogError($"Error: {ex.Message}");
-                await ReportBugAsync("Batch verification error", ex);
+                LogError(ex.Message, ex);
             }
             finally
             {
@@ -1210,7 +1205,7 @@ public partial class MainWindow : IDisposable
         }
         catch (Exception ex)
         {
-            _ = ReportBugAsync("StartVerificationButton_Click error", ex);
+            LogError("StartVerificationButton_Click error", ex);
         }
     }
 
@@ -1650,12 +1645,7 @@ public partial class MainWindow : IDisposable
                 }
                 else
                 {
-                    LogMessage($"Direct conversion attempt error for {originalName}: {ex.Message}");
-                }
-
-                if (!IsDiskSpaceException(ex))
-                {
-                    _ = ReportBugAsync($"Direct conversion attempt error for {originalName}", ex);
+                    LogError($"Direct conversion attempt error for {originalName}: {ex.Message}", ex);
                 }
             }
 
@@ -1784,12 +1774,7 @@ public partial class MainWindow : IDisposable
                     }
                     else
                     {
-                        LogMessage($"Retry via temp failed for {originalName} ({inputFile}): {ex.Message}");
-                    }
-
-                    if (!IsDiskSpaceException(ex) && !IsCorruptionException(ex) && !IsCrcErrorException(ex))
-                    {
-                        _ = ReportBugAsync($"Retry via temp failed for {originalName}", ex);
+                        LogError($"Retry via temp failed for {originalName}: {ex.Message}", ex);
                     }
                 }
             }
@@ -1852,12 +1837,7 @@ public partial class MainWindow : IDisposable
             }
             else
             {
-                LogError($"Error processing {originalName}: {ex.Message}");
-            }
-
-            if (!IsDiskSpaceException(ex) && !IsCorruptionException(ex))
-            {
-                _ = ReportBugAsync($"Error processing {originalName}", ex);
+                LogError($"Processing {originalName}: {ex.Message}", ex);
             }
 
             if (!string.IsNullOrEmpty(outputChd)) await TryDeleteFileAsync(outputChd, "failed CHD", CancellationToken.None);
@@ -2792,8 +2772,7 @@ public partial class MainWindow : IDisposable
         }
         catch (Exception ex)
         {
-            LogMessage($"Delete error: {ex.Message}");
-            _ = ReportBugAsync("Delete error", ex);
+            LogError($"Delete error: {ex.Message}", ex);
         }
     }
 

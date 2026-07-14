@@ -173,7 +173,7 @@ public class ArchiveService : IDisposable
         var directExtractionSuccess = false;
         try { ExtractZipWithOpenRead(archivePath, outputDirectory, fullOutputDirectory, token);
             directExtractionSuccess = true; }
-        catch (IOException) when (!directExtractionSuccess) { }
+        catch (IOException ex) when (!IsDiskFullException(ex)) { }
 
         if (directExtractionSuccess) return;
 

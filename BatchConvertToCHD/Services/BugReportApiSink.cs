@@ -14,7 +14,7 @@ public class BugReportApiSink : ILogEventSink
 
     public void Emit(LogEvent logEvent)
     {
-        if (logEvent.Level < LogEventLevel.Warning)
+        if (logEvent.Level < LogEventLevel.Error)
             return;
 
         var message = logEvent.RenderMessage();

@@ -153,17 +153,17 @@ public partial class App
         _singleInstanceMutex?.Dispose();
         _singleInstanceMutex = null;
 
-        AppHttpClient.Dispose();
-
-        _bugReportService = null;
-        SharedBugReportService = null;
-        _statsService = null;
-
         AppDomain.CurrentDomain.UnhandledException -= CurrentDomain_UnhandledException;
         DispatcherUnhandledException -= App_DispatcherUnhandledException;
         TaskScheduler.UnobservedTaskException -= TaskScheduler_UnobservedTaskException;
 
         Log.CloseAndFlush();
+
+        AppHttpClient.Dispose();
+
+        _bugReportService = null;
+        SharedBugReportService = null;
+        _statsService = null;
     }
 
     private void CurrentDomain_UnhandledException(object sender, UnhandledExceptionEventArgs e)

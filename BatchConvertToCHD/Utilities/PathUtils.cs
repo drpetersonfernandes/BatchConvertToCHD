@@ -203,15 +203,16 @@ public static class PathUtils
 
     private static bool IsRootDirectoryWritable(string rootPath)
     {
+        var testDir = Path.Combine(rootPath, $"writetest_{Guid.NewGuid():N}");
         try
         {
-            var testDir = Path.Combine(rootPath, $"writetest_{Guid.NewGuid():N}");
             Directory.CreateDirectory(testDir);
             Directory.Delete(testDir);
             return true;
         }
         catch
         {
+            try { if (Directory.Exists(testDir)) Directory.Delete(testDir); } catch { /* ignored */ }
             return false;
         }
     }
