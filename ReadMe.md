@@ -86,7 +86,8 @@ The application implements priority-based logic to ensure compatibility:
     *   `psxpackager.exe` (PBP Extraction)
     *   `7za.exe` / `7za_arm64.exe` (7-Zip fallback extraction)
  *   **NuGet Dependencies**:
-     * [SharpCompress](https://github.com/adamhathcock/sharpcompress) (v0.49.1) - Archive extraction support
+     * [SharpCompress](https://github.com/adamhathcock/sharpcompress) (v0.50.0) - Archive extraction support
+   * [Serilog](https://serilog.net/) (v4.4.0) - Structured diagnostic logging
 
 ---
 
@@ -153,6 +154,7 @@ This project is licensed under the **GNU General Public License v3.0**. See the 
 *   [unknownbrackets](https://github.com/unknownbrackets/maxcso) for `maxcso`.
 *   [PSXPackager](https://github.com/rupert-avery/psxpackager) for PlayStation PBP extraction support.
 *   [SharpCompress](https://github.com/adamhathcock/sharpcompress) for archive handling.
+*   [Serilog](https://serilog.net/) for structured logging.
 *   [Igor Pavlov](https://www.7-zip.org/) for `7za.exe` (7-Zip command-line tool).
 
 ---
