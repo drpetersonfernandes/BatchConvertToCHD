@@ -43,7 +43,6 @@ public class ArchiveService : IDisposable
         try
         {
             token.ThrowIfCancellationRequested();
-            Logger.Information("Decompressing {FileName} to temporary ISO: {Path}", csoFileName, tempOutputIsoPath);
             onLog($"Decompressing {csoFileName} to temporary ISO: {tempOutputIsoPath}");
 
             process.StartInfo = new ProcessStartInfo
@@ -67,7 +66,6 @@ public class ArchiveService : IDisposable
                 if (args.Data == null) return;
 
                 outputBuilder.AppendLine(args.Data);
-                Logger.Information("[MAXCSO STDERR] {Data}", args.Data);
                 onLog($"[MAXCSO STDERR] {args.Data}");
             };
 
@@ -79,7 +77,6 @@ public class ArchiveService : IDisposable
             if (process.ExitCode != 0 || !File.Exists(tempOutputIsoPath))
                 return (false, string.Empty, tempDirectoryRoot, $"MaxCSO failed. Exit code: {process.ExitCode}. Output: {outputBuilder}");
 
-            Logger.Information("Successfully decompressed {FileName}", csoFileName);
             onLog($"Successfully decompressed {csoFileName}");
             return (true, tempOutputIsoPath, tempDirectoryRoot, string.Empty);
         }
@@ -101,7 +98,6 @@ public class ArchiveService : IDisposable
 
         if (!File.Exists(originalArchivePath))
         {
-            Logger.Warning("File not found, skipping extraction: {Path}", originalArchivePath);
             onLog($"WARNING: File not found, skipping extraction: {originalArchivePath}");
             return (false, [], tempDirectoryRoot, $"File not found: {originalArchivePath}");
         }
@@ -113,13 +109,11 @@ public class ArchiveService : IDisposable
             var spaceError = CheckTempDiskSpace(originalArchivePath, tempDirectoryRoot, archiveFileName);
             if (spaceError != null)
             {
-                Logger.Error("{Error}", spaceError);
                 onLog($"ERROR: {spaceError}");
                 return (false, [], tempDirectoryRoot, spaceError);
             }
 
             Directory.CreateDirectory(tempDirectoryRoot);
-            Logger.Information("Extracting {FileName} to: {Path}", archiveFileName, tempDirectoryRoot);
             onLog($"Extracting {archiveFileName} to: {tempDirectoryRoot}");
 
             if (extension.Equals(FileExtensions.Zip, StringComparison.OrdinalIgnoreCase))
@@ -191,7 +185,6 @@ public class ArchiveService : IDisposable
 
     private static void ExtractZipWithOpenRead(string archivePath, string outputDirectory, string fullOutputDirectory, CancellationToken token)
     {
-        IOException lastIoException = null!;
         const int maxRetries = 3;
         for (var attempt = 1; attempt <= maxRetries; attempt++)
         {
@@ -213,10 +206,11 @@ public class ArchiveService : IDisposable
                 }
                 return;
             }
-            catch (IOException ex) when (attempt < maxRetries) { lastIoException = ex;
-                Thread.Sleep(attempt * 1000); }
+            catch (IOException) when (attempt < maxRetries)
+            {
+                Thread.Sleep(attempt * 1000);
+            }
         }
-        throw lastIoException;
     }
 
     private async Task ExtractSevenZipArchiveAsync(string archivePath, string outputDirectory, Action<string> onLog, CancellationToken token)
@@ -226,7 +220,6 @@ public class ArchiveService : IDisposable
         {
             if (_isSevenZipAvailable)
             {
-                Logger.Information("SharpCompress extraction failed ({Error}). Trying 7za.exe fallback...", ex.Message);
                 onLog($"SharpCompress extraction failed ({ex.Message}). Trying 7za.exe fallback...");
                 await ExtractWith7ZaAsync(archivePath, outputDirectory, onLog, token);
             }
@@ -239,7 +232,6 @@ public class ArchiveService : IDisposable
 
     private async Task ExtractWith7ZaAsync(string archivePath, string outputDirectory, Action<string> onLog, CancellationToken token)
     {
-        Logger.Information("Extracting with 7za.exe: {FileName}", Path.GetFileName(archivePath));
         onLog($"Extracting with 7za.exe: {Path.GetFileName(archivePath)}");
 
         using var process = new Process();
@@ -279,7 +271,6 @@ public class ArchiveService : IDisposable
 
                 throw new InvalidOperationException($"7za.exe extraction failed with exit code {process.ExitCode}. Output: {outputText}");
             }
-            Logger.Information("Successfully extracted {FileName} with 7za.exe", Path.GetFileName(archivePath));
             onLog($"Successfully extracted {Path.GetFileName(archivePath)} with 7za.exe");
         }
         catch (OperationCanceledException)
@@ -311,13 +302,11 @@ public class ArchiveService : IDisposable
         catch (OperationCanceledException) { throw; }
         catch (Exception ex) when (ex is FileNotFoundException or DirectoryNotFoundException)
         {
-            Logger.Information("Direct extraction failed ({Error}). Skipping fallback because source file is missing.", ex.Message);
             onLog($"Direct extraction failed ({ex.Message}). Skipping fallback because source file is missing.");
             throw;
         }
         catch (Exception ex)
         {
-            Logger.Information("Direct extraction failed ({Error}). Attempting fallback with local copy...", ex.Message);
             onLog($"Direct extraction failed ({ex.Message}). Attempting fallback with local copy...");
 
             if (ex is InvalidDataException ||

@@ -647,14 +647,14 @@ public partial class MainWindow : IDisposable
 
     private void LogError(string message)
     {
-        Log.Error(message);
-        AppendToUiLog($"ERROR: {message}");
+        Log.Error(message.TrimStart());
+        AppendToUiLog($"ERROR: {message.TrimStart()}");
     }
 
     private void LogWarning(string message)
     {
-        Log.Warning(message);
-        AppendToUiLog($"WARNING: {message}");
+        Log.Warning(message.TrimStart());
+        AppendToUiLog($"WARNING: {message.TrimStart()}");
     }
 
     private void AppendToUiLog(string message)

@@ -1,6 +1,5 @@
 using System.IO;
 using System.Text;
-using Serilog;
 
 namespace BatchConvertToCHD.Utilities;
 
@@ -10,7 +9,6 @@ namespace BatchConvertToCHD.Utilities;
 public static class GameFileParser
 {
     private static readonly char[] Separator = [' ', '\t'];
-    private static readonly ILogger Logger = Log.ForContext(typeof(GameFileParser));
 
     /// <summary>
     /// Extracts referenced file paths from a CUE sheet file.
@@ -84,7 +82,6 @@ public static class GameFileParser
         }
         catch (Exception ex)
         {
-            Logger.Warning(ex, "Could not parse GDI file: {FileName}", Path.GetFileName(gdiPath));
             onLog($"[WARNING] Could not parse GDI file: {Path.GetFileName(gdiPath)}. Error: {ex.Message}");
         }
 
@@ -170,7 +167,6 @@ public static class GameFileParser
         }
         catch (Exception ex)
         {
-            Logger.Warning(ex, "Could not parse {FileType} file: {FileName}", fileType, Path.GetFileName(filePath));
             onLog($"[WARNING] Could not parse {fileType} file: {Path.GetFileName(filePath)}. Error: {ex.Message}");
         }
 

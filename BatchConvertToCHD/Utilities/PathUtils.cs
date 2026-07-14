@@ -264,19 +264,16 @@ public static class PathUtils
 
             if (!Directory.Exists(normalizedPath))
             {
-                Logger.Error("{PathName} does not exist: {Path}", pathName, normalizedPath);
                 onLog($"ERROR: {pathName} does not exist: {normalizedPath}");
                 onError($"The {pathName} does not exist or is not accessible:\n\n{normalizedPath}\n\nPlease verify the path and try again.");
                 return null;
             }
 
-            Logger.Information("Validated {PathName}: {Path}", pathName, normalizedPath);
             onLog($"Validated {pathName}: {normalizedPath}");
             return normalizedPath;
         }
         catch (Exception ex)
         {
-            Logger.Error(ex, "Invalid path for {PathName}: {Path}", pathName, path);
             onLog($"ERROR: Invalid path for {pathName}: {path}. {ex.Message}");
             onError($"The {pathName} path is invalid:\n\n{path}\n\nError: {ex.Message}");
             return null;
