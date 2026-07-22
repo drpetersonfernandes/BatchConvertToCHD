@@ -2093,10 +2093,15 @@ public partial class MainWindow : IDisposable
         }
         catch (OperationCanceledException)
         {
-            // Wait a bit more for file handles to be fully released
             await Task.Delay(500, CancellationToken.None);
-            // Clean up partially extracted file
             await TryDeleteFileAsync(outputFile, "partially extracted file", CancellationToken.None);
+
+            if (!token.IsCancellationRequested)
+            {
+                LogError($" Extraction of '{Path.GetFileName(chdFile)}' timed out (limit: {AppConfig.MaxConversionTimeoutHours}h).");
+                return false;
+            }
+
             throw;
         }
         finally
@@ -2121,6 +2126,15 @@ public partial class MainWindow : IDisposable
             case false when !token.IsCancellationRequested && IsDiskSpaceError(errorBuffer.ToString()):
                 LogError($" Extraction of '{Path.GetFileName(chdFile)}' failed due to insufficient disk space.");
                 LogMessage("       Free up disk space on the output drive and try again.");
+                break;
+            case false when !token.IsCancellationRequested:
+                var extractErrorText = errorBuffer.ToString().TrimEnd();
+                if (extractErrorText.Length > 0)
+                {
+                    var firstLine = extractErrorText.IndexOf('\n') > 0 ? extractErrorText[..extractErrorText.IndexOf('\n')].TrimEnd() : extractErrorText;
+                    LogError($" Failed to extract '{Path.GetFileName(chdFile)}': {firstLine}");
+                }
+
                 break;
             case true when deleteOriginal:
                 await TryDeleteFileAsync(chdFile, "original CHD file", token);
@@ -2448,10 +2462,19 @@ public partial class MainWindow : IDisposable
         if (process.ExitCode == 0 && !token.IsCancellationRequested)
             return true;
 
-        if (!token.IsCancellationRequested && IsDiskSpaceError(errorBuffer.ToString()))
+        if (!token.IsCancellationRequested)
         {
-            LogError($" Conversion of '{Path.GetFileName(inputFile)}' failed due to insufficient disk space.");
-            LogMessage("       Free up disk space on the output drive and try again.");
+            var errorText = errorBuffer.ToString().TrimEnd();
+            if (IsDiskSpaceError(errorText))
+            {
+                LogError($" Conversion of '{Path.GetFileName(inputFile)}' failed due to insufficient disk space.");
+                LogMessage("       Free up disk space on the output drive and try again.");
+            }
+            else if (errorText.Length > 0)
+            {
+                var firstLine = errorText.IndexOf('\n') > 0 ? errorText[..errorText.IndexOf('\n')].TrimEnd() : errorText;
+                LogError($" Failed to convert '{Path.GetFileName(inputFile)}': {firstLine}");
+            }
         }
 
         return false;
@@ -2463,24 +2486,35 @@ public partial class MainWindow : IDisposable
         var args = $"-i \"{inputFile}\" -o \"{outputFolder}\" -x";
         LogMessage($"PSXPACKAGER: Extracting {Path.GetFileName(inputFile)}");
 
-        // Use a hidden window instead of no window to provide a valid console handle
-        // This prevents PSXPackager from crashing when it tries to set Console.CursorVisible
+        // Capture both output streams for diagnostics
         process.StartInfo = new ProcessStartInfo
         {
             FileName = psxPackagerPath,
             Arguments = args,
-            RedirectStandardOutput = false,
-            RedirectStandardError = false,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
             UseShellExecute = false,
-            CreateNoWindow = false,
-            WindowStyle = ProcessWindowStyle.Hidden,
+            CreateNoWindow = true,
             ErrorDialog = false
+        };
+
+        var outputBuilder = new StringBuilder();
+        var errorBuilder = new StringBuilder();
+        process.OutputDataReceived += (_, args2) =>
+        {
+            if (args2.Data != null) outputBuilder.AppendLine(args2.Data);
+        };
+        process.ErrorDataReceived += (_, args2) =>
+        {
+            if (args2.Data != null) errorBuilder.AppendLine(args2.Data);
         };
 
         using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(token);
         timeoutCts.CancelAfter(TimeSpan.FromHours(AppConfig.MaxConversionTimeoutHours));
 
         process.Start();
+        process.BeginOutputReadLine();
+        process.BeginErrorReadLine();
 
         try
         {
@@ -2497,11 +2531,25 @@ public partial class MainWindow : IDisposable
                 process.Kill(true);
                 await Task.Run(() => process.WaitForExit(5000), CancellationToken.None);
             }
+
+            process.CancelOutputRead();
+            process.CancelErrorRead();
         }
 
         if (process.ExitCode != 0)
         {
-            LogMessage($"PSXPACKAGER: Extraction failed with exit code {process.ExitCode}");
+            var errorText = errorBuilder.ToString().TrimEnd();
+            var outputText = outputBuilder.ToString().TrimEnd();
+            var detail = errorText.Length > 0 ? errorText : outputText;
+            if (detail.Length > 0)
+            {
+                LogMessage($"PSXPACKAGER: Extraction failed with exit code {process.ExitCode}: {detail}");
+            }
+            else
+            {
+                LogMessage($"PSXPACKAGER: Extraction failed with exit code {process.ExitCode} (no output captured)");
+            }
+
             return new PbpExtractionResult { Success = false };
         }
 
@@ -2811,7 +2859,11 @@ public partial class MainWindow : IDisposable
     internal static bool IsCrcErrorException(Exception ex)
     {
         // HResult 0x80070017 = ERROR_CRC (cyclic redundancy check)
-        return ex is IOException { HResult: -2147024809 };
+        // Also check message as fallback for cases where HResult may differ
+        return ex is IOException &&
+               (ex.HResult == -2147024809 ||
+                ex.Message.Contains("cyclic redundancy check", StringComparison.OrdinalIgnoreCase) ||
+                ex.Message.Contains("data error", StringComparison.OrdinalIgnoreCase));
     }
 
     internal static bool IsCorruptionException(Exception ex)
@@ -2910,37 +2962,51 @@ public partial class MainWindow : IDisposable
 
     private async Task TryDeleteFileAsync(string path, string desc, CancellationToken token)
     {
-        try
+        const int maxRetries = 3;
+        for (var attempt = 0; attempt < maxRetries; attempt++)
         {
-            await Task.Run(() => File.Delete(path), token);
-            LogMessage($"Deleted {desc}: {Path.GetFileName(path)}");
+            try
+            {
+                await Task.Run(() => File.Delete(path), token);
+                LogMessage($"Deleted {desc}: {Path.GetFileName(path)}");
+                return;
+            }
+            catch (FileNotFoundException)
+            {
+                LogMessage($"{desc} already deleted: {Path.GetFileName(path)}");
+                return;
+            }
+            catch when (attempt < maxRetries - 1)
+            {
+                await Task.Delay(500 * (attempt + 1), token);
+            }
         }
-        catch (FileNotFoundException)
-        {
-            // File already deleted - this is acceptable
-            LogMessage($"{desc} already deleted: {Path.GetFileName(path)}");
-        }
-        catch
-        {
-            LogError($"Failed to delete {desc}: {Path.GetFileName(path)}");
-        }
+
+        LogError($"Failed to delete {desc}: {Path.GetFileName(path)}");
     }
 
     private async Task TryDeleteDirectoryAsync(string path, string desc, CancellationToken token)
     {
-        try
+        const int maxRetries = 3;
+        for (var attempt = 0; attempt < maxRetries; attempt++)
         {
-            await Task.Run(() => Directory.Delete(path, true), token);
+            try
+            {
+                await Task.Run(() => Directory.Delete(path, true), token);
+                return;
+            }
+            catch (DirectoryNotFoundException)
+            {
+                LogMessage($"{desc} already deleted: {Path.GetFileName(path)}");
+                return;
+            }
+            catch when (attempt < maxRetries - 1)
+            {
+                await Task.Delay(500 * (attempt + 1), token);
+            }
         }
-        catch (DirectoryNotFoundException)
-        {
-            // Directory already deleted - this is acceptable
-            LogMessage($"{desc} already deleted: {Path.GetFileName(path)}");
-        }
-        catch
-        {
-            LogError($"Failed to delete {desc}: {path}");
-        }
+
+        LogError($"Failed to delete {desc}: {path}");
     }
 
     private async Task TryDeleteEmptySubfolderAsync(string subfolderPath, string inputFolder, CancellationToken token)

@@ -118,7 +118,7 @@ public class ArchiveService : IDisposable
             onLog($"Extracting {archiveFileName} to: {tempDirectoryRoot}");
 
             if (extension.Equals(FileExtensions.Zip, StringComparison.OrdinalIgnoreCase))
-                await Task.Run(() => ExtractZipArchive(originalArchivePath, tempDirectoryRoot, token), token);
+                await ExtractZipWith7ZaFallbackAsync(originalArchivePath, tempDirectoryRoot, onLog, token);
             else if (extension.Equals(FileExtensions.SevenZip, StringComparison.OrdinalIgnoreCase))
                 await Task.Run(async () => await ExtractSevenZipArchiveAsync(originalArchivePath, tempDirectoryRoot, onLog, token), token);
             else if (extension.Equals(FileExtensions.Rar, StringComparison.OrdinalIgnoreCase))
@@ -168,6 +168,20 @@ public class ArchiveService : IDisposable
         }
     }
 
+    private async Task ExtractZipWith7ZaFallbackAsync(string archivePath, string outputDirectory, Action<string> onLog, CancellationToken token)
+    {
+        var archiveFileName = Path.GetFileName(archivePath);
+        try
+        {
+            await Task.Run(() => ExtractZipArchive(archivePath, outputDirectory, token), token);
+        }
+        catch (Exception ex) when (_isSevenZipAvailable && ex is not OperationCanceledException)
+        {
+            onLog($"Built-in zip extractor failed for {archiveFileName} ({ex.Message}). Falling back to 7za.exe...");
+            await ExtractWith7ZaAsync(archivePath, outputDirectory, onLog, token);
+        }
+    }
+
     private static void ExtractZipArchive(string archivePath, string outputDirectory, CancellationToken token)
     {
         var fullOutputDirectory = Path.GetFullPath(outputDirectory).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar) + Path.DirectorySeparatorChar;
@@ -210,7 +224,7 @@ public class ArchiveService : IDisposable
 
                 return;
             }
-            catch (IOException) when (attempt < maxRetries)
+            catch (Exception ex) when ((ex is IOException or UnauthorizedAccessException) && attempt < maxRetries)
             {
                 Thread.Sleep(attempt * 1000);
             }
