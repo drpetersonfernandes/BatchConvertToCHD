@@ -12,6 +12,8 @@ using System.Collections.ObjectModel;
 using BatchConvertToCHD.Models;
 using BatchConvertToCHD.Services;
 using BatchConvertToCHD.Utilities;
+using CHDSharp;
+using CHDSharp.Models;
 using Serilog;
 
 namespace BatchConvertToCHD;
@@ -1144,12 +1146,6 @@ public partial class MainWindow : IDisposable
             await Application.Current.Dispatcher.InvokeAsync((Action)(() => LogViewer.Clear()));
             DisplayVerificationInstructionsInLog();
 
-            if (!_isChdmanAvailable)
-            {
-                ShowError($"{AppConfig.ChdmanExeName} is missing.");
-                return;
-            }
-
             var inputFolder = PathUtils.ValidateAndNormalizePath(VerificationInputFolderTextBox.Text, "CHD Files Folder", ShowError, LogMessage);
             if (inputFolder == null)
             {
@@ -1187,7 +1183,7 @@ public partial class MainWindow : IDisposable
                     token = _cts.Token;
                 }
 
-                await PerformBatchVerificationAsync(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, AppConfig.ChdmanExeName),
+                await PerformBatchVerificationAsync(
                     inputFolder, includeSubfolders, moveSuccess, successFolder, moveFailed, failedFolder, selectedFiles, token);
             }
             catch (OperationCanceledException)
@@ -1862,11 +1858,8 @@ public partial class MainWindow : IDisposable
         return Path.Combine(targetDir, PathUtils.SanitizeFileName(chdBase) + FileExtensions.Chd);
     }
 
-    private async Task PerformBatchVerificationAsync(string chdmanPath, string inputFolder, bool includeSub, bool moveSuccess, string successFolder, bool moveFailed, string failedFolder, string[] selectedFiles, CancellationToken token)
+    private async Task PerformBatchVerificationAsync(string inputFolder, bool includeSub, bool moveSuccess, string successFolder, bool moveFailed, string failedFolder, string[] selectedFiles, CancellationToken token)
     {
-        if (!await ValidateExecutableAccessAsync(chdmanPath, "chdman.exe")) return;
-        if (!await ValidateChdmanCompatibilityAsync(chdmanPath, token)) return;
-
         _totalFilesProcessed = selectedFiles.Length;
         UpdateStatsDisplay();
         LogMessage($"Found {_totalFilesProcessed} CHD files to verify.");
@@ -1897,7 +1890,7 @@ public partial class MainWindow : IDisposable
             // Show current file in text, but bar shows 'processed' (completed) count
             UpdateProgressDisplay(processed, _totalFilesProcessed, Path.GetFileName(file), "Verifying");
 
-            var success = await VerifyChdAsync(chdmanPath, file, token);
+            var success = await VerifyChdAsync(file, token);
 
             if (success)
             {
@@ -1977,7 +1970,7 @@ public partial class MainWindow : IDisposable
         if (!Directory.Exists(targetDir)) Directory.CreateDirectory(targetDir);
 
         // Get extraction command based on user-selected output format
-        var extractCommand = await GetSelectedExtractCommandAsync(chdmanPath, chdFile, token);
+            var extractCommand = await GetSelectedExtractCommandAsync(chdFile, token);
 
         // Determine output extension based on selection or detected command
         var outputExt = FileExtensions.Cue; // Default for extractcd
@@ -2002,7 +1995,7 @@ public partial class MainWindow : IDisposable
                 _ => FileExtensions.Cue
             };
 
-            if (extractCommand == "extractcd" && await IsGdiChdAsync(chdmanPath, chdFile, token))
+            if (extractCommand == "extractcd" && await IsGdiChdAsync(chdFile, token))
             {
                 outputExt = FileExtensions.Gdi;
             }
@@ -2144,10 +2137,10 @@ public partial class MainWindow : IDisposable
         return success;
     }
 
-    private async Task<string> GetSelectedExtractCommandAsync(string chdmanPath, string chdFile, CancellationToken token)
+    private async Task<string> GetSelectedExtractCommandAsync(string chdFile, CancellationToken token)
     {
         if (ExtractAutoRadioButton.IsChecked == true)
-            return await DetectChdExtractCommandAsync(chdmanPath, chdFile, token);
+            return await DetectChdExtractCommandAsync(chdFile, token);
         if (ExtractDvdRadioButton.IsChecked == true)
             return "extractdvd";
         if (ExtractHdRadioButton.IsChecked == true)
@@ -2157,171 +2150,75 @@ public partial class MainWindow : IDisposable
         return "extractcd";
     }
 
-    private static async Task<bool> IsGdiChdAsync(string chdmanPath, string chdFile, CancellationToken token)
+    private static Task<bool> IsGdiChdAsync(string chdFile, CancellationToken token)
     {
-        using var process = new Process();
-        try
+        return Task.Run(() =>
         {
-            process.StartInfo = new ProcessStartInfo
-            {
-                FileName = chdmanPath,
-                Arguments = $"info -i \"{chdFile}\"",
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                UseShellExecute = false,
-                CreateNoWindow = true,
-                ErrorDialog = false
-            };
-
-            var output = new StringBuilder();
-            process.OutputDataReceived += (_, a) =>
-            {
-                if (!string.IsNullOrEmpty(a.Data)) output.AppendLine(a.Data);
-            };
-            process.Start();
-            process.BeginOutputReadLine();
-            await process.WaitForExitAsync(token);
-
-            return output.ToString().Contains("gd-rom", StringComparison.OrdinalIgnoreCase);
-        }
-        catch (OperationCanceledException)
-        {
-            if (!process.HasExited)
-            {
-                try
-                {
-                    process.Kill(true);
-                    await Task.Run(() => process.WaitForExit(5000), CancellationToken.None);
-                }
-                catch
-                {
-                    // Best effort - ignore errors during cleanup
-                }
-            }
-
-            throw;
-        }
-        catch
-        {
-            // Ensure process is terminated on any other exception before returning false
-            if (!process.HasExited)
-            {
-                try
-                {
-                    process.Kill(true);
-                    await Task.Run(() => process.WaitForExit(5000), CancellationToken.None);
-                }
-                catch
-                {
-                    // Best effort - ignore errors during cleanup
-                }
-            }
-
-            return false;
-        }
-        finally
-        {
-            // Ensure output streams are properly drained before disposal
             try
             {
-                process.CancelOutputRead();
+                var err = ChdFile.Open(chdFile, out var chd);
+                if (err != ChdError.Chderrnone || chd == null)
+                    return false;
+
+                using (chd)
+                {
+                    foreach (var meta in chd.Metadata)
+                    {
+                        if (meta.ToString().Contains("gd-rom", StringComparison.OrdinalIgnoreCase))
+                            return true;
+                    }
+                }
+
+                return false;
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
             }
             catch
             {
-                // Best effort - ignore errors during cleanup
+                return false;
             }
-        }
+        }, token);
     }
 
-    private static async Task<string> DetectChdExtractCommandAsync(string chdmanPath, string chdFile, CancellationToken token)
+    private static Task<string> DetectChdExtractCommandAsync(string chdFile, CancellationToken token)
     {
-        using var process = new Process();
-        try
+        return Task.Run(() =>
         {
-            process.StartInfo = new ProcessStartInfo
-            {
-                FileName = chdmanPath,
-                Arguments = $"info -i \"{chdFile}\"",
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                UseShellExecute = false,
-                CreateNoWindow = true,
-                ErrorDialog = false
-            };
-
-            var output = new StringBuilder();
-            process.OutputDataReceived += (_, a) =>
-            {
-                if (!string.IsNullOrEmpty(a.Data))
-                    output.AppendLine(a.Data);
-            };
-            process.ErrorDataReceived += (_, a) =>
-            {
-                if (!string.IsNullOrEmpty(a.Data))
-                    output.AppendLine(a.Data);
-            };
-
-            process.Start();
-            process.BeginOutputReadLine();
-            process.BeginErrorReadLine();
-            await process.WaitForExitAsync(token);
-
-            var infoText = output.ToString();
-
-            // Determine extraction command based on CHD metadata
-            if (infoText.Contains("dvd", StringComparison.OrdinalIgnoreCase))
-                return "extractdvd";
-            if (infoText.Contains("gd-rom", StringComparison.OrdinalIgnoreCase))
-                return "extractcd";
-            if (infoText.Contains("hard disk", StringComparison.OrdinalIgnoreCase) ||
-                infoText.Contains("hdd", StringComparison.OrdinalIgnoreCase))
-                return "extracthd";
-
-            // Default to CD extraction (most common)
-            return "extractcd";
-        }
-        catch (OperationCanceledException)
-        {
-            if (!process.HasExited)
-            {
-                process.Kill(true);
-            }
-
-            await Task.Run(() => process.WaitForExit(5000), CancellationToken.None);
-            throw;
-        }
-        catch
-        {
-            // Ensure process is terminated on any other exception before returning default
-            if (!process.HasExited)
-            {
-                try
-                {
-                    process.Kill(true);
-                    await Task.Run(() => process.WaitForExit(5000), CancellationToken.None);
-                }
-                catch
-                {
-                    // Best effort - ignore errors during cleanup
-                }
-            }
-
-            // Default to extractcd if detection fails
-            return "extractcd";
-        }
-        finally
-        {
-            // Ensure output streams are properly drained before disposal
             try
             {
-                process.CancelOutputRead();
-                process.CancelErrorRead();
+                var err = ChdFile.Open(chdFile, out var chd);
+                if (err != ChdError.Chderrnone || chd == null)
+                    return "extractcd";
+
+                using (chd)
+                {
+                    foreach (var meta in chd.Metadata)
+                    {
+                        var text = meta.ToString();
+
+                        if (text.Contains("dvd", StringComparison.OrdinalIgnoreCase))
+                            return "extractdvd";
+                        if (text.Contains("gd-rom", StringComparison.OrdinalIgnoreCase))
+                            return "extractcd";
+                        if (text.Contains("hard disk", StringComparison.OrdinalIgnoreCase) ||
+                            text.Contains("hdd", StringComparison.OrdinalIgnoreCase))
+                            return "extracthd";
+                    }
+                }
+
+                return "extractcd";
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
             }
             catch
             {
-                // Best effort - ignore errors during cleanup
+                return "extractcd";
             }
-        }
+        }, token);
     }
 
     private async Task<bool> ConvertToChdAsync(string chdmanPath, string inputFile, string outputFile, int cores, bool forceCd, bool forceDvd, int? timeoutMinutes, CancellationToken token)
@@ -2614,95 +2511,34 @@ public partial class MainWindow : IDisposable
         }
     }
 
-    private async Task<bool> VerifyChdAsync(string chdmanPath, string chdFile, CancellationToken token)
+    private Task<bool> VerifyChdAsync(string chdFile, CancellationToken token)
     {
-        using var process = new Process();
-        process.StartInfo = new ProcessStartInfo
-        {
-            FileName = chdmanPath,
-            Arguments = $"verify -i \"{chdFile}\"",
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            UseShellExecute = false,
-            CreateNoWindow = true,
-            WorkingDirectory = Path.GetDirectoryName(chdmanPath),
-            ErrorDialog = false
-        };
-
-        // chdman often sends progress to Standard Error
-        process.OutputDataReceived += (_, a) =>
-        {
-            if (string.IsNullOrEmpty(a.Data)) return;
-
-            // Trigger speed update when progress is reported
-            if (a.Data.Contains("% complete"))
-            {
-                UpdateReadSpeedFromPerformanceCounter();
-            }
-            else
-            {
-                LogMessage($"[CHDMAN] {a.Data}");
-            }
-        };
-
-        process.ErrorDataReceived += (_, a) =>
-        {
-            if (string.IsNullOrEmpty(a.Data)) return;
-
-            // Trigger speed update when progress is reported in Error stream
-            if (a.Data.Contains("% complete"))
-            {
-                UpdateReadSpeedFromPerformanceCounter();
-            }
-            else
-            {
-                LogMessage($"[CHDMAN] {a.Data}");
-            }
-        };
-
-        using var ctsSpeed = CancellationTokenSource.CreateLinkedTokenSource(token);
-        process.Start();
-        process.BeginOutputReadLine();
-        process.BeginErrorReadLine();
-
-        var speedToken = ctsSpeed.Token;
-        var readSpeedTask = Task.Run(async () =>
+        return Task.Run(() =>
         {
             try
             {
-                // Initial delay to let the process start reading
-                await Task.Delay(100, speedToken);
-                while (!speedToken.IsCancellationRequested)
+                using var stream = File.OpenRead(chdFile);
+                var result = Chd.CheckFile(stream, Path.GetFileName(chdFile), true);
+
+                if (result.IsSuccess)
                 {
-                    UpdateReadSpeedFromPerformanceCounter();
-                    await Task.Delay(AppConfig.WriteSpeedUpdateIntervalMs, speedToken);
+                    LogMessage($"  V{result.Version} — SHA1: {result.Sha1Hex}");
+                    return true;
                 }
+
+                LogMessage($"  Error: {result.Error.GetMessage()}");
+                return false;
             }
             catch (OperationCanceledException)
             {
+                throw;
             }
-        }, speedToken);
-
-        try
-        {
-            await process.WaitForExitAsync(token);
-        }
-        finally
-        {
-            if (!process.HasExited)
+            catch (Exception ex)
             {
-                process.Kill(true);
-                await Task.Run(() => process.WaitForExit(5000), CancellationToken.None);
+                LogMessage($"  Verification error: {ex.Message}");
+                return false;
             }
-
-            ctsSpeed.Cancel();
-            await Task.WhenAny(readSpeedTask, Task.Delay(500, CancellationToken.None));
-            // Ensure output streams are properly drained before disposal
-            process.CancelOutputRead();
-            process.CancelErrorRead();
-        }
-
-        return process.ExitCode == 0;
+        }, token);
     }
 
     private void ResetOperationStats()
