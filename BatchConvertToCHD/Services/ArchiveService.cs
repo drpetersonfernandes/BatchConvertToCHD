@@ -83,6 +83,7 @@ public class ArchiveService : IDisposable
         catch (OperationCanceledException)
         {
             try { if (!process.HasExited) process.Kill(true); } catch { /* ignore */ }
+
             throw;
         }
     }
@@ -173,7 +174,9 @@ public class ArchiveService : IDisposable
         var directExtractionSuccess = false;
         try { ExtractZipWithOpenRead(archivePath, outputDirectory, fullOutputDirectory, token);
             directExtractionSuccess = true; }
-        catch (IOException ex) when (!IsDiskFullException(ex)) { }
+        catch (IOException ex) when (!IsDiskFullException(ex))
+        {
+        }
 
         if (directExtractionSuccess) return;
 
@@ -204,6 +207,7 @@ public class ArchiveService : IDisposable
 
                     entry.ExtractToFile(destinationPath, true);
                 }
+
                 return;
             }
             catch (IOException) when (attempt < maxRetries)
@@ -271,11 +275,13 @@ public class ArchiveService : IDisposable
 
                 throw new InvalidOperationException($"7za.exe extraction failed with exit code {process.ExitCode}. Output: {outputText}");
             }
+
             onLog($"Successfully extracted {Path.GetFileName(archivePath)} with 7za.exe");
         }
         catch (OperationCanceledException)
         {
             try { if (!process.HasExited) process.Kill(true); } catch { /* ignore */ }
+
             throw;
         }
     }
@@ -357,7 +363,7 @@ public class ArchiveService : IDisposable
     private static void WriteEntryWithRetry(IArchiveEntry entry, string destinationPath)
     {
         const int maxRetries = 3;
-        for (var attempt = 1; ; attempt++)
+        for (var attempt = 1;; attempt++)
         {
             try { entry.WriteToFile(destinationPath);
                 return; }
@@ -417,6 +423,7 @@ public class ArchiveService : IDisposable
             using var archive = ZipFile.OpenRead(archivePath);
             return archive.Entries.Sum(static e => e.Length);
         }
+
         return new FileInfo(archivePath).Length;
     }
 

@@ -213,6 +213,7 @@ public static class PathUtils
         catch
         {
             try { if (Directory.Exists(testDir)) Directory.Delete(testDir); } catch { /* ignored */ }
+
             return false;
         }
     }

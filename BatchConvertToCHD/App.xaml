@@ -492,7 +492,6 @@
         <!-- Start Button Style -->
         <Style x:Key="StartButtonStyle" BasedOn="{StaticResource ActionButtonStyle}" TargetType="Button">
             <Setter Property="Background" Value="{StaticResource StartButtonBrush}"/>
-            <Setter Property="Foreground" Value="Black"/>
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="Button">
@@ -535,7 +534,6 @@
         <!-- Cancel Button Style -->
         <Style x:Key="CancelButtonStyle" BasedOn="{StaticResource ActionButtonStyle}" TargetType="Button">
             <Setter Property="Background" Value="{StaticResource CancelButtonBrush}"/>
-            <Setter Property="Foreground" Value="Black"/>
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="Button">
