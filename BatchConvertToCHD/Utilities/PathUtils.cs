@@ -43,12 +43,20 @@ public static class PathUtils
             sb.Length--;
             if (sb.Length > 0)
                 sb.Append('_');
+            break;
         }
 
         var sanitizedName = sb.ToString();
 
         sanitizedName = sanitizedName.Replace("…", "_ellipsis_")
-            .Replace("â€¦", "_ellipsis_");
+            .Replace("â€¦", "_ellipsis_")   // UTF-8 → Windows-1252/1250/ISO-8859-1
+            .Replace("ãƒ»", "_ellipsis_")   // UTF-8 → Shift-JIS
+            .Replace("Ð²â€?", "_ellipsis_"); // UTF-8 → Windows-1251
+
+        if (sanitizedName.Length == 0 || sanitizedName.All(static c => c == '_'))
+        {
+            sanitizedName = Guid.NewGuid().ToString("N");
+        }
 
         return sanitizedName;
     }
@@ -64,7 +72,8 @@ public static class PathUtils
     {
         var sanitizedName = SanitizeFileName(Path.GetFileNameWithoutExtension(originalFileNameWithExtension));
         var safeBaseName = string.IsNullOrEmpty(sanitizedName) ? Guid.NewGuid().ToString("N") : sanitizedName;
-        return Path.Combine(tempDirectory, safeBaseName + "." + desiredExtensionWithoutDot);
+        var ext = desiredExtensionWithoutDot.TrimStart('.');
+        return Path.Combine(tempDirectory, safeBaseName + "." + ext);
     }
 
     /// <summary>
@@ -83,9 +92,9 @@ public static class PathUtils
                 return Path.GetRelativePath(relativeTo, path);
             }
         }
-        catch
+        catch (Exception ex)
         {
-            // ignored
+            Logger.Verbose(ex, "Failed to query drive during candidate enumeration");
         }
 
         return ".";
@@ -151,9 +160,9 @@ public static class PathUtils
                     }
                 }
             }
-            catch
+            catch (Exception ex)
             {
-                // ignored
+                Logger.Verbose(ex, "Failed to query drive {Root} during best-root enumeration", root);
             }
         }
 
@@ -194,9 +203,9 @@ public static class PathUtils
                 if (!string.IsNullOrEmpty(root))
                     candidates.Add(root);
             }
-            catch
+            catch (Exception ex)
             {
-                // ignored
+                Logger.Verbose(ex, "Failed to get path root for drive candidate {Path}", path);
             }
         }
     }
@@ -210,8 +219,9 @@ public static class PathUtils
             Directory.Delete(testDir);
             return true;
         }
-        catch
+        catch (Exception ex)
         {
+            Logger.Verbose(ex, "Failed to test write access for root {RootPath}", rootPath);
             try { if (Directory.Exists(testDir)) Directory.Delete(testDir); } catch { /* ignored */ }
 
             return false;
@@ -240,9 +250,9 @@ public static class PathUtils
                         paths.Add(altPath);
                 }
             }
-            catch
+            catch (Exception ex)
             {
-                // ignored
+                Logger.Verbose(ex, "Failed to enumerate drive during temp-path discovery");
             }
         }
 

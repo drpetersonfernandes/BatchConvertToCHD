@@ -1,4 +1,5 @@
 using System.Runtime.InteropServices;
+using System.Text;
 
 namespace BatchConvertToCHD;
 
@@ -7,6 +8,9 @@ namespace BatchConvertToCHD;
 /// </summary>
 internal static class AppConfig
 {
+    private static readonly byte[] KeySalt = "BatchConvertToCHD_v1"u8.ToArray();
+    private static string? _decryptedApiKey;
+
     /// <summary>
     /// Gets a value indicating whether the current process architecture is ARM64.
     /// </summary>
@@ -35,9 +39,14 @@ internal static class AppConfig
     public const string BugReportApiUrl = "https://www.purelogiccode.com/bugreport/api/send-bug-report";
 
     /// <summary>
-    /// The API key used to authenticate bug report submissions.
+    /// The encrypted API key shared by both endpoints.
     /// </summary>
-    public const string BugReportApiKey = "hjh7yu6t56tyr540o9u8767676r5674534453235264c75b6t7ggghgg76trf564e";
+    private const string EncryptedApiKey = "KgscVBE2WRpDUwYNJlp3eCtmAwl1V0NVX3UdW0BSRkFnW3d9d21FBHBXQABfdg1YAlIVEzMHJC9zaQJDJFRCVw0=";
+
+    /// <summary>
+    /// Gets the API key used to authenticate bug report submissions.
+    /// </summary>
+    public static string BugReportApiKey => GetApiKey();
 
     /// <summary>
     /// The API endpoint URL for recording application usage statistics.
@@ -45,9 +54,9 @@ internal static class AppConfig
     public const string ApplicationStatsApiUrl = "https://www.purelogiccode.com/ApplicationStats/stats";
 
     /// <summary>
-    /// The API key used to authenticate application stats submissions.
+    /// Gets the API key used to authenticate application stats submissions.
     /// </summary>
-    public const string ApplicationStatsApiKey = "hjh7yu6t56tyr540o9u8767676r5674534453235264c75b6t7ggghgg76trf564e";
+    public static string ApplicationStatsApiKey => GetApiKey();
 
     /// <summary>
     /// The GitHub API URL for fetching the latest release information.
@@ -60,6 +69,15 @@ internal static class AppConfig
     public const string ApplicationName = "BatchConvertToCHD";
 
     /// <summary>
+    /// The environment identifier sent with bug reports ("Production" or "Development").
+    /// </summary>
+#if DEBUG
+    public const string BugReportEnvironment = "Development";
+#else
+    public const string BugReportEnvironment = "Production";
+#endif
+
+    /// <summary>
     /// The interval in milliseconds between write speed performance counter updates.
     /// </summary>
     public const int WriteSpeedUpdateIntervalMs = 1000;
@@ -68,4 +86,19 @@ internal static class AppConfig
     /// The maximum allowed conversion timeout in hours to prevent unreasonably long timeouts.
     /// </summary>
     public const int MaxConversionTimeoutHours = 4;
+
+    private static string GetApiKey()
+    {
+        if (_decryptedApiKey == null)
+        {
+            var data = Convert.FromBase64String(EncryptedApiKey);
+            for (var i = 0; i < data.Length; i++)
+            {
+                data[i] ^= KeySalt[i % KeySalt.Length];
+            }
+
+            _decryptedApiKey = Encoding.UTF8.GetString(data);
+        }
+        return _decryptedApiKey;
+    }
 }

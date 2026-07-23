@@ -76,7 +76,16 @@ public partial class App
 
     protected override void OnStartup(StartupEventArgs e)
     {
-        _singleInstanceMutex = new Mutex(true, $"Global\\{AppConfig.ApplicationName}_SingleInstance", out var createdNew);
+        _singleInstanceMutex = new Mutex(false, $"Global\\{AppConfig.ApplicationName}_SingleInstance", out var createdNew);
+        try
+        {
+            _singleInstanceMutex.WaitOne();
+        }
+        catch (AbandonedMutexException)
+        {
+            // Previous instance terminated abnormally; we now own the mutex
+        }
+
         if (!createdNew)
         {
             _singleInstanceMutex.Dispose();
@@ -156,9 +165,19 @@ public partial class App
 
     private void App_Exit(object sender, ExitEventArgs e)
     {
-        _singleInstanceMutex?.ReleaseMutex();
-        _singleInstanceMutex?.Dispose();
-        _singleInstanceMutex = null;
+        try
+        {
+            _singleInstanceMutex?.ReleaseMutex();
+        }
+        catch
+        {
+            // ignored
+        }
+        finally
+        {
+            _singleInstanceMutex?.Dispose();
+            _singleInstanceMutex = null;
+        }
 
         AppDomain.CurrentDomain.UnhandledException -= CurrentDomain_UnhandledException;
         DispatcherUnhandledException -= App_DispatcherUnhandledException;
@@ -219,7 +238,7 @@ public partial class App
             // Block synchronously — critical for AppDomain.UnhandledException where the OS
             // terminates the process immediately after this handler returns. Using async void
             // would fire off the HTTP request and return before it completes, losing the report.
-            _bugReportService?.SendBugReportAsync($"Unhandled Exception from {source}", exception).GetAwaiter().GetResult();
+            Task.Run(() => _bugReportService?.SendBugReportAsync($"Unhandled Exception from {source}", exception)).GetAwaiter().GetResult();
         }
         catch
         {

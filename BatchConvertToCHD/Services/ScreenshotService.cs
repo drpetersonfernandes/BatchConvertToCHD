@@ -85,28 +85,33 @@ internal class ScreenshotService
             var bitmap = CreateCompatibleBitmap(windowDc, width, height);
             var oldBitmap = SelectObject(compatibleDc, bitmap);
 
-            BitBlt(compatibleDc, 0, 0, width, height, windowDc, 0, 0, SrcCopy);
+            try
+            {
+                BitBlt(compatibleDc, 0, 0, width, height, windowDc, 0, 0, SrcCopy);
 
-            var bitmapSource = Imaging.CreateBitmapSourceFromHBitmap(
-                bitmap, IntPtr.Zero, Int32Rect.Empty, BitmapSizeOptions.FromEmptyOptions());
+                var bitmapSource = Imaging.CreateBitmapSourceFromHBitmap(
+                    bitmap, IntPtr.Zero, Int32Rect.Empty, BitmapSizeOptions.FromEmptyOptions());
 
-            SelectObject(compatibleDc, oldBitmap);
-            DeleteObject(bitmap);
-            DeleteDC(compatibleDc);
-            ReleaseDC(hWnd, windowDc);
+                var screenshotDir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Screenshot");
+                Directory.CreateDirectory(screenshotDir);
 
-            var screenshotDir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Screenshot");
-            Directory.CreateDirectory(screenshotDir);
+                var timestamp = DateTime.Now.ToString("yyyy-MM-dd_HH-mm-ss-fff", CultureInfo.InvariantCulture);
+                var filePath = Path.Combine(screenshotDir, $"screenshot_{timestamp}.png");
 
-            var timestamp = DateTime.Now.ToString("yyyy-MM-dd_HH-mm-ss-fff", CultureInfo.InvariantCulture);
-            var filePath = Path.Combine(screenshotDir, $"screenshot_{timestamp}.png");
+                using var fileStream = new FileStream(filePath, FileMode.Create);
+                var encoder = new PngBitmapEncoder();
+                encoder.Frames.Add(BitmapFrame.Create(bitmapSource));
+                encoder.Save(fileStream);
 
-            using var fileStream = new FileStream(filePath, FileMode.Create);
-            var encoder = new PngBitmapEncoder();
-            encoder.Frames.Add(BitmapFrame.Create(bitmapSource));
-            encoder.Save(fileStream);
-
-            return filePath;
+                return filePath;
+            }
+            finally
+            {
+                SelectObject(compatibleDc, oldBitmap);
+                DeleteObject(bitmap);
+                DeleteDC(compatibleDc);
+                ReleaseDC(hWnd, windowDc);
+            }
         }
         catch (Exception ex)
         {

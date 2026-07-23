@@ -58,7 +58,7 @@ public static class FileExtensions
     /// HashSet of archive extensions for efficient case-insensitive lookups.
     /// </summary>
     public static readonly HashSet<string> ArchiveExtensionsSet =
-        new(ArchiveExtensions, StringComparer.OrdinalIgnoreCase);
+        new(ArchiveExtensions, ExtensionComparer);
 
     /// <summary>
     /// Primary target extensions for extraction from archives.

@@ -158,7 +158,7 @@ public class ArchiveService : IDisposable
             if (extension.Equals(FileExtensions.Zip, StringComparison.OrdinalIgnoreCase))
                 await ExtractZipWith7ZaFallbackAsync(originalArchivePath, tempDirectoryRoot, onLog, token);
             else if (extension.Equals(FileExtensions.SevenZip, StringComparison.OrdinalIgnoreCase))
-                await Task.Run(async () => await ExtractSevenZipArchiveAsync(originalArchivePath, tempDirectoryRoot, onLog, token), token);
+                await ExtractSevenZipArchiveAsync(originalArchivePath, tempDirectoryRoot, onLog, token);
             else if (extension.Equals(FileExtensions.Rar, StringComparison.OrdinalIgnoreCase))
                 await Task.Run(() => ExtractRarArchive(originalArchivePath, tempDirectoryRoot, onLog, token), token);
             else
@@ -236,6 +236,7 @@ public class ArchiveService : IDisposable
             directExtractionSuccess = true; }
         catch (IOException ex) when (!IsDiskFullException(ex))
         {
+            Logger.Debug(ex, "Direct ZIP extraction failed, will fall back to temp-copy extraction");
         }
 
         if (directExtractionSuccess) return;
@@ -504,6 +505,5 @@ public class ArchiveService : IDisposable
     /// </summary>
     public void Dispose()
     {
-        GC.SuppressFinalize(this);
     }
 }

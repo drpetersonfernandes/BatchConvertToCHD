@@ -709,7 +709,6 @@ public class UpdateServiceTests
         var service = new UpdateService("TestApp", httpClient);
         var logMessages = new List<string>();
         var statusMessages = new List<string>();
-        string? reportedError = null;
 
         var currentVersion = new Version(2, 7, 0);
 
@@ -723,16 +722,12 @@ public class UpdateServiceTests
             currentVersion,
             (Action<string>)(logMessages.Add),
             (Action<string>)(statusMessages.Add),
-            (Func<string, Exception?, Task>)((msg, _) =>
-            {
-                reportedError = msg;
-                return Task.CompletedTask;
-            })
+            (Func<string, Exception?, Task>)(static (_, _) => Task.CompletedTask)
         ])!;
         await task;
 
-        Assert.Contains(logMessages, static m => m.Contains("failed"));
-        Assert.NotNull(reportedError);
+        Assert.Contains(logMessages, static m => m.Contains("rate limit exceeded"));
+        Assert.Contains(statusMessages, static m => m.Contains("rate limit"));
     }
 
     #endregion

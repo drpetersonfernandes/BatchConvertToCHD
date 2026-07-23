@@ -10,21 +10,20 @@ namespace BatchConvertToCHD.Services;
 /// <summary>
 /// Service for checking and notifying about application updates from GitHub releases.
 /// </summary>
-public class UpdateService(string applicationName)
+public class UpdateService
 {
-    private readonly string _applicationName = applicationName;
-    private readonly HttpClient _httpClient = AppHttpClient.Client;
+    private readonly string _applicationName;
+    private readonly HttpClient _httpClient;
     private static readonly JsonSerializerOptions JsonSerializerOptions = new() { PropertyNameCaseInsensitive = true };
 
-    /// <summary>
-    /// Initializes a new instance of the <see cref="UpdateService"/> class for testing,
-    /// using a custom <see cref="HttpClient"/> instead of the shared application client.
-    /// </summary>
-    /// <param name="applicationName">The name of the application.</param>
-    /// <param name="httpClient">The <see cref="HttpClient"/> to use for update checks.</param>
-    internal UpdateService(string applicationName, HttpClient httpClient)
-        : this(applicationName)
+    public UpdateService(string applicationName)
+        : this(applicationName, AppHttpClient.Client)
     {
+    }
+
+    internal UpdateService(string applicationName, HttpClient httpClient)
+    {
+        _applicationName = applicationName;
         _httpClient = httpClient;
     }
 
@@ -60,15 +59,11 @@ public class UpdateService(string applicationName)
 
             var response = await httpClient.SendAsync(request);
 
-            if (response.StatusCode == System.Net.HttpStatusCode.Forbidden)
+            if (response.StatusCode is System.Net.HttpStatusCode.Forbidden or System.Net.HttpStatusCode.TooManyRequests)
             {
-                var responseBody403 = await response.Content.ReadAsStringAsync();
-                if (responseBody403.Contains("rate limit exceeded", StringComparison.OrdinalIgnoreCase))
-                {
-                    onLog("GitHub API rate limit exceeded. Skipping update check.");
-                    onStatusUpdate("Update check skipped (rate limit)");
-                    return;
-                }
+                onLog("GitHub API rate limit exceeded. Skipping update check.");
+                onStatusUpdate("Update check skipped (rate limit)");
+                return;
             }
 
             if (!response.IsSuccessStatusCode)
@@ -111,7 +106,7 @@ public class UpdateService(string applicationName)
                     {
                         var releaseNotes = string.IsNullOrWhiteSpace(latestRelease.Body)
                             ? "No release notes available."
-                            : latestRelease.Body.Replace(@"\r\n", "\n").Replace("\\n", "\n");
+                            : latestRelease.Body.Replace("\r\n", "\n").Replace("\\n", "\n");
 
                         var result = MessageBox.Show(
                             $"A new version ({remoteVersionString}) of {_applicationName} is available!\n\nRelease Notes:\n{releaseNotes}\n\nWould you like to download it?",

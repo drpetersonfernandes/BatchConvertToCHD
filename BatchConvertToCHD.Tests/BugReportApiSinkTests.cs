@@ -12,7 +12,7 @@ public class BugReportApiSinkTests
         public string LastMessage { get; private set; } = string.Empty;
         public Exception? LastException { get; private set; }
 
-        public override Task<bool> SendBugReportAsync(string message, Exception? ex = null)
+        public override Task<bool> SendBugReportAsync(string message, Exception? ex = null, CancellationToken token = default)
         {
             CallCount++;
             LastMessage = message;

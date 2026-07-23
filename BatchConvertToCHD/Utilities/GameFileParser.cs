@@ -76,13 +76,13 @@ public static class GameFileParser
                 }
             }
         }
-        catch (OperationCanceledException)
-        {
-            throw;
-        }
-        catch (Exception ex)
+        catch (IOException ex)
         {
             onLog($"[WARNING] Could not parse GDI file: {Path.GetFileName(gdiPath)}. Error: {ex.Message}");
+        }
+        catch (UnauthorizedAccessException ex)
+        {
+            onLog($"[WARNING] Could not access GDI file: {Path.GetFileName(gdiPath)}. Error: {ex.Message}");
         }
 
         return referencedFiles;
@@ -158,16 +158,18 @@ public static class GameFileParser
                     }
                 }
 
+                if (string.IsNullOrWhiteSpace(fileName)) continue;
+
                 referencedFiles.Add(Path.Combine(directory, fileName));
             }
         }
-        catch (OperationCanceledException)
-        {
-            throw;
-        }
-        catch (Exception ex)
+        catch (IOException ex)
         {
             onLog($"[WARNING] Could not parse {fileType} file: {Path.GetFileName(filePath)}. Error: {ex.Message}");
+        }
+        catch (UnauthorizedAccessException ex)
+        {
+            onLog($"[WARNING] Could not access {fileType} file: {Path.GetFileName(filePath)}. Error: {ex.Message}");
         }
 
         return referencedFiles;

@@ -25,10 +25,10 @@ public class BugReportService
 
     internal BugReportService(string apiUrl, string apiKey, string applicationName, HttpClient httpClient)
     {
-        _apiUrl = apiUrl;
-        _apiKey = apiKey;
-        _applicationName = applicationName;
-        _httpClient = httpClient;
+        _apiUrl = apiUrl ?? throw new ArgumentNullException(nameof(apiUrl));
+        _apiKey = apiKey ?? throw new ArgumentNullException(nameof(apiKey));
+        _applicationName = applicationName ?? throw new ArgumentNullException(nameof(applicationName));
+        _httpClient = httpClient ?? throw new ArgumentNullException(nameof(httpClient));
     }
 
     /// <summary>
@@ -36,48 +36,46 @@ public class BugReportService
     /// </summary>
     /// <param name="message">A summary of the error or bug report</param>
     /// <param name="ex">The exception object, if available</param>
+    /// <param name="token">The cancellation token to observe</param>
     /// <returns>A task representing the asynchronous operation</returns>
-    public virtual async Task<bool> SendBugReportAsync(string message, Exception? ex = null)
+    public virtual async Task<bool> SendBugReportAsync(string message, Exception? ex = null, CancellationToken token = default)
     {
+        token.ThrowIfCancellationRequested();
         try
         {
-            // Build the formatted message with all details
             var formattedMessage = BuildFormattedReport(message, ex);
 
-            // Get environment details for version field
             var versionString = GetApplicationVersion();
 
-            // Get exception stack trace
             var stackTrace = GetExceptionStackTrace(ex);
 
-            // Create the request payload matching the API's BugReportRequest model
-            // Only include fields defined in BugReportRequest: Message, ApplicationName, Version, UserInfo, Environment, StackTrace
             var requestPayload = new
             {
                 message = formattedMessage,
                 applicationName = _applicationName,
                 version = versionString,
                 userInfo = Environment.UserName,
-                environment = "Production",
+                environment = AppConfig.BugReportEnvironment,
                 stackTrace
             };
 
-            // Create JSON content
             var content = JsonContent.Create(requestPayload);
 
-            // Send the request with API key header
             using var request = new HttpRequestMessage(HttpMethod.Post, _apiUrl);
             request.Headers.Add("X-API-KEY", _apiKey);
             request.Content = content;
 
-            var response = await _httpClient.SendAsync(request);
+            var response = await _httpClient.SendAsync(request, token);
 
-            // Return true if successful
             return response.IsSuccessStatusCode;
         }
-        catch
+        catch (OperationCanceledException) when (token.IsCancellationRequested)
         {
-            // Silently fail if there's an exception to avoid infinite loops
+            throw;
+        }
+        catch (Exception sendEx)
+        {
+            Serilog.Log.Debug(sendEx, "Failed to send bug report");
             return false;
         }
     }
@@ -123,8 +121,11 @@ public class BugReportService
     /// </summary>
     private static void AppendExceptionDetails(StringBuilder sb, Exception exception, int level = 0)
     {
+        const int maxDepth = 5;
         while (true)
         {
+            if (level >= maxDepth) break;
+
             var indent = new string(' ', level * 2);
 
             sb.AppendLine(CultureInfo.InvariantCulture, $"{indent}Type: {exception.GetType().FullName}");
@@ -164,39 +165,10 @@ public class BugReportService
     private static string GetExceptionStackTrace(Exception? ex)
     {
         if (ex == null)
-        {
             return "N/A";
-        }
 
         var sb = new StringBuilder();
-        var currentEx = ex;
-        var depth = 0;
-
-        while (currentEx != null && depth < 5) // Limit to 5 nested exceptions
-        {
-            if (depth > 0)
-            {
-                sb.AppendLine();
-                sb.AppendLine("--- Inner Exception ---");
-            }
-
-            sb.AppendLine(CultureInfo.InvariantCulture, $"Type: {currentEx.GetType().FullName}");
-            sb.AppendLine(CultureInfo.InvariantCulture, $"Message: {currentEx.Message}");
-            sb.AppendLine(CultureInfo.InvariantCulture, $"Source: {currentEx.Source ?? "N/A"}");
-            sb.AppendLine("StackTrace:");
-            if (!string.IsNullOrEmpty(currentEx.StackTrace))
-            {
-                sb.AppendLine(currentEx.StackTrace);
-            }
-            else
-            {
-                sb.AppendLine("(No stack trace available)");
-            }
-
-            currentEx = currentEx.InnerException;
-            depth++;
-        }
-
+        AppendExceptionDetails(sb, ex);
         return sb.ToString();
     }
 

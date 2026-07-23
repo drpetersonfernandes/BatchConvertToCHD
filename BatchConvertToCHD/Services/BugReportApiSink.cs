@@ -7,10 +7,12 @@ namespace BatchConvertToCHD.Services;
 /// A Serilog log event sink that forwards warning-level and above log events to the
 /// <see cref="BugReportService"/> for bug report submission. Events below
 /// <see cref="LogEventLevel.Warning"/> are silently ignored.
+/// Uses an interlocked flag to prevent concurrent API flood when many warnings fire rapidly.
 /// </summary>
 public class BugReportApiSink : ILogEventSink
 {
     private readonly BugReportService _bugReportService;
+    private static int _isSending;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="BugReportApiSink"/> class.
@@ -34,6 +36,13 @@ public class BugReportApiSink : ILogEventSink
         var message = logEvent.RenderMessage();
         var ex = logEvent.Exception;
 
-        _ = _bugReportService.SendBugReportAsync(message, ex);
+        if (Interlocked.CompareExchange(ref _isSending, 1, 0) == 0)
+        {
+            _ = _bugReportService.SendBugReportAsync(message, ex)
+                .ContinueWith(static _ =>
+                {
+                    Interlocked.Exchange(ref _isSending, 0);
+                }, TaskContinuationOptions.ExecuteSynchronously);
+        }
     }
 }

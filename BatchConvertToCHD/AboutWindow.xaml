@@ -3,8 +3,8 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
         Title="About Batch Convert to CHD"
-        Width="700"
-        Height="700"
+        Width="700" MinWidth="450"
+        Height="700" MinHeight="500"
         WindowStartupLocation="CenterScreen"
         WindowBackdropType="Mica"
         WindowCornerPreference="Round"
@@ -21,7 +21,7 @@
                      Icon="pack://application:,,,/images/logo.png"
                      ToolTip="About Batch Convert to CHD - Title bar" />
 
-        <Grid x:Name="AboutContentGrid" Grid.Row="1" Margin="20" ToolTip="Application information and credits">
+        <Grid Grid.Row="1" Margin="20" ToolTip="Application information and credits">
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
@@ -33,7 +33,7 @@
             <!-- Logo Section -->
             <Border Grid.Row="0" Style="{StaticResource StatCard}" Margin="0,0,0,15" Padding="15" ToolTip="Application Logo">
                 <StackPanel HorizontalAlignment="Center" ToolTip="Logo section">
-                    <Image Width="130" Height="130" Source="pack://application:,,,/images/logo.png" ToolTip="Batch Convert to CHD application icon" />
+                    <Image Width="{StaticResource AboutLogoSize}" Height="{StaticResource AboutLogoSize}" Source="pack://application:,,,/images/logo.png" ToolTip="Batch Convert to CHD application icon" />
                 </StackPanel>
             </Border>
 
@@ -41,7 +41,7 @@
             <Border Grid.Row="1" Style="{StaticResource StatCard}" Margin="0,0,0,15" Padding="15" ToolTip="Application name and version">
                 <StackPanel ToolTip="Application name and version information">
                     <TextBlock Style="{StaticResource AboutTitleStyle}" Text="Batch Convert to CHD" ToolTip="Batch Convert to CHD" />
-                    <TextBlock Name="AppVersionTextBlock" Margin="0,8,0,0" Text=""
+                    <TextBlock x:Name="AppVersionTextBlock" Margin="0,8,0,0" Text=""
                                Style="{StaticResource AboutSubtitleStyle}"
                                Foreground="{DynamicResource AccentFillColorDefaultBrush}"
                                ToolTip="Current application version" />
@@ -80,33 +80,32 @@
                                ToolTip="Uses the CHDMAN tool from the MAME project for disc image conversion and verification">
                         <Run Text="Uses " />
                         <Hyperlink NavigateUri="https://github.com/mamedev/mame/" RequestNavigate="Hyperlink_RequestNavigate"
-                                   Foreground="{DynamicResource AccentFillColorDefaultBrush}" FontWeight="Bold" TextDecorations="None"
-                                   ToolTip="Visit the MAME/CHDMAN project on GitHub">CHDMAN</Hyperlink>
+                                    Foreground="{DynamicResource AccentFillColorDefaultBrush}" FontWeight="Bold" TextDecorations="Underline"
+                                    ToolTip="Visit the MAME/CHDMAN project on GitHub">CHDMAN</Hyperlink>
                         <Run Text=" from the MAME project for conversions and verifications." />
                     </TextBlock>
                     <TextBlock Margin="0,0,0,8" Style="{StaticResource AboutBodyTextStyle}"
                                ToolTip="Uses maxcso for CSO compression format decompression during conversion">
                         <Run Text="Uses " />
                         <Hyperlink NavigateUri="https://github.com/unknownbrackets/maxcso" RequestNavigate="Hyperlink_RequestNavigate"
-                                   Foreground="{DynamicResource AccentFillColorDefaultBrush}" FontWeight="Bold" TextDecorations="None"
-                                   ToolTip="Visit the maxcso project on GitHub">maxcso</Hyperlink>
+                                    Foreground="{DynamicResource AccentFillColorDefaultBrush}" FontWeight="Bold" TextDecorations="Underline"
+                                    ToolTip="Visit the maxcso project on GitHub">maxcso</Hyperlink>
                         <Run Text=" for .cso decompression during conversion." />
                     </TextBlock>
                     <TextBlock Margin="0,0,0,8" Style="{StaticResource AboutBodyTextStyle}"
                                ToolTip="Uses psxpackager for PlayStation PKG and PBP file handling">
                         <Run Text="Uses " />
                         <Hyperlink NavigateUri="https://github.com/RupertAvery/PSXPackager" RequestNavigate="Hyperlink_RequestNavigate"
-                                   Foreground="{DynamicResource AccentFillColorDefaultBrush}" FontWeight="Bold" TextDecorations="None"
-                                   ToolTip="Visit the PSXPackager project on GitHub">psxpackager</Hyperlink>
+                                    Foreground="{DynamicResource AccentFillColorDefaultBrush}" FontWeight="Bold" TextDecorations="Underline"
+                                    ToolTip="Visit the PSXPackager project on GitHub">psxpackager</Hyperlink>
                         <Run Text=" for PlayStation .pkg and .pbp file handling." />
                     </TextBlock>
                 </StackPanel>
             </Border>
 
-            <!-- Close Button Section -->
-            <StackPanel Grid.Row="4" HorizontalAlignment="Center" ToolTip="Close the About window">
-                <ui:Button Click="CloseButton_Click" Content="Close" Appearance="Primary" ToolTip="Close the About window" />
-            </StackPanel>
+            <!-- Close Button -->
+            <ui:Button Grid.Row="4" Click="CloseButton_Click" Content="Close" Appearance="Primary"
+                        HorizontalAlignment="Center" ToolTip="Close the About window" />
         </Grid>
     </Grid>
 </ui:FluentWindow>

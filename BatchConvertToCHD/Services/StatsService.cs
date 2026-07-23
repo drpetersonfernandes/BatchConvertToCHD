@@ -41,7 +41,11 @@ public class StatsService
             request.Headers.Add("Authorization", $"Bearer {_apiKey}");
             request.Content = JsonContent.Create(payload);
 
-            await _httpClient.SendAsync(request);
+            var response = await _httpClient.SendAsync(request);
+            if (!response.IsSuccessStatusCode)
+            {
+                Logger.Warning("Failed to record usage statistics: HTTP {StatusCode}", (int)response.StatusCode);
+            }
         }
         catch (Exception ex)
         {
