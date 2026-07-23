@@ -42,7 +42,7 @@
 ### 📊 Performance & UI
 *   **Real-time Telemetry**: Monitor disk write/read speeds and elapsed time during operations.
 *   **Optimized Logging**: High-performance logging system with automatic truncation to keep the application responsive during long-running tasks.
-*   **Centralized Styling**: Modern dark-themed UI with consistent, accessible design elements.
+*   **WPF-UI Theming**: Modern dark-themed UI powered by [WPF-UI](https://github.com/lepoco/wpfui) with Mica backdrop, rounded corners, and native Windows 11 aesthetics.
 
 ### 🔄 Updates & Stability
 *   **Automatic Update Checks**: Notifies you immediately if a newer version is available on GitHub at startup.
@@ -86,6 +86,7 @@ The application implements priority-based logic to ensure compatibility:
     *   `psxpackager.exe` (PBP Extraction)
     *   `7za.exe` / `7za_arm64.exe` (7-Zip fallback extraction)
   *   **NuGet Dependencies**:
+     * [WPF-UI](https://github.com/lepoco/wpfui) (v4.3.0) — Modern Fluent Design theming and controls
      * [CHDSharp](https://www.nuget.org/packages/CHDSharp) (v1.2.0) — Pure C# CHD reading, verification, and extraction
      * [SharpCompress](https://github.com/adamhathcock/sharpcompress) (v0.50.0) - Archive extraction support
    * [Serilog](https://serilog.net/) (v4.4.0) - Structured diagnostic logging
@@ -153,6 +154,7 @@ This project is licensed under the **GNU General Public License v3.0**. See the 
 **Acknowledgements:**
 *   [MAME Team](https://www.mamedev.org/) for `chdman`.
 *   [CHDSharp](https://www.nuget.org/packages/CHDSharp) by Gordon Jefferyes — Pure C# CHD read-only library supporting V1-V5, all 10 codecs, parent/child chaining, and parallel verification.
+*   [WPF-UI](https://github.com/lepoco/wpfui) by lepoco — Modern Windows 11 Fluent Design theming and controls.
 *   [unknownbrackets](https://github.com/unknownbrackets/maxcso) for `maxcso`.
 *   [PSXPackager](https://github.com/rupert-avery/psxpackager) for PlayStation PBP extraction support.
 *   [SharpCompress](https://github.com/adamhathcock/sharpcompress) for archive handling.
