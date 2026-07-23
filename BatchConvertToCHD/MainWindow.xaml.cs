@@ -1498,7 +1498,6 @@ public partial class MainWindow : IDisposable
                     var converted = await ConvertToChdAsync(chdmanPath, extractedFile, extractedFileOutputChd, cores, forceCd, forceDvd, timeoutMinutes, token);
                     if (!converted)
                     {
-                        LogError($"Failed to convert: {Path.GetFileName(extractedFile)}");
                         await TryDeleteFileAsync(extractedFileOutputChd, "failed CHD", CancellationToken.None);
                         allSucceeded = false;
                     }
@@ -1557,7 +1556,6 @@ public partial class MainWindow : IDisposable
                     var converted = await ConvertToChdAsync(chdmanPath, cueFile, cueFileOutputChd, cores, forceCd, forceDvd, timeoutMinutes, token);
                     if (!converted)
                     {
-                        LogError($"Failed to convert: {Path.GetFileName(cueFile)}");
                         await TryDeleteFileAsync(cueFileOutputChd, "failed CHD", CancellationToken.None);
                         allSucceeded = false;
                     }
@@ -2337,6 +2335,10 @@ public partial class MainWindow : IDisposable
                 var firstLine = errorText.IndexOf('\n') > 0 ? errorText[..errorText.IndexOf('\n')].TrimEnd() : errorText;
                 LogError($" Failed to convert '{Path.GetFileName(inputFile)}': {firstLine}");
             }
+            else
+            {
+                LogError($" Failed to convert '{Path.GetFileName(inputFile)}': chdman exited with code {process.ExitCode} but produced no error output. The file may be corrupted or in an unsupported format.");
+            }
         }
 
         return false;
@@ -2646,17 +2648,36 @@ public partial class MainWindow : IDisposable
         }
     }
 
+    /// <summary>
+    /// Determines whether the given exception represents an operation cancellation
+    /// (either user-requested or timeout-based).
+    /// </summary>
+    /// <param name="ex">The exception to check.</param>
+    /// <returns><c>true</c> if the exception is an <see cref="OperationCanceledException"/>; otherwise, <c>false</c>.</returns>
     internal static bool IsCancellationException(Exception ex)
     {
         return ex is OperationCanceledException;
     }
 
+    /// <summary>
+    /// Determines whether the given exception indicates a disk-full condition
+    /// by checking the Windows error codes ERROR_DISK_FULL (0x80070070) or ERROR_SEM_TIMEOUT (0x80070079).
+    /// </summary>
+    /// <param name="ex">The exception to check.</param>
+    /// <returns><c>true</c> if the exception is an <see cref="IOException"/> with a disk-full HRESULT; otherwise, <c>false</c>.</returns>
     internal static bool IsDiskSpaceException(Exception ex)
     {
         // HResult 0x80070070 = ERROR_DISK_FULL, 0x80070079 = ERROR_SEM_TIMEOUT (can indicate disk issues)
         return ex is IOException { HResult: -2147024784 or -2147024783 };
     }
 
+    /// <summary>
+    /// Determines whether the given exception indicates a CRC (cyclic redundancy check) error,
+    /// typically caused by corrupted files or failing storage media.
+    /// Checks for Windows error code ERROR_CRC (0x80070017) and relevant message keywords.
+    /// </summary>
+    /// <param name="ex">The exception to check.</param>
+    /// <returns><c>true</c> if the exception indicates a CRC error; otherwise, <c>false</c>.</returns>
     internal static bool IsCrcErrorException(Exception ex)
     {
         // HResult 0x80070017 = ERROR_CRC (cyclic redundancy check)
@@ -2667,6 +2688,13 @@ public partial class MainWindow : IDisposable
                 ex.Message.Contains("data error", StringComparison.OrdinalIgnoreCase));
     }
 
+    /// <summary>
+    /// Determines whether the given exception indicates data corruption in an archive or
+    /// compressed file, checking for known SharpCompress corruption exception types and
+    /// standard .NET corruption-related exceptions.
+    /// </summary>
+    /// <param name="ex">The exception to check.</param>
+    /// <returns><c>true</c> if the exception type indicates data corruption; otherwise, <c>false</c>.</returns>
     internal static bool IsCorruptionException(Exception ex)
     {
         return ex is InvalidDataException

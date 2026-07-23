@@ -8,9 +8,16 @@ using Serilog;
 using SharpCompress.Archives;
 using SharpCompress.Archives.SevenZip;
 using SharpCompress.Archives.Rar;
+using SharpCompress.Common;
 
 namespace BatchConvertToCHD.Services;
 
+/// <summary>
+/// Handles decompression and extraction of compressed disc image and archive files.
+/// Supports CSO (via maxcso), ZIP (System.IO.Compression with 7za fallback),
+/// 7z and RAR (via SharpCompress with 7za fallback).
+/// Implements <see cref="IDisposable"/> for deterministic cleanup.
+/// </summary>
 public class ArchiveService : IDisposable
 {
     private readonly string _maxCsoPath;
@@ -19,6 +26,13 @@ public class ArchiveService : IDisposable
     private readonly bool _isSevenZipAvailable;
     private static readonly ILogger Logger = Log.ForContext<ArchiveService>();
 
+    /// <summary>
+    /// Initializes a new instance of the <see cref="ArchiveService"/> class.
+    /// </summary>
+    /// <param name="maxCsoPath">The full path to the maxcso executable.</param>
+    /// <param name="isMaxCsoAvailable">Whether the maxcso executable was found on disk.</param>
+    /// <param name="sevenZipExePath">The full path to the 7za executable.</param>
+    /// <param name="isSevenZipAvailable">Whether the 7za executable was found on disk.</param>
     public ArchiveService(string maxCsoPath, bool isMaxCsoAvailable, string sevenZipExePath, bool isSevenZipAvailable)
     {
         _maxCsoPath = maxCsoPath;
@@ -27,6 +41,18 @@ public class ArchiveService : IDisposable
         _isSevenZipAvailable = isSevenZipAvailable;
     }
 
+    /// <summary>
+    /// Decompresses a CSO (Compressed ISO) file to a temporary ISO file using maxcso.
+    /// </summary>
+    /// <param name="originalCsoPath">The full path to the source CSO file.</param>
+    /// <param name="tempOutputIsoPath">The full path where the decompressed ISO should be written.</param>
+    /// <param name="tempDirectoryRoot">The root temporary directory where the output will be placed.</param>
+    /// <param name="onLog">Callback for logging progress messages.</param>
+    /// <param name="token">Cancellation token to abort the operation.</param>
+    /// <returns>
+    /// A tuple containing success status, the output ISO file path, the temp directory root,
+    /// and an error message string (empty on success).
+    /// </returns>
     public async Task<(bool Success, string FilePath, string TempDir, string ErrorMessage)> ExtractCsoAsync(
         string originalCsoPath,
         string tempOutputIsoPath,
@@ -88,6 +114,18 @@ public class ArchiveService : IDisposable
         }
     }
 
+    /// <summary>
+    /// Extracts a compressed archive (ZIP, 7z, or RAR) to a temporary directory.
+    /// Uses System.IO.Compression for ZIP with 7za fallback, SharpCompress for 7z and RAR.
+    /// </summary>
+    /// <param name="originalArchivePath">The full path to the source archive file.</param>
+    /// <param name="tempDirectoryRoot">The root directory where extracted files will be placed.</param>
+    /// <param name="onLog">Callback for logging progress messages.</param>
+    /// <param name="token">Cancellation token to abort the operation.</param>
+    /// <returns>
+    /// A tuple containing success status, the list of extracted primary file paths,
+    /// the temp directory root, and an error message string (empty on success).
+    /// </returns>
     public async Task<(bool Success, List<string> FilePaths, string TempDir, string ErrorMessage)> ExtractArchiveAsync(
         string originalArchivePath,
         string tempDirectoryRoot,
@@ -141,12 +179,20 @@ public class ArchiveService : IDisposable
                 : (false, new List<string>(), tempDirectoryRoot, "No supported primary files found in archive.");
         }
         catch (OperationCanceledException) { throw; }
-        catch (InvalidDataException ex) { return (false, [], tempDirectoryRoot, $"The archive file may be corrupted or incomplete and could not be extracted. Try re-downloading or re-copying the file, then attempt the conversion again. Details: {ex.Message}"); }
-        catch (SharpCompress.Common.IncompleteArchiveException ex) { return (false, [], tempDirectoryRoot, $"The archive file appears to be incomplete and could not be fully extracted. Try re-downloading or re-copying the file, then attempt the conversion again. Details: {ex.Message}"); }
+        catch (InvalidDataException ex)
+        {
+            if (ex.Message.Contains("unsupported compression method", StringComparison.OrdinalIgnoreCase))
+            {
+                return (false, [], tempDirectoryRoot,
+                    "The archive file uses a compression method that is not supported by the built-in ZIP extractor (e.g., Deflate64, LZMA, PPMd). Try re-compressing the archive with standard Deflate compression, or extract it manually with 7-Zip or WinRAR and add the extracted files for conversion.");
+            }
+            return (false, [], tempDirectoryRoot, $"The archive file may be corrupted or incomplete and could not be extracted. Try re-downloading or re-copying the file, then attempt the conversion again. Details: {ex.Message}");
+        }
+        catch (IncompleteArchiveException ex) { return (false, [], tempDirectoryRoot, $"The archive file appears to be incomplete and could not be fully extracted. Try re-downloading or re-copying the file, then attempt the conversion again. Details: {ex.Message}"); }
         catch (Exception ex) when (ex.GetType().FullName == "SharpCompress.Compressors.LZMA.DataErrorException") { return (false, [], tempDirectoryRoot, $"The archive file may be corrupted and could not be extracted. Try re-downloading or re-copying the file, then attempt the conversion again. Details: {ex.Message}"); }
-        catch (SharpCompress.Common.CryptographicException ex) { return (false, [], tempDirectoryRoot, $"Archive is encrypted/password-protected and cannot be processed. Please extract it manually and add the extracted files. Details: {ex.Message}"); }
-        catch (SharpCompress.Common.InvalidFormatException ex) { return (false, [], tempDirectoryRoot, $"The archive file may be corrupted or in an unsupported format and could not be extracted. Try re-downloading or re-copying the file, then attempt the conversion again. Details: {ex.Message}"); }
-        catch (SharpCompress.Common.ArchiveOperationException ex) { return (false, [], tempDirectoryRoot, $"The archive file may be corrupted or unsupported and could not be extracted. Try re-downloading or re-copying the file, then attempt the conversion again. Details: {ex.Message}"); }
+        catch (CryptographicException ex) { return (false, [], tempDirectoryRoot, $"Archive is encrypted/password-protected and cannot be processed. Please extract it manually and add the extracted files. Details: {ex.Message}"); }
+        catch (InvalidFormatException ex) { return (false, [], tempDirectoryRoot, $"The archive file may be corrupted or in an unsupported format and could not be extracted. Try re-downloading or re-copying the file, then attempt the conversion again. Details: {ex.Message}"); }
+        catch (ArchiveOperationException ex) { return (false, [], tempDirectoryRoot, $"The archive file may be corrupted or unsupported and could not be extracted. Try re-downloading or re-copying the file, then attempt the conversion again. Details: {ex.Message}"); }
         catch (IndexOutOfRangeException) { return (false, [], tempDirectoryRoot, "The archive file may be corrupted or incomplete and could not be extracted. Try re-downloading or re-copying the file, then attempt the conversion again."); }
         catch (IOException ex) when (IsDiskFullException(ex))
         {
@@ -305,6 +351,18 @@ public class ArchiveService : IDisposable
         ExtractArchiveWithFallback(archivePath, outputDirectory, onLog, FileExtensions.Rar, static stream => RarArchive.OpenArchive(stream), token);
     }
 
+    /// <summary>
+    /// Extracts archive entries using the specified archive opener function, with a fallback
+    /// strategy that copies the archive to a temp file before extraction if the direct
+    /// stream-based extraction fails.
+    /// </summary>
+    /// <typeparam name="TArchive">The SharpCompress archive type.</typeparam>
+    /// <param name="archivePath">Full path to the archive file.</param>
+    /// <param name="outputDirectory">Directory where extracted files will be written.</param>
+    /// <param name="onLog">Callback for logging messages.</param>
+    /// <param name="tempExtension">File extension to use for the temporary copy.</param>
+    /// <param name="openArchive">Factory function that opens an archive from a stream.</param>
+    /// <param name="token">Cancellation token to abort the operation.</param>
     internal static void ExtractArchiveWithFallback<TArchive>(
         string archivePath, string outputDirectory, Action<string> onLog, string tempExtension,
         Func<Stream, TArchive> openArchive, CancellationToken token) where TArchive : IArchive, IDisposable
@@ -330,10 +388,10 @@ public class ArchiveService : IDisposable
             onLog($"Direct extraction failed ({ex.Message}). Attempting fallback with local copy...");
 
             if (ex is InvalidDataException ||
-                ex is SharpCompress.Common.IncompleteArchiveException ||
-                ex is SharpCompress.Common.CryptographicException ||
-                ex is SharpCompress.Common.ArchiveOperationException ||
-                ex is SharpCompress.Common.InvalidFormatException ||
+                ex is IncompleteArchiveException ||
+                ex is CryptographicException ||
+                ex is ArchiveOperationException ||
+                ex is InvalidFormatException ||
                 ex is IndexOutOfRangeException ||
                 ex is NullReferenceException ||
                 ex.GetType().FullName == "SharpCompress.Compressors.LZMA.DataErrorException")
@@ -441,6 +499,9 @@ public class ArchiveService : IDisposable
         return new FileInfo(archivePath).Length;
     }
 
+    /// <summary>
+    /// Releases resources used by the <see cref="ArchiveService"/>.
+    /// </summary>
     public void Dispose()
     {
         GC.SuppressFinalize(this);

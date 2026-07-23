@@ -16,6 +16,12 @@ public class UpdateService(string applicationName)
     private readonly HttpClient _httpClient = AppHttpClient.Client;
     private static readonly JsonSerializerOptions JsonSerializerOptions = new() { PropertyNameCaseInsensitive = true };
 
+    /// <summary>
+    /// Initializes a new instance of the <see cref="UpdateService"/> class for testing,
+    /// using a custom <see cref="HttpClient"/> instead of the shared application client.
+    /// </summary>
+    /// <param name="applicationName">The name of the application.</param>
+    /// <param name="httpClient">The <see cref="HttpClient"/> to use for update checks.</param>
     internal UpdateService(string applicationName, HttpClient httpClient)
         : this(applicationName)
     {
@@ -33,6 +39,16 @@ public class UpdateService(string applicationName)
         return CheckForNewVersionAsync(_httpClient, Assembly.GetExecutingAssembly().GetName().Version, onLog, onStatusUpdate, onBugReport);
     }
 
+    /// <summary>
+    /// Internal overload for testing that accepts a custom <see cref="HttpClient"/> and version.
+    /// Performs the actual update check against the GitHub API, compares versions, and
+    /// prompts the user to download if a newer version is available.
+    /// </summary>
+    /// <param name="httpClient">The <see cref="HttpClient"/> to use for the request.</param>
+    /// <param name="currentVersion">The current application version to compare against.</param>
+    /// <param name="onLog">Callback for logging messages.</param>
+    /// <param name="onStatusUpdate">Callback for status bar updates.</param>
+    /// <param name="onBugReport">Callback for reporting errors.</param>
     internal async Task CheckForNewVersionAsync(HttpClient httpClient, Version? currentVersion, Action<string> onLog, Action<string> onStatusUpdate, Func<string, Exception?, Task> onBugReport)
     {
         try
@@ -188,6 +204,13 @@ public class UpdateService(string applicationName)
         return true;
     }
 
+    /// <summary>
+    /// Parses a semantic version string from a GitHub release tag name by stripping
+    /// common prefixes such as "release", "version", or "v", and removing any leading
+    /// non-digit characters.
+    /// </summary>
+    /// <param name="tagName">The raw tag name from the GitHub release (e.g., "v2.11.0").</param>
+    /// <returns>The cleaned version string, or <see cref="string.Empty"/> if the input is null or whitespace.</returns>
     internal static string ParseVersionFromTag(string tagName)
     {
         if (string.IsNullOrWhiteSpace(tagName))

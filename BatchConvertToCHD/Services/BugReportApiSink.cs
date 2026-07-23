@@ -3,15 +3,29 @@ using Serilog.Events;
 
 namespace BatchConvertToCHD.Services;
 
+/// <summary>
+/// A Serilog log event sink that forwards error-level log events to the
+/// <see cref="BugReportService"/> for bug report submission. Events below
+/// <see cref="LogEventLevel.Error"/> are silently ignored.
+/// </summary>
 public class BugReportApiSink : ILogEventSink
 {
     private readonly BugReportService _bugReportService;
 
+    /// <summary>
+    /// Initializes a new instance of the <see cref="BugReportApiSink"/> class.
+    /// </summary>
+    /// <param name="bugReportService">The bug report service to forward error events to.</param>
     public BugReportApiSink(BugReportService bugReportService)
     {
         _bugReportService = bugReportService;
     }
 
+    /// <summary>
+    /// Emits the provided log event to the sink. Only events at or above
+    /// <see cref="LogEventLevel.Error"/> are forwarded to the bug report API.
+    /// </summary>
+    /// <param name="logEvent">The log event to emit.</param>
     public void Emit(LogEvent logEvent)
     {
         if (logEvent.Level < LogEventLevel.Error)

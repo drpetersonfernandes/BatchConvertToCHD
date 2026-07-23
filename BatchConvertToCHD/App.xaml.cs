@@ -20,13 +20,16 @@ public partial class App
     private StatsService? _statsService;
 
     /// <summary>
-    /// Provides a shared, static instance of the BugReportService for the entire application.
+    /// Provides a shared, static instance of the <see cref="BugReportService"/> for the entire application,
+    /// allowing any component to submit bug reports without needing dependency injection.
+    /// May be null before or after the application lifecycle.
     /// </summary>
     public static BugReportService? SharedBugReportService { get; private set; }
 
     /// <summary>
     /// Initializes a new instance of the <see cref="App"/> class.
-    /// Sets up services, exception handling, and event handlers.
+    /// Sets up the shared <see cref="BugReportService"/>, <see cref="StatsService"/>,
+    /// Serilog logging, and global exception handlers for unhandled exceptions.
     /// </summary>
     public App()
     {
