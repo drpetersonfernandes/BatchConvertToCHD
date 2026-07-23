@@ -224,7 +224,7 @@ public partial class MainWindow : IDisposable
             var msg = $"CRITICAL ERROR: The following required component is missing:\n\n" +
                       $"{string.Join("\n", missingDeps)}\n\n" +
                       $"Please ensure it is placed in the application folder.\n" +
-                      $"Conversion, Verification and Extraction will NOT work without it.";
+                      $"Conversion will NOT work without it.";
 
             LogError(" " + msg.Replace("\n", " "));
             ShowMessageBox(msg, "Missing Dependency", MessageBoxButton.OK, MessageBoxImage.Error);
@@ -556,10 +556,6 @@ public partial class MainWindow : IDisposable
     private void DisplayVerificationInstructionsInLog()
     {
         LogMessage($"Welcome to {AppConfig.ApplicationName}. (Verification Mode)");
-        if (!_isChdmanAvailable)
-        {
-            LogWarning(" chdman.exe not found!");
-        }
 
         LogMessage("--- Ready for Verification ---");
     }
@@ -567,10 +563,6 @@ public partial class MainWindow : IDisposable
     private void DisplayExtractionInstructionsInLog()
     {
         LogMessage($"Welcome to {AppConfig.ApplicationName}. (Extraction Mode)");
-        if (!_isChdmanAvailable)
-        {
-            LogWarning(" chdman.exe not found!");
-        }
 
         LogMessage("This feature extracts CHD files back to their original format (ISO/BIN/CUE etc.)");
         LogMessage("--- Ready for Extraction ---");
@@ -733,12 +725,6 @@ public partial class MainWindow : IDisposable
             await Application.Current.Dispatcher.InvokeAsync((Action)(() => LogViewer.Clear()));
             DisplayExtractionInstructionsInLog();
 
-            if (!_isChdmanAvailable)
-            {
-                ShowError($"{AppConfig.ChdmanExeName} is missing.");
-                return;
-            }
-
             var inputFolder = PathUtils.ValidateAndNormalizePath(ExtractionInputFolderTextBox.Text, "CHD Files Folder", ShowError, LogMessage);
             var outputFolder = PathUtils.ValidateAndNormalizePath(ExtractionOutputFolderTextBox.Text, "Output Folder", ShowError, LogMessage);
 
@@ -792,8 +778,7 @@ public partial class MainWindow : IDisposable
                     token = _cts.Token;
                 }
 
-                await PerformBatchExtractionAsync(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, AppConfig.ChdmanExeName),
-                    inputFolder, outputFolder, deleteOriginal, selectedFiles, token);
+                await PerformBatchExtractionAsync(inputFolder, outputFolder, deleteOriginal, selectedFiles, token);
             }
             catch (OperationCanceledException)
             {
@@ -1382,11 +1367,8 @@ public partial class MainWindow : IDisposable
         }
     }
 
-    private async Task PerformBatchExtractionAsync(string chdmanPath, string inputFolder, string outputFolder, bool deleteOriginal, string[] selectedFiles, CancellationToken token)
+    private async Task PerformBatchExtractionAsync(string inputFolder, string outputFolder, bool deleteOriginal, string[] selectedFiles, CancellationToken token)
     {
-        if (!await ValidateExecutableAccessAsync(chdmanPath, "chdman.exe")) return;
-        if (!await ValidateChdmanCompatibilityAsync(chdmanPath, token)) return;
-
         _totalFilesProcessed = selectedFiles.Length;
         UpdateStatsDisplay();
         LogMessage($"Found {_totalFilesProcessed} CHD files to extract.");
@@ -1407,7 +1389,7 @@ public partial class MainWindow : IDisposable
 
             UpdateProgressDisplay(processedCount, _totalFilesProcessed, Path.GetFileName(file), "Extracting");
 
-            var success = await ExtractChdAsync(chdmanPath, file, inputFolder, outputFolder, deleteOriginal, token);
+            var success = await ExtractChdAsync(file, inputFolder, outputFolder, deleteOriginal, token);
             if (success)
             {
                 _processedOkCount++;
@@ -1960,7 +1942,7 @@ public partial class MainWindow : IDisposable
         }
     }
 
-    private async Task<bool> ExtractChdAsync(string chdmanPath, string chdFile, string inputFolder, string outputFolder, bool deleteOriginal, CancellationToken token)
+    private async Task<bool> ExtractChdAsync(string chdFile, string inputFolder, string outputFolder, bool deleteOriginal, CancellationToken token)
     {
         var fileName = Path.GetFileNameWithoutExtension(chdFile);
 
@@ -1969,8 +1951,8 @@ public partial class MainWindow : IDisposable
         var targetDir = relativePath == "." ? outputFolder : Path.Combine(outputFolder, relativePath);
         if (!Directory.Exists(targetDir)) Directory.CreateDirectory(targetDir);
 
-        // Get extraction command based on user-selected output format
-            var extractCommand = await GetSelectedExtractCommandAsync(chdFile, token);
+        // Get extraction type based on user-selected output format
+        var extractCommand = await GetSelectedExtractCommandAsync(chdFile, token);
 
         // Determine output extension based on selection or detected command
         var outputExt = FileExtensions.Cue; // Default for extractcd
@@ -2003,138 +1985,121 @@ public partial class MainWindow : IDisposable
 
         var outputFile = Path.Combine(targetDir, fileName + outputExt);
 
-        // Delete existing output file if it exists (will be overwritten)
-        if (File.Exists(outputFile))
+        // For DVD/HDD extraction: delete existing output file before writing
+        if (extractCommand is "extractdvd" or "extracthd")
         {
-            LogMessage($"Overwriting: {fileName}{outputExt} already exists in output folder.");
-            await TryDeleteFileAsync(outputFile, "existing output file", CancellationToken.None);
+            if (File.Exists(outputFile))
+            {
+                LogMessage($"Overwriting: {fileName}{outputExt} already exists in output folder.");
+                await TryDeleteFileAsync(outputFile, "existing output file", CancellationToken.None);
+            }
         }
 
-        using var process = new Process();
-        process.StartInfo = new ProcessStartInfo
-        {
-            FileName = chdmanPath,
-            Arguments = $"{extractCommand} -i \"{chdFile}\" -o \"{outputFile}\" -f",
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            UseShellExecute = false,
-            CreateNoWindow = true,
-            WorkingDirectory = Path.GetDirectoryName(chdmanPath),
-            ErrorDialog = false
-        };
-
-        process.OutputDataReceived += (_, a) =>
-        {
-            if (string.IsNullOrEmpty(a.Data)) return;
-
-            // Filter progress messages but log important ones
-            if (a.Data.Contains("% complete"))
-            {
-                UpdateReadSpeedFromPerformanceCounter();
-            }
-            else if (!a.Data.Contains("Extracting") && !a.Data.Contains("hunk"))
-            {
-                LogMessage($"[CHDMAN] {a.Data}");
-            }
-        };
-
-        var errorBuffer = new StringBuilder();
-        process.ErrorDataReceived += (_, a) =>
-        {
-            if (string.IsNullOrEmpty(a.Data)) return;
-
-            errorBuffer.AppendLine(a.Data);
-
-            // Filter progress messages but log important ones
-            if (a.Data.Contains("% complete"))
-            {
-                UpdateReadSpeedFromPerformanceCounter();
-            }
-            else if (!a.Data.Contains("Extracting") && !a.Data.Contains("hunk"))
-            {
-                LogMessage($"[CHDMAN] {a.Data}");
-            }
-        };
-
-        using var ctsSpeed = CancellationTokenSource.CreateLinkedTokenSource(token);
-        process.Start();
-        process.BeginOutputReadLine();
-        process.BeginErrorReadLine();
-
-        var speedToken = ctsSpeed.Token;
-        var readSpeedTask = Task.Run(async () =>
-        {
-            try
-            {
-                await Task.Delay(100, speedToken);
-                while (!speedToken.IsCancellationRequested)
-                {
-                    UpdateReadSpeedFromPerformanceCounter();
-                    await Task.Delay(AppConfig.WriteSpeedUpdateIntervalMs, speedToken);
-                }
-            }
-            catch (OperationCanceledException)
-            {
-            }
-        }, speedToken);
-
+        var success = false;
         try
         {
-            using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(token);
-            timeoutCts.CancelAfter(TimeSpan.FromHours(AppConfig.MaxConversionTimeoutHours));
-            await process.WaitForExitAsync(timeoutCts.Token);
+            success = await Task.Run(() =>
+            {
+                var err = ChdFile.Open(chdFile, out var chd);
+                if (err != ChdError.Chderrnone || chd == null)
+                {
+                    LogError($" Failed to open '{Path.GetFileName(chdFile)}': {err.GetMessage()}");
+                    return false;
+                }
+
+                using (chd)
+                {
+                    if (extractCommand is "extractdvd" or "extracthd")
+                    {
+                        ExtractChdToSingleFile(chd, outputFile, token);
+                    }
+                    else
+                    {
+                        ExtractChdTracksToDirectory(chd, chdFile, targetDir, fileName, token);
+                    }
+                }
+
+                return true;
+            }, token);
         }
         catch (OperationCanceledException)
         {
-            await Task.Delay(500, CancellationToken.None);
-            await TryDeleteFileAsync(outputFile, "partially extracted file", CancellationToken.None);
-
-            if (!token.IsCancellationRequested)
+            if (extractCommand is "extractdvd" or "extracthd")
             {
-                LogError($" Extraction of '{Path.GetFileName(chdFile)}' timed out (limit: {AppConfig.MaxConversionTimeoutHours}h).");
-                return false;
+                await TryDeleteFileAsync(outputFile, "partially extracted file", CancellationToken.None);
             }
 
             throw;
         }
-        finally
+        catch (Exception ex)
         {
-            if (!process.HasExited)
+            LogError($" Failed to extract '{Path.GetFileName(chdFile)}': {ex.Message}");
+            if (extractCommand is "extractdvd" or "extracthd")
             {
-                process.Kill(true);
-                await Task.Run(() => process.WaitForExit(5000), CancellationToken.None);
+                await TryDeleteFileAsync(outputFile, "partially extracted file", CancellationToken.None);
             }
-
-            ctsSpeed.Cancel();
-            await Task.WhenAny(readSpeedTask, Task.Delay(500, CancellationToken.None));
-            // Ensure output streams are properly drained before disposal
-            process.CancelOutputRead();
-            process.CancelErrorRead();
         }
 
-        var success = process.ExitCode == 0 && !token.IsCancellationRequested;
-
-        switch (success)
+        if (success && deleteOriginal)
         {
-            case false when !token.IsCancellationRequested && IsDiskSpaceError(errorBuffer.ToString()):
-                LogError($" Extraction of '{Path.GetFileName(chdFile)}' failed due to insufficient disk space.");
-                LogMessage("       Free up disk space on the output drive and try again.");
-                break;
-            case false when !token.IsCancellationRequested:
-                var extractErrorText = errorBuffer.ToString().TrimEnd();
-                if (extractErrorText.Length > 0)
-                {
-                    var firstLine = extractErrorText.IndexOf('\n') > 0 ? extractErrorText[..extractErrorText.IndexOf('\n')].TrimEnd() : extractErrorText;
-                    LogError($" Failed to extract '{Path.GetFileName(chdFile)}': {firstLine}");
-                }
-
-                break;
-            case true when deleteOriginal:
-                await TryDeleteFileAsync(chdFile, "original CHD file", token);
-                break;
+            await TryDeleteFileAsync(chdFile, "original CHD file", token);
         }
 
         return success;
+    }
+
+    private static void ExtractChdToSingleFile(ChdFile chd, string outputFile, CancellationToken token)
+    {
+        using var fs = new FileStream(outputFile, FileMode.Create, FileAccess.Write, FileShare.None, 4096);
+        const int bufferSize = 4 * 1024 * 1024; // 4MB chunks
+        var buffer = new byte[bufferSize];
+        var remaining = chd.TotalBytes;
+        ulong offset = 0;
+
+        while (remaining > 0)
+        {
+            token.ThrowIfCancellationRequested();
+            var toRead = (int)Math.Min((ulong)buffer.Length, remaining);
+            chd.Read(offset, buffer, 0, toRead);
+            fs.Write(buffer, 0, toRead);
+            offset += (ulong)toRead;
+            remaining -= (ulong)toRead;
+        }
+    }
+
+    private void ExtractChdTracksToDirectory(ChdFile chd, string chdFile, string targetDir, string baseFileName, CancellationToken token)
+    {
+        var tempExtractDir = Path.Combine(targetDir, "_extract_temp_" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tempExtractDir);
+
+        try
+        {
+            token.ThrowIfCancellationRequested();
+            var extractedFiles = chd.ExtractToDirectory(tempExtractDir, baseFileName);
+
+            if (extractedFiles.Count == 0)
+            {
+                throw new InvalidOperationException($"No files extracted from '{Path.GetFileName(chdFile)}'.");
+            }
+
+            // Move files from temp to target directory, overwriting existing
+            foreach (var srcPath in extractedFiles)
+            {
+                token.ThrowIfCancellationRequested();
+                var destPath = Path.Combine(targetDir, Path.GetFileName(srcPath));
+                if (File.Exists(destPath))
+                {
+                    File.Delete(destPath);
+                }
+
+                File.Move(srcPath, destPath);
+                LogMessage($" Extracted: {Path.GetFileName(destPath)}");
+            }
+        }
+        finally
+        {
+            try { Directory.Delete(tempExtractDir, true); } catch { /* best effort */ }
+        }
     }
 
     private async Task<string> GetSelectedExtractCommandAsync(string chdFile, CancellationToken token)

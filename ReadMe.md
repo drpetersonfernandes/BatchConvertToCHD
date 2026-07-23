@@ -20,24 +20,24 @@
 *   **Resizable Layout**: Includes a built-in grid splitter to adjust the balance between the file explorer and the terminal view.
 
 ### 💻 Multi-Architecture Support
-*   **Native ARM64 & x64**: Automatically detects your system architecture and utilizes the appropriate `chdman` binaries for maximum efficiency.
+*   **Native ARM64 & x64**: Automatically detects your system architecture and utilizes the appropriate `chdman` binaries for conversion for maximum efficiency.
 *   **Optimized Performance**: Leverages native instructions on ARM64 hardware to reduce overhead during heavy compression tasks.
 
 ### 🛠️ Intelligent Conversion & Extraction
 *   **Automated Batch Processing**: Convert entire directories of disk images with real-time progress monitoring and immediate cancellation response.
 *   **Recursive Structure Preservation**: Maintains your original directory hierarchy in the output folder when processing subfolders.
 *   **CloneCD Support**: Smart detection of `.img` files that belong to CloneCD sets (via `.ccd` files), automatically ensuring the correct `createcd` command is used.
-*   **Robust Extraction**: Supports extracting CHD files back to **.cue (CD)**, **.iso (DVD)**, **.gdi (Dreamcast/Naomi)**, and **.img (HDD)** with intelligent metadata auto-detection.
+*   **Robust Extraction**: Supports extracting CHD files back to **.cue (CD)**, **.iso (DVD)**, **.gdi (Dreamcast/Naomi)**, and **.img (HDD)** with intelligent metadata auto-detection using the [CHDSharp](https://www.nuget.org/packages/CHDSharp) library.
 *   **Archive Integration**: Transparently handles `.zip`, `.7z`, and `.rar` archives, extracting and processing contents automatically while respecting cancellation tokens. Includes a 7za.exe fallback for `.7z` files that SharpCompress cannot extract.
 *   **CSO Decompression**: Built-in support for `.cso` (Compressed ISO) files via `maxcso` integration.
 *   **PBP Extraction**: Convert PlayStation Portable `.pbp` files to CHD format via `psxpackager` integration.
 
 ### ✅ Integrity, Safety & Verification
 *   **Safe Deletion**: Source files (and their dependencies like `.bin`, `.sub`, etc.) are only deleted if the conversion/extraction is confirmed successful.
-*   **Batch Verification**: Validate the checksums and structural integrity of existing CHD files.
+*   **Batch Verification**: Validate the checksums and structural integrity of existing CHD files using the [CHDSharp](https://www.nuget.org/packages/CHDSharp) library.
 *   **Automated Organization**: Optionally move verified or failed files into dedicated subfolders (`Success`/`Failed`) while ignoring these special folders during subsequent scans.
 *   **Cleanup**: Automatically removes empty subdirectories left behind after files are moved or deleted.
-*   **Dependency Protection**: Performs a critical dependency check on startup to notify you if required components (like `chdman.exe`) are missing.
+*   **Dependency Protection**: Performs a critical dependency check on startup to notify you if required components (like `chdman.exe`, needed for conversion) are missing.
 
 ### 📊 Performance & UI
 *   **Real-time Telemetry**: Monitor disk write/read speeds and elapsed time during operations.
@@ -81,11 +81,12 @@ The application implements priority-based logic to ensure compatibility:
 *   **Operating System**: Windows 10 / 11 (x64 or ARM64)
 *   **Runtime**: [.NET 10.0 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/10.0)
 *   **Bundled Dependencies**:
-    *   `chdman.exe` / `chdman_arm64.exe` (MAME Project)
+    *   `chdman.exe` / `chdman_arm64.exe` (MAME Project — conversion only)
     *   `maxcso.exe` (CSO Decompression - x64 only)
     *   `psxpackager.exe` (PBP Extraction)
     *   `7za.exe` / `7za_arm64.exe` (7-Zip fallback extraction)
- *   **NuGet Dependencies**:
+  *   **NuGet Dependencies**:
+     * [CHDSharp](https://www.nuget.org/packages/CHDSharp) (v1.2.0) — Pure C# CHD reading, verification, and extraction
      * [SharpCompress](https://github.com/adamhathcock/sharpcompress) (v0.50.0) - Archive extraction support
    * [Serilog](https://serilog.net/) (v4.4.0) - Structured diagnostic logging
 
@@ -151,6 +152,7 @@ This project is licensed under the **GNU General Public License v3.0**. See the 
 
 **Acknowledgements:**
 *   [MAME Team](https://www.mamedev.org/) for `chdman`.
+*   [CHDSharp](https://www.nuget.org/packages/CHDSharp) by Gordon Jefferyes — Pure C# CHD read-only library supporting V1-V5, all 10 codecs, parent/child chaining, and parallel verification.
 *   [unknownbrackets](https://github.com/unknownbrackets/maxcso) for `maxcso`.
 *   [PSXPackager](https://github.com/rupert-avery/psxpackager) for PlayStation PBP extraction support.
 *   [SharpCompress](https://github.com/adamhathcock/sharpcompress) for archive handling.
