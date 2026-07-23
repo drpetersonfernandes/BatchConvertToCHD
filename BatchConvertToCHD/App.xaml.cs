@@ -52,7 +52,7 @@ public partial class App
 
     private void ConfigureSerilog()
     {
-        var logDir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "logs");
+        var logDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), AppConfig.ApplicationName, "logs");
         Directory.CreateDirectory(logDir);
 
         Log.Logger = new LoggerConfiguration()

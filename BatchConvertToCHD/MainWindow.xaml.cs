@@ -2930,6 +2930,24 @@ public partial class MainWindow : IDisposable
         new AboutWindow { Owner = this }.ShowDialog();
     }
 
+    private void OpenLogsFolderMenuItem_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            var appDataPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), AppConfig.ApplicationName);
+            Directory.CreateDirectory(appDataPath);
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = appDataPath,
+                UseShellExecute = true
+            });
+        }
+        catch (Exception ex)
+        {
+            LogError("Failed to open AppData folder", ex);
+        }
+    }
+
     /// <summary>
     /// Releases all resources used by the <see cref="MainWindow"/>.
     /// Cancels ongoing operations and disposes managed resources.

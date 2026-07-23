@@ -16,18 +16,19 @@ public class BugReportService
     private readonly string _apiUrl;
     private readonly string _apiKey;
     private readonly string _applicationName;
+    private readonly HttpClient _httpClient;
 
-    /// <summary>
-    /// Initializes a new instance of the <see cref="BugReportService"/> class.
-    /// </summary>
-    /// <param name="apiUrl">The URL of the bug report API endpoint.</param>
-    /// <param name="apiKey">The API key for authentication.</param>
-    /// <param name="applicationName">The name of the application sending reports.</param>
     public BugReportService(string apiUrl, string apiKey, string applicationName)
+        : this(apiUrl, apiKey, applicationName, AppHttpClient.Client)
+    {
+    }
+
+    internal BugReportService(string apiUrl, string apiKey, string applicationName, HttpClient httpClient)
     {
         _apiUrl = apiUrl;
         _apiKey = apiKey;
         _applicationName = applicationName;
+        _httpClient = httpClient;
     }
 
     /// <summary>
@@ -36,7 +37,7 @@ public class BugReportService
     /// <param name="message">A summary of the error or bug report</param>
     /// <param name="ex">The exception object, if available</param>
     /// <returns>A task representing the asynchronous operation</returns>
-    public async Task<bool> SendBugReportAsync(string message, Exception? ex = null)
+    public virtual async Task<bool> SendBugReportAsync(string message, Exception? ex = null)
     {
         try
         {
@@ -69,7 +70,7 @@ public class BugReportService
             request.Headers.Add("X-API-KEY", _apiKey);
             request.Content = content;
 
-            var response = await AppHttpClient.Client.SendAsync(request);
+            var response = await _httpClient.SendAsync(request);
 
             // Return true if successful
             return response.IsSuccessStatusCode;

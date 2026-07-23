@@ -18,9 +18,10 @@
 
         <ui:TitleBar Grid.Row="0"
                      Title="About Batch Convert to CHD"
-                     Icon="pack://application:,,,/images/logo.png" />
+                     Icon="pack://application:,,,/images/logo.png"
+                     ToolTip="About Batch Convert to CHD - Title bar" />
 
-        <Grid Grid.Row="1" Margin="20">
+        <Grid x:Name="AboutContentGrid" Grid.Row="1" Margin="20" ToolTip="Application information and credits">
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
@@ -31,14 +32,14 @@
 
             <!-- Logo Section -->
             <Border Grid.Row="0" Style="{StaticResource StatCard}" Margin="0,0,0,15" Padding="15" ToolTip="Application Logo">
-                <StackPanel HorizontalAlignment="Center">
+                <StackPanel HorizontalAlignment="Center" ToolTip="Logo section">
                     <Image Width="130" Height="130" Source="pack://application:,,,/images/logo.png" ToolTip="Batch Convert to CHD application icon" />
                 </StackPanel>
             </Border>
 
             <!-- Title & Version Section -->
             <Border Grid.Row="1" Style="{StaticResource StatCard}" Margin="0,0,0,15" Padding="15" ToolTip="Application name and version">
-                <StackPanel>
+                <StackPanel ToolTip="Application name and version information">
                     <TextBlock Style="{StaticResource AboutTitleStyle}" Text="Batch Convert to CHD" ToolTip="Batch Convert to CHD" />
                     <TextBlock Name="AppVersionTextBlock" Margin="0,8,0,0" Text=""
                                Style="{StaticResource AboutSubtitleStyle}"
@@ -49,7 +50,7 @@
 
             <!-- Description Section -->
             <Border Grid.Row="2" Style="{StaticResource StatCard}" Margin="0,0,0,15" Padding="15" ToolTip="Brief overview of the application purpose">
-                <StackPanel>
+                <StackPanel ToolTip="Description and project links">
                     <TextBlock Style="{StaticResource AboutSectionHeaderStyle}" Text="Description" Margin="0,0,0,10"
                                ToolTip="What this application does" />
                     <TextBlock x:Name="DescriptionTextBlock" Style="{StaticResource AboutBodyTextStyle}"
@@ -72,7 +73,7 @@
 
             <!-- Acknowledgements Section -->
             <Border Grid.Row="3" Style="{StaticResource StatCard}" Margin="0,0,0,15" Padding="15" ToolTip="Credits and third-party tools used">
-                <StackPanel>
+                <StackPanel ToolTip="Acknowledgements and third-party tool attributions">
                     <TextBlock Style="{StaticResource AboutSectionHeaderStyle}" Text="Acknowledgements" Margin="0,0,0,10"
                                ToolTip="Credits and attributions for third-party tools used in this project" />
                     <TextBlock Margin="0,0,0,8" Style="{StaticResource AboutBodyTextStyle}"
@@ -103,7 +104,7 @@
             </Border>
 
             <!-- Close Button Section -->
-            <StackPanel Grid.Row="4" HorizontalAlignment="Center">
+            <StackPanel Grid.Row="4" HorizontalAlignment="Center" ToolTip="Close the About window">
                 <ui:Button Click="CloseButton_Click" Content="Close" Appearance="Primary" ToolTip="Close the About window" />
             </StackPanel>
         </Grid>

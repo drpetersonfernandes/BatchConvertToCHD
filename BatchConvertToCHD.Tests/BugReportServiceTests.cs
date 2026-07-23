@@ -1,3 +1,4 @@
+using System.Net;
 using System.Reflection;
 using System.Text;
 using BatchConvertToCHD.Services;
@@ -218,5 +219,105 @@ public class BugReportServiceTests
 
         Assert.Null(ex);
         Assert.Contains("InvalidOperationException", sb.ToString(), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task SendBugReportAsyncSendsCorrectHttpMethod()
+    {
+        HttpMethod? capturedMethod = null;
+        var handler = new FakeHttpMessageHandler(req =>
+        {
+            capturedMethod = req.Method;
+            return new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent("{\"message\":\"ok\",\"id\":1}")
+            };
+        });
+        using var httpClient = new HttpClient(handler);
+        var service = new BugReportService(TestApiUrl, TestApiKey, TestAppName, httpClient);
+
+        await service.SendBugReportAsync("Test");
+
+        Assert.Equal(HttpMethod.Post, capturedMethod);
+    }
+
+    [Fact]
+    public async Task SendBugReportAsyncIncludesApiKeyHeader()
+    {
+        string? capturedKey = null;
+        var handler = new FakeHttpMessageHandler(req =>
+        {
+            capturedKey = req.Headers.GetValues("X-API-KEY").FirstOrDefault();
+            return new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent("{\"message\":\"ok\",\"id\":1}")
+            };
+        });
+        using var httpClient = new HttpClient(handler);
+        var service = new BugReportService(TestApiUrl, TestApiKey, TestAppName, httpClient);
+
+        await service.SendBugReportAsync("Test");
+
+        Assert.Equal(TestApiKey, capturedKey);
+    }
+
+    [Fact]
+    public async Task SendBugReportAsyncSendsApplicationNameInBody()
+    {
+        string? capturedBody = null;
+        var handler = FakeHttpMessageHandler.WithAsyncHandler(async req =>
+        {
+            capturedBody = await req.Content!.ReadAsStringAsync();
+            return new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent("{\"message\":\"ok\",\"id\":1}")
+            };
+        });
+        using var httpClient = new HttpClient(handler);
+        var service = new BugReportService(TestApiUrl, TestApiKey, TestAppName, httpClient);
+
+        await service.SendBugReportAsync("Test");
+
+        Assert.NotNull(capturedBody);
+        Assert.Contains(TestAppName, capturedBody, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task SendBugReportAsyncReturnsTrueOnSuccess()
+    {
+        var handler = new FakeHttpMessageHandler(HttpStatusCode.OK,
+            "{\"message\":\"Bug report received\",\"id\":42}");
+        using var httpClient = new HttpClient(handler);
+        var service = new BugReportService(TestApiUrl, TestApiKey, TestAppName, httpClient);
+
+        var result = await service.SendBugReportAsync("Test bug");
+
+        Assert.True(result);
+    }
+
+    [Fact]
+    public async Task SendBugReportAsyncReturnsFalseOnServerError()
+    {
+        var handler = new FakeHttpMessageHandler(HttpStatusCode.InternalServerError,
+            "{\"error\":\"Server error\"}");
+        using var httpClient = new HttpClient(handler);
+        var service = new BugReportService(TestApiUrl, TestApiKey, TestAppName, httpClient);
+
+        var result = await service.SendBugReportAsync("Test");
+
+        Assert.False(result);
+    }
+
+    [Fact]
+    public async Task SendBugReportAsyncReturnsTrueOnBadRequest()
+    {
+        var handler = new FakeHttpMessageHandler(HttpStatusCode.BadRequest,
+            "{\"error\":\"Missing required field: message\"}");
+        using var httpClient = new HttpClient(handler);
+        var service = new BugReportService(TestApiUrl, TestApiKey, TestAppName, httpClient);
+
+        var result = await service.SendBugReportAsync("");
+
+        Assert.False(result);
     }
 }
