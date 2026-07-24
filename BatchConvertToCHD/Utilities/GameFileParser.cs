@@ -35,7 +35,7 @@ public static class GameFileParser
         var gdiDir = Path.GetDirectoryName(gdiPath) ?? string.Empty;
         try
         {
-            var lines = await File.ReadAllLinesAsync(gdiPath, Encoding.UTF8, token);
+            var lines = await File.ReadAllLinesAsync(gdiPath, Encoding.UTF8, token).ConfigureAwait(false);
             token.ThrowIfCancellationRequested();
             for (var i = 1; i < lines.Length; i++)
             {
@@ -107,7 +107,7 @@ public static class GameFileParser
         var directory = Path.GetDirectoryName(filePath) ?? string.Empty;
         try
         {
-            var lines = await File.ReadAllLinesAsync(filePath, token);
+            var lines = await File.ReadAllLinesAsync(filePath, token).ConfigureAwait(false);
             token.ThrowIfCancellationRequested();
             foreach (var line in lines)
             {

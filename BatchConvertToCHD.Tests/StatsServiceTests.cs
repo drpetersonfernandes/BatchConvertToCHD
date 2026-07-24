@@ -107,7 +107,7 @@ public class StatsServiceTests
         string? capturedBody = null;
         var handler = FakeHttpMessageHandler.WithAsyncHandler(async req =>
         {
-            capturedBody = await req.Content!.ReadAsStringAsync();
+            capturedBody = await req.Content!.ReadAsStringAsync().ConfigureAwait(false);
             return new HttpResponseMessage(HttpStatusCode.OK)
             {
                 Content = new StringContent("{\"message\":\"ok\"}")
@@ -130,7 +130,7 @@ public class StatsServiceTests
         string? capturedBody = null;
         var handler = FakeHttpMessageHandler.WithAsyncHandler(async req =>
         {
-            capturedBody = await req.Content!.ReadAsStringAsync();
+            capturedBody = await req.Content!.ReadAsStringAsync().ConfigureAwait(false);
             return new HttpResponseMessage(HttpStatusCode.OK)
             {
                 Content = new StringContent("{\"message\":\"ok\"}")

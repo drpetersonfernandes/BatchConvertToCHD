@@ -57,7 +57,7 @@ public class UpdateService
             using var request = new HttpRequestMessage(HttpMethod.Get, AppConfig.GitHubApiLatestReleaseUrl);
             request.Headers.UserAgent.ParseAdd(_applicationName);
 
-            var response = await httpClient.SendAsync(request);
+            var response = await httpClient.SendAsync(request).ConfigureAwait(false);
 
             if (response.StatusCode is System.Net.HttpStatusCode.Forbidden or System.Net.HttpStatusCode.TooManyRequests)
             {
@@ -79,7 +79,7 @@ public class UpdateService
                 response.EnsureSuccessStatusCode();
             }
 
-            var responseBody = await response.Content.ReadAsStringAsync();
+            var responseBody = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
             var latestRelease = JsonSerializer.Deserialize<GitHubRelease>(responseBody, JsonSerializerOptions);
             if (latestRelease == null || latestRelease.Draft || latestRelease.Prerelease || string.IsNullOrWhiteSpace(latestRelease.TagName))
             {
@@ -160,13 +160,13 @@ public class UpdateService
         {
             onLog($"Update check failed: {ex.Message}");
             onStatusUpdate("Update check failed");
-            await onBugReport("Update check failed", ex);
+            await onBugReport("Update check failed", ex).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
             onLog($"Update check failed: {ex.Message}");
             onStatusUpdate("Update check failed");
-            await onBugReport("Error checking for updates", ex);
+            await onBugReport("Error checking for updates", ex).ConfigureAwait(false);
         }
     }
 

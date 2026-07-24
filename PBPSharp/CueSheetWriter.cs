@@ -24,7 +24,7 @@ public static class CueSheetWriter
         foreach (var track in tocEntries)
         {
             var dataType = track.TrackType == TrackType.Audio ? AudioTrackType : DataTrackType;
-            sb.AppendLine($"  TRACK {track.TrackNo:00} {dataType}");
+            sb.AppendLine(null, $"  TRACK {track.TrackNo:00} {dataType}");
 
             if (track.TrackType == TrackType.Audio)
             {

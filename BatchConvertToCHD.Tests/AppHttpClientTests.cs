@@ -28,7 +28,7 @@ public class AppHttpClientTests
         var client = AppHttpClient.Client;
         Assert.True(client.DefaultRequestHeaders.Accept.Count > 0);
         Assert.Contains(
-            client.DefaultRequestHeaders.Accept, static m => m.MediaType == "application/json");
+            client.DefaultRequestHeaders.Accept, static m => string.Equals(m.MediaType, "application/json", StringComparison.Ordinal));
     }
 
     [Fact]

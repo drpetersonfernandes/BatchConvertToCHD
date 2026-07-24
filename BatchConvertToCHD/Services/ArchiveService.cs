@@ -72,7 +72,7 @@ public class ArchiveService : IDisposable
                 {
                     return csoFile.ExtractToIso(tempOutputIsoPath, progress: null, token);
                 }
-            }, token);
+            }, token).ConfigureAwait(false);
 
             if (error != CsoError.None)
                 return (false, string.Empty, tempDirectoryRoot, $"CSOSharp failed to decompress {csoFileName}: {error}");
@@ -135,11 +135,11 @@ public class ArchiveService : IDisposable
             onLog($"Extracting {archiveFileName} to: {tempDirectoryRoot}");
 
             if (extension.Equals(FileExtensions.Zip, StringComparison.OrdinalIgnoreCase))
-                await ExtractZipWith7ZaFallbackAsync(originalArchivePath, tempDirectoryRoot, onLog, token);
+                await ExtractZipWith7ZaFallbackAsync(originalArchivePath, tempDirectoryRoot, onLog, token).ConfigureAwait(false);
             else if (extension.Equals(FileExtensions.SevenZip, StringComparison.OrdinalIgnoreCase))
-                await ExtractSevenZipArchiveAsync(originalArchivePath, tempDirectoryRoot, onLog, token);
+                await ExtractSevenZipArchiveAsync(originalArchivePath, tempDirectoryRoot, onLog, token).ConfigureAwait(false);
             else if (extension.Equals(FileExtensions.Rar, StringComparison.OrdinalIgnoreCase))
-                await Task.Run(() => ExtractRarArchive(originalArchivePath, tempDirectoryRoot, onLog, token), token);
+                await Task.Run(() => ExtractRarArchive(originalArchivePath, tempDirectoryRoot, onLog, token), token).ConfigureAwait(false);
             else
                 return (false, [], tempDirectoryRoot, $"Unsupported archive type: {extension}");
 
@@ -151,7 +151,7 @@ public class ArchiveService : IDisposable
                 return Directory.GetFiles(tempDirectoryRoot, "*.*", options)
                     .Where(static f => FileExtensions.PrimaryTargetExtensionsSet.Contains(Path.GetExtension(f)))
                     .ToList();
-            }, token);
+            }, token).ConfigureAwait(false);
 
             return foundFiles.Count > 0
                 ? (true, foundFiles, tempDirectoryRoot, string.Empty)
@@ -168,7 +168,7 @@ public class ArchiveService : IDisposable
             return (false, [], tempDirectoryRoot, $"The archive file may be corrupted or incomplete and could not be extracted. Try re-downloading or re-copying the file, then attempt the conversion again. Details: {ex.Message}");
         }
         catch (IncompleteArchiveException ex) { return (false, [], tempDirectoryRoot, $"The archive file appears to be incomplete and could not be fully extracted. Try re-downloading or re-copying the file, then attempt the conversion again. Details: {ex.Message}"); }
-        catch (Exception ex) when (ex.GetType().FullName == "SharpCompress.Compressors.LZMA.DataErrorException") { return (false, [], tempDirectoryRoot, $"The archive file may be corrupted and could not be extracted. Try re-downloading or re-copying the file, then attempt the conversion again. Details: {ex.Message}"); }
+        catch (Exception ex) when (string.Equals(ex.GetType().FullName, "SharpCompress.Compressors.LZMA.DataErrorException", StringComparison.Ordinal)) { return (false, [], tempDirectoryRoot, $"The archive file may be corrupted and could not be extracted. Try re-downloading or re-copying the file, then attempt the conversion again. Details: {ex.Message}"); }
         catch (CryptographicException ex) { return (false, [], tempDirectoryRoot, $"Archive is encrypted/password-protected and cannot be processed. Please extract it manually and add the extracted files. Details: {ex.Message}"); }
         catch (InvalidFormatException ex) { return (false, [], tempDirectoryRoot, $"The archive file may be corrupted or in an unsupported format and could not be extracted. Try re-downloading or re-copying the file, then attempt the conversion again. Details: {ex.Message}"); }
         catch (ArchiveOperationException ex) { return (false, [], tempDirectoryRoot, $"The archive file may be corrupted or unsupported and could not be extracted. Try re-downloading or re-copying the file, then attempt the conversion again. Details: {ex.Message}"); }
@@ -198,12 +198,12 @@ public class ArchiveService : IDisposable
         var archiveFileName = Path.GetFileName(archivePath);
         try
         {
-            await Task.Run(() => ExtractZipArchive(archivePath, outputDirectory, token), token);
+            await Task.Run(() => ExtractZipArchive(archivePath, outputDirectory, token), token).ConfigureAwait(false);
         }
         catch (Exception ex) when (_isSevenZipAvailable && ex is not OperationCanceledException)
         {
             onLog($"Built-in zip extractor failed for {archiveFileName} ({ex.Message}). Falling back to 7za.exe...");
-            await ExtractWith7ZaAsync(archivePath, outputDirectory, onLog, token);
+            await ExtractWith7ZaAsync(archivePath, outputDirectory, onLog, token).ConfigureAwait(false);
         }
     }
 
@@ -265,7 +265,7 @@ public class ArchiveService : IDisposable
             if (_isSevenZipAvailable)
             {
                 onLog($"SharpCompress extraction failed ({ex.Message}). Trying 7za.exe fallback...");
-                await ExtractWith7ZaAsync(archivePath, outputDirectory, onLog, token);
+                await ExtractWith7ZaAsync(archivePath, outputDirectory, onLog, token).ConfigureAwait(false);
             }
             else
             {
@@ -280,7 +280,7 @@ public class ArchiveService : IDisposable
 
         using var process = new Process();
         var outputBuilder = new StringBuilder();
-        var outputLock = new object();
+        Lock outputLock = new();
 
         try
         {
@@ -302,7 +302,7 @@ public class ArchiveService : IDisposable
             process.Start();
             process.BeginOutputReadLine();
             process.BeginErrorReadLine();
-            await process.WaitForExitAsync(token);
+            await process.WaitForExitAsync(token).ConfigureAwait(false);
 
             string outputText;
             lock (outputLock) { outputText = outputBuilder.ToString(); }
@@ -374,7 +374,7 @@ public class ArchiveService : IDisposable
                 ex is InvalidFormatException ||
                 ex is IndexOutOfRangeException ||
                 ex is NullReferenceException ||
-                ex.GetType().FullName == "SharpCompress.Compressors.LZMA.DataErrorException")
+string.Equals(ex.GetType().FullName, "SharpCompress.Compressors.LZMA.DataErrorException", StringComparison.Ordinal))
             {
                 throw;
             }

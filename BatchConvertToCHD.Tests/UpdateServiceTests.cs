@@ -217,10 +217,10 @@ public class UpdateServiceTests
         ])!;
         await task;
 
-        Assert.Contains(logMessages, static m => m.Contains("Checking for updates"));
-        Assert.Contains(logMessages, static m => m.Contains("Current version:"));
-        Assert.Contains(logMessages, static m => m.Contains("Latest version:"));
-        Assert.Contains(statusMessages, static m => m.Contains("Update available"));
+        Assert.Contains(logMessages, static m => m.Contains("Checking for updates", StringComparison.Ordinal));
+        Assert.Contains(logMessages, static m => m.Contains("Current version:", StringComparison.Ordinal));
+        Assert.Contains(logMessages, static m => m.Contains("Latest version:", StringComparison.Ordinal));
+        Assert.Contains(statusMessages, static m => m.Contains("Update available", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -247,9 +247,9 @@ public class UpdateServiceTests
         ])!;
         await task;
 
-        Assert.Contains(logMessages, static m => m.Contains("up to date"));
-        Assert.Contains(statusMessages, static m => m.Contains("up to date"));
-        Assert.DoesNotContain(statusMessages, static m => m.Contains("Update available"));
+        Assert.Contains(logMessages, static m => m.Contains("up to date", StringComparison.Ordinal));
+        Assert.Contains(statusMessages, static m => m.Contains("up to date", StringComparison.Ordinal));
+        Assert.DoesNotContain(statusMessages, static m => m.Contains("Update available", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -275,7 +275,7 @@ public class UpdateServiceTests
         ])!;
         await task;
 
-        Assert.Contains(logMessages, static m => m.Contains("draft"));
+        Assert.Contains(logMessages, static m => m.Contains("draft", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -301,7 +301,7 @@ public class UpdateServiceTests
         ])!;
         await task;
 
-        Assert.Contains(logMessages, static m => m.Contains("prerelease"));
+        Assert.Contains(logMessages, static m => m.Contains("prerelease", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -329,8 +329,8 @@ public class UpdateServiceTests
         ])!;
         await task;
 
-        Assert.Contains(logMessages, static m => m.Contains("rate limit exceeded"));
-        Assert.Contains(statusMessages, static m => m.Contains("rate limit"));
+        Assert.Contains(logMessages, static m => m.Contains("rate limit exceeded", StringComparison.Ordinal));
+        Assert.Contains(statusMessages, static m => m.Contains("rate limit", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -362,7 +362,7 @@ public class UpdateServiceTests
         ])!;
         await task;
 
-        Assert.Contains(logMessages, static m => m.Contains("Update check failed"));
+        Assert.Contains(logMessages, static m => m.Contains("Update check failed", StringComparison.Ordinal));
         Assert.NotNull(reportedError);
     }
 
@@ -428,7 +428,7 @@ public class UpdateServiceTests
         ])!;
         await task;
 
-        Assert.Contains(logMessages, static m => m.Contains("504") || m.Contains("server error", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(logMessages, static m => m.Contains("504", StringComparison.Ordinal) || m.Contains("server error", StringComparison.OrdinalIgnoreCase));
         Assert.Contains(statusMessages, static m => m.Contains("server error", StringComparison.OrdinalIgnoreCase));
         Assert.DoesNotContain(statusMessages, static m => m.Contains("failed", StringComparison.OrdinalIgnoreCase));
     }
@@ -457,7 +457,7 @@ public class UpdateServiceTests
         ])!;
         await task;
 
-        Assert.Contains(logMessages, static m => m.Contains("502") || m.Contains("server error", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(logMessages, static m => m.Contains("502", StringComparison.Ordinal) || m.Contains("server error", StringComparison.OrdinalIgnoreCase));
         Assert.Contains(statusMessages, static m => m.Contains("server error", StringComparison.OrdinalIgnoreCase));
     }
 
@@ -491,8 +491,8 @@ public class UpdateServiceTests
         ])!;
         await task;
 
-        Assert.Contains(logMessages, static m => m.Contains("Network unreachable"));
-        Assert.Contains(statusMessages, static m => m.Contains("network"));
+        Assert.Contains(logMessages, static m => m.Contains("Network unreachable", StringComparison.Ordinal));
+        Assert.Contains(statusMessages, static m => m.Contains("network", StringComparison.Ordinal));
         Assert.False(bugReportCalled);
     }
 
@@ -526,8 +526,8 @@ public class UpdateServiceTests
         ])!;
         await task;
 
-        Assert.Contains(logMessages, static m => m.Contains("Update check failed"));
-        Assert.Contains(statusMessages, static m => m.Contains("Update check failed"));
+        Assert.Contains(logMessages, static m => m.Contains("Update check failed", StringComparison.Ordinal));
+        Assert.Contains(statusMessages, static m => m.Contains("Update check failed", StringComparison.Ordinal));
         Assert.NotNull(reportedError);
     }
 
@@ -564,8 +564,8 @@ public class UpdateServiceTests
         ])!;
         await task;
 
-        Assert.Contains(logMessages, static m => m.Contains("up to date"));
-        Assert.DoesNotContain(statusMessages, static m => m.Contains("Update available"));
+        Assert.Contains(logMessages, static m => m.Contains("up to date", StringComparison.Ordinal));
+        Assert.DoesNotContain(statusMessages, static m => m.Contains("Update available", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -601,7 +601,7 @@ public class UpdateServiceTests
         ])!;
         await task;
 
-        Assert.Contains(statusMessages, static m => m.Contains("Update available"));
+        Assert.Contains(statusMessages, static m => m.Contains("Update available", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -637,7 +637,7 @@ public class UpdateServiceTests
         ])!;
         await task;
 
-        Assert.Contains(statusMessages, static m => m.Contains("Update available"));
+        Assert.Contains(statusMessages, static m => m.Contains("Update available", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -672,7 +672,7 @@ public class UpdateServiceTests
         ])!;
         await task;
 
-        Assert.Contains(logMessages, static m => m.Contains("Could not compare versions"));
+        Assert.Contains(logMessages, static m => m.Contains("Could not compare versions", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -699,7 +699,7 @@ public class UpdateServiceTests
         ])!;
         await task;
 
-        Assert.Contains(statusMessages, static m => m.Contains("Update available"));
+        Assert.Contains(statusMessages, static m => m.Contains("Update available", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -726,8 +726,8 @@ public class UpdateServiceTests
         ])!;
         await task;
 
-        Assert.Contains(logMessages, static m => m.Contains("rate limit exceeded"));
-        Assert.Contains(statusMessages, static m => m.Contains("rate limit"));
+        Assert.Contains(logMessages, static m => m.Contains("rate limit exceeded", StringComparison.Ordinal));
+        Assert.Contains(statusMessages, static m => m.Contains("rate limit", StringComparison.Ordinal));
     }
 
     #endregion

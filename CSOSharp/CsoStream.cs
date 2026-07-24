@@ -63,7 +63,7 @@ public sealed class CsoStream : Stream
 
         ArgumentNullException.ThrowIfNull(buffer);
         if (offset < 0 || count < 0 || buffer.Length - offset < count)
-            throw new ArgumentOutOfRangeException();
+            throw new ArgumentOutOfRangeException(nameof(offset));
 
         if (count == 0 || _position >= Length)
             return 0;

@@ -444,7 +444,7 @@ public partial class MainWindow : IDisposable
 
             throw;
         }
-        catch (Win32Exception ex) when (ex.NativeErrorCode == 193 || ex.Message.Contains("not a valid application"))
+        catch (Win32Exception ex) when (ex.NativeErrorCode == 193 || ex.Message.Contains("not a valid application", StringComparison.Ordinal))
         {
             LogError(" The bundled chdman.exe is not compatible with this version of Windows.");
             LogMessage("       This typically occurs when running on older Windows versions (e.g., Windows 7).");
@@ -1394,7 +1394,7 @@ public partial class MainWindow : IDisposable
 
             // Maintain directory structure if searching subfolders
             var relativePath = PathUtils.GetSafeRelativePath(inputFolder, Path.GetDirectoryName(inputFile) ?? inputFolder);
-            var targetDir = relativePath == "." ? outputFolder : Path.Combine(outputFolder, relativePath);
+            var targetDir = string.Equals(relativePath, ".", StringComparison.Ordinal) ? outputFolder : Path.Combine(outputFolder, relativePath);
 
             outputChd = Path.Combine(targetDir, PathUtils.SanitizeFileName(chdBase) + FileExtensions.Chd);
 
@@ -1428,7 +1428,7 @@ public partial class MainWindow : IDisposable
 
             // Fallback: If direct conversion failed and we haven't already extracted to temp (i.e. it was a direct file attempt),
             // try copying to temp and converting there. This handles network path issues or file locking quirks.
-            if (!success && fileToProcess == inputFile && !token.IsCancellationRequested)
+            if (!success && string.Equals(fileToProcess, inputFile, StringComparison.Ordinal) && !token.IsCancellationRequested)
             {
                 success = await TryRetryConversionViaTempCopyAsync(chdmanPath, inputFile, originalName, ext, outputFolder, outputChd, cores, forceCd, forceDvd, timeoutMinutes, tempDirs, token);
             }
@@ -1472,7 +1472,7 @@ public partial class MainWindow : IDisposable
     {
         // Use the original input file (e.g. the archive) to determine the relative path
         var relativePath = PathUtils.GetSafeRelativePath(inputFolder, Path.GetDirectoryName(originalInputFile) ?? inputFolder);
-        var targetDir = relativePath == "." ? outputFolder : Path.Combine(outputFolder, relativePath);
+        var targetDir = string.Equals(relativePath, ".", StringComparison.Ordinal) ? outputFolder : Path.Combine(outputFolder, relativePath);
         var chdBase = Path.GetFileNameWithoutExtension(extractedFilePath);
         return Path.Combine(targetDir, PathUtils.SanitizeFileName(chdBase) + FileExtensions.Chd);
     }
@@ -1651,7 +1651,7 @@ public partial class MainWindow : IDisposable
                         break;
                 }
 
-                var missingFiles = filesToCopy.Distinct().Where(static f => !File.Exists(f)).ToList();
+                var missingFiles = filesToCopy.Distinct(StringComparer.Ordinal).Where(static f => !File.Exists(f)).ToList();
                 if (missingFiles.Count > 0)
                 {
                     var missingNames = string.Join(", ", missingFiles.Select(Path.GetFileName));
@@ -1665,7 +1665,7 @@ public partial class MainWindow : IDisposable
             }
 
             long totalBytesNeeded = 0;
-            foreach (var file in filesToCopy.Distinct())
+            foreach (var file in filesToCopy.Distinct(StringComparer.Ordinal))
             {
                 try { totalBytesNeeded += new FileInfo(file).Length; } catch { /* skip */ }
             }
@@ -1695,7 +1695,7 @@ public partial class MainWindow : IDisposable
             if (ext is FileExtensions.Cue or FileExtensions.Gdi or FileExtensions.Toc)
             {
                 LogMessage("Copying game with dependencies to temporary directory...");
-                foreach (var file in filesToCopy.Distinct())
+                foreach (var file in filesToCopy.Distinct(StringComparer.Ordinal))
                 {
                     var destPath = Path.Combine(tempDir, Path.GetFileName(file));
                     await CopyFileWithRetryAsync(file, destPath, token);
@@ -1831,7 +1831,7 @@ public partial class MainWindow : IDisposable
             {
                 // Maintain directory structure
                 var relativePath = PathUtils.GetSafeRelativePath(inputFolder, Path.GetDirectoryName(sourceFile) ?? inputFolder);
-                var targetSubDir = relativePath == "." ? targetFolder : Path.Combine(targetFolder, relativePath);
+                var targetSubDir = string.Equals(relativePath, ".", StringComparison.Ordinal) ? targetFolder : Path.Combine(targetFolder, relativePath);
                 if (!Directory.Exists(targetSubDir))
                 {
                     Directory.CreateDirectory(targetSubDir);
@@ -1865,7 +1865,7 @@ public partial class MainWindow : IDisposable
 
         // Maintain directory structure if searching subfolders
         var relativePath = PathUtils.GetSafeRelativePath(inputFolder, Path.GetDirectoryName(chdFile) ?? inputFolder);
-        var targetDir = relativePath == "." ? outputFolder : Path.Combine(outputFolder, relativePath);
+        var targetDir = string.Equals(relativePath, ".", StringComparison.Ordinal) ? outputFolder : Path.Combine(outputFolder, relativePath);
         if (!Directory.Exists(targetDir)) Directory.CreateDirectory(targetDir);
 
         // Get extraction type based on user-selected output format
@@ -1894,7 +1894,7 @@ public partial class MainWindow : IDisposable
                 _ => FileExtensions.Cue
             };
 
-            if (extractCommand == "extractcd" && await IsGdiChdAsync(chdFile, token))
+            if (string.Equals(extractCommand, "extractcd", StringComparison.Ordinal) && await IsGdiChdAsync(chdFile, token))
             {
                 outputExt = FileExtensions.Gdi;
             }
@@ -2164,14 +2164,14 @@ public partial class MainWindow : IDisposable
         {
             if (string.IsNullOrEmpty(a.Data)) return;
 
-            if (a.Data.Contains("Compression complete") || a.Data.Contains("final ratio"))
+            if (a.Data.Contains("Compression complete", StringComparison.Ordinal) || a.Data.Contains("final ratio", StringComparison.Ordinal))
             {
                 LogMessage($"[CHDMAN ✓] {a.Data}");
             }
-            else if (!a.Data.Contains("% complete") &&
-                     !a.Data.Contains("Compressing") &&
-                     !a.Data.Contains("Output bytes") &&
-                     !a.Data.Contains("Compression ratio"))
+            else if (!a.Data.Contains("% complete", StringComparison.Ordinal) &&
+                     !a.Data.Contains("Compressing", StringComparison.Ordinal) &&
+                     !a.Data.Contains("Output bytes", StringComparison.Ordinal) &&
+                     !a.Data.Contains("Compression ratio", StringComparison.Ordinal))
             {
                 LogMessage($"[CHDMAN] {a.Data}");
             }
@@ -2183,14 +2183,14 @@ public partial class MainWindow : IDisposable
 
             errorBuffer.AppendLine(a.Data);
 
-            if (a.Data.Contains("Compression complete") || a.Data.Contains("final ratio"))
+            if (a.Data.Contains("Compression complete", StringComparison.Ordinal) || a.Data.Contains("final ratio", StringComparison.Ordinal))
             {
                 LogMessage($"[CHDMAN ✓] {a.Data}");
             }
-            else if (!a.Data.Contains("% complete") &&
-                     !a.Data.Contains("Compressing") &&
-                     !a.Data.Contains("Output bytes") &&
-                     !a.Data.Contains("Compression ratio"))
+            else if (!a.Data.Contains("% complete", StringComparison.Ordinal) &&
+                     !a.Data.Contains("Compressing", StringComparison.Ordinal) &&
+                     !a.Data.Contains("Output bytes", StringComparison.Ordinal) &&
+                     !a.Data.Contains("Compression ratio", StringComparison.Ordinal))
             {
                 LogMessage($"[CHDMAN] {a.Data}");
             }
@@ -2519,7 +2519,7 @@ public partial class MainWindow : IDisposable
                 files.AddRange(await GameFileParser.GetReferencedFilesFromTocAsync(inputFile, LogMessage, token));
             }
 
-            foreach (var f in files.Distinct()) await TryDeleteFileAsync(f, "game file", token);
+            foreach (var f in files.Distinct(StringComparer.Ordinal)) await TryDeleteFileAsync(f, "game file", token);
         }
         catch (Exception ex)
         {

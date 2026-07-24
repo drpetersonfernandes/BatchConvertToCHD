@@ -42,7 +42,7 @@ public class FileItem : INotifyPropertyChanged
         get => _fileName;
         set
         {
-            if (_fileName == value)
+            if (string.Equals(_fileName, value, StringComparison.Ordinal))
             {
                 return;
             }
@@ -60,7 +60,7 @@ public class FileItem : INotifyPropertyChanged
         get => _fullPath;
         set
         {
-            if (_fullPath == value)
+            if (string.Equals(_fullPath, value, StringComparison.Ordinal))
             {
                 return;
             }
@@ -97,7 +97,7 @@ public class FileItem : INotifyPropertyChanged
         get => _displaySize;
         set
         {
-            if (_displaySize == value)
+            if (string.Equals(_displaySize, value, StringComparison.Ordinal))
             {
                 return;
             }

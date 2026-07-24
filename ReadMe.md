@@ -28,8 +28,8 @@
 *   **Recursive Structure Preservation**: Maintains your original directory hierarchy in the output folder when processing subfolders.
 *   **Robust Extraction**: Supports extracting CHD files back to **.cue (CD)**, **.iso (DVD)**, **.gdi (Dreamcast/Naomi)**, and **.img (HDD)** with intelligent metadata auto-detection using the [CHDSharp](https://www.nuget.org/packages/CHDSharp) library.
 *   **Archive Integration**: Transparently handles `.zip`, `.7z`, and `.rar` archives, extracting and processing contents automatically while respecting cancellation tokens. Includes a 7za.exe fallback for `.7z` files that SharpCompress cannot extract.
-*   **CSO Decompression**: Built-in support for `.cso` (Compressed ISO) files via `maxcso` integration.
-*   **PBP Extraction**: Convert PlayStation Portable `.pbp` files to CHD format via `psxpackager` integration.
+*   **CSO Decompression**: Built-in support for `.cso` and `.ciso` (Compressed ISO) files via the [CSOSharp](https://github.com/PureLogicCode/CSOSharp) library (supports deflate/zlib and LZ4).
+*   **PBP Extraction**: Convert PlayStation Portable `.pbp` files to CHD format via the [PBPSharp](https://github.com/PureLogicCode/PBPSharp) library.
 
 ### ✅ Integrity, Safety & Verification
 *   **Safe Deletion**: Source files (and their dependencies like `.bin`, `.sub`, etc.) are only deleted if the conversion/extraction is confirmed successful.
@@ -69,7 +69,7 @@ The application implements priority-based logic to ensure compatibility:
 2.  **Multi-track Images (`.cue`, `.gdi`, `.toc`)**: Defaults to `createcd`.
 3.  **Hard Disk Images (`.img`)**: Defaults to `createhd` unless an accompanying `.cue` file is detected, in which case `createcd` is used.
 4.  **Raw Data (`.raw`)**: Defaults to `createraw`.
-5.  **PlayStation PBP (`.pbp`)**: Extracts to CUE/BIN using `psxpackager`, then converts to CHD using `createcd`.
+5.  **PlayStation PBP (`.pbp`)**: Extracts to CUE/BIN using PBPSharp, then converts to CHD using `createcd`.
 
 *Note: Users can manually override these settings via the UI to force specific modes (except for PBP which always extracts first).*
 
@@ -81,14 +81,14 @@ The application implements priority-based logic to ensure compatibility:
 *   **Runtime**: [.NET 10.0 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/10.0)
 *   **Bundled Dependencies**:
     *   `chdman.exe` / `chdman_arm64.exe` (MAME Project — conversion only)
-    *   `maxcso.exe` (CSO Decompression - x64 only)
-    *   `psxpackager.exe` (PBP Extraction)
     *   `7za.exe` / `7za_arm64.exe` (7-Zip fallback extraction)
-  *   **NuGet Dependencies**:
-     * [WPF-UI](https://github.com/lepoco/wpfui) (v4.3.0) — Modern Fluent Design theming and controls
-     * [CHDSharp](https://www.nuget.org/packages/CHDSharp) (v1.2.0) — Pure C# CHD reading, verification, and extraction
-     * [SharpCompress](https://github.com/adamhathcock/sharpcompress) (v0.50.0) - Archive extraction support
-   * [Serilog](https://serilog.net/) (v4.4.0) - Structured diagnostic logging
+*   **Library Dependencies**:
+    * [WPF-UI](https://github.com/lepoco/wpfui) (v4.3.0) — Modern Fluent Design theming and controls
+    * [CHDSharp](https://www.nuget.org/packages/CHDSharp) (v1.2.0) — Pure C# CHD reading, verification, and extraction
+    * [CSOSharp](https://github.com/PureLogicCode/CSOSharp) (v1.0.0) — Pure C# CSO/CISO decompression (deflate + LZ4)
+    * [PBPSharp](https://github.com/PureLogicCode/PBPSharp) (v1.0.0) — Pure C# PBP extraction and SFO parsing
+    * [SharpCompress](https://github.com/adamhathcock/sharpcompress) (v0.50.0) — Archive extraction support
+    * [Serilog](https://serilog.net/) (v4.4.0) — Structured diagnostic logging
 
 ---
 
@@ -154,8 +154,8 @@ This project is licensed under the **GNU General Public License v3.0**. See the 
 *   [MAME Team](https://www.mamedev.org/) for `chdman`.
 *   [CHDSharp](https://www.nuget.org/packages/CHDSharp) by Gordon Jefferyes — Pure C# CHD read-only library supporting V1-V5, all 10 codecs, parent/child chaining, and parallel verification.
 *   [WPF-UI](https://github.com/lepoco/wpfui) by lepoco — Modern Windows 11 Fluent Design theming and controls.
-*   [unknownbrackets](https://github.com/unknownbrackets/maxcso) for `maxcso`.
-*   [PSXPackager](https://github.com/rupert-avery/psxpackager) for PlayStation PBP extraction support.
+*   [CSOSharp](https://github.com/PureLogicCode/CSOSharp) by PureLogicCode — Pure C# CSO/CISO decompression library.
+*   [PBPSharp](https://github.com/PureLogicCode/PBPSharp) by PureLogicCode — Pure C# PlayStation PBP extraction library.
 *   [SharpCompress](https://github.com/adamhathcock/sharpcompress) for archive handling.
 *   [Serilog](https://serilog.net/) for structured logging.
 *   [Igor Pavlov](https://www.7-zip.org/) for `7za.exe` (7-Zip command-line tool).

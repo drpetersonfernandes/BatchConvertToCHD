@@ -65,7 +65,7 @@ public class BugReportService
             request.Headers.Add("X-API-KEY", _apiKey);
             request.Content = content;
 
-            var response = await _httpClient.SendAsync(request, token);
+            var response = await _httpClient.SendAsync(request, token).ConfigureAwait(false);
 
             return response.IsSuccessStatusCode;
         }

@@ -63,7 +63,9 @@ public class BugReportServiceTests
         var method = typeof(BugReportService).GetMethod("BuildFormattedReport", BindingFlags.NonPublic | BindingFlags.Instance);
         Assert.NotNull(method);
 
-        var inner = new ArgumentException("Inner error");
+#pragma warning disable MA0015
+        var inner = new ArgumentException("Inner error", "inner");
+#pragma warning restore MA0015
         var outer = new InvalidOperationException("Outer error", inner);
         var result = method.Invoke(service, ["Error summary", outer]) as string;
         Assert.NotNull(result);
@@ -101,7 +103,9 @@ public class BugReportServiceTests
         Assert.NotNull(method);
 
         var deep = new FormatException("Deep");
-        var mid = new ArgumentException("Mid", deep);
+#pragma warning disable MA0015
+        var mid = new ArgumentException("Mid", "mid", deep);
+#pragma warning restore MA0015
         var top = new InvalidOperationException("Top", mid);
         var result = method.Invoke(null, [top]) as string;
         Assert.NotNull(result);
@@ -267,7 +271,7 @@ public class BugReportServiceTests
         string? capturedBody = null;
         var handler = FakeHttpMessageHandler.WithAsyncHandler(async req =>
         {
-            capturedBody = await req.Content!.ReadAsStringAsync();
+            capturedBody = await req.Content!.ReadAsStringAsync().ConfigureAwait(false);
             return new HttpResponseMessage(HttpStatusCode.OK)
             {
                 Content = new StringContent("{\"message\":\"ok\",\"id\":1}")

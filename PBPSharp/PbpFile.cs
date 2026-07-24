@@ -174,49 +174,38 @@ public sealed class PbpFile : IDisposable
         var entryCount = ReadUInt32(stream, sfoBuffer);
 
         var entries = new List<SfoEntry>();
-        for (uint i = 0; i < entryCount; i++)
-        {
-            var entryBuffer = new byte[16];
-            stream.ReadExactly(entryBuffer, 0, 16);
-
-            // Layout: KeyOffset(2) + Format(2) + Length(4) + MaxLength(4) + DataOffset(4)
-            var entry = new SfoEntry
-            {
-                // KeyOffset is the first ushort, Format is the second ushort
-                Format = BitConverter.ToUInt16(entryBuffer, 2),
-                Length = BitConverter.ToUInt32(entryBuffer, 4),
-                MaxLength = BitConverter.ToUInt32(entryBuffer, 8)
-            };
-
-            entries.Add(entry);
-        }
-
-        // Read keys
-        for (var i = 0; i < entries.Count; i++)
+        for (var i = 0; i < entryCount; i++)
         {
             var dirBuffer = new byte[16];
             stream.Seek(header.SfoOffset + 16 + i * 16, SeekOrigin.Begin);
             stream.ReadExactly(dirBuffer, 0, 16);
+
+            // Layout: KeyOffset(2) + Format(2) + Length(4) + MaxLength(4) + DataOffset(4)
             var keyOffset = BitConverter.ToUInt16(dirBuffer, 0);
-            entries[i].Format = BitConverter.ToUInt16(dirBuffer, 2);
-            entries[i].Length = BitConverter.ToUInt32(dirBuffer, 4);
-            entries[i].MaxLength = BitConverter.ToUInt32(dirBuffer, 8);
+            var entry = new SfoEntry
+            {
+                Format = BitConverter.ToUInt16(dirBuffer, 2),
+                Length = BitConverter.ToUInt32(dirBuffer, 4),
+                MaxLength = BitConverter.ToUInt32(dirBuffer, 8)
+            };
+
             var dataOffset = BitConverter.ToUInt32(dirBuffer, 12);
 
             stream.Seek(header.SfoOffset + sfoData.KeyTableOffset + keyOffset, SeekOrigin.Begin);
-            var key = ReadNullTerminatedString(stream, 128);
-            entries[i].Key = key;
+            entry.Key = ReadNullTerminatedString(stream, 128);
 
             stream.Seek(header.SfoOffset + sfoData.DataTableOffset + dataOffset, SeekOrigin.Begin);
-            switch (entries[i].Format)
+            switch (entry.Format)
             {
                 case 0x0204:
-                    entries[i].Value = ReadNullTerminatedString(stream, (int)entries[i].Length);
+                    entry.Value = ReadNullTerminatedString(stream, (int)entry.Length);
                     break;
                 case 0x0404:
-                    entries[i].Value = ReadUInt32(stream, new byte[4]);
+                    entry.Value = ReadUInt32(stream, new byte[4]);
                     break;
             }
+
+            entries.Add(entry);
         }
 
         sfoData.Entries = entries;
@@ -232,7 +221,7 @@ public sealed class PbpFile : IDisposable
         stream.ReadExactly(psarHeaderBuffer, 0, 16);
         var psarHeader = Encoding.ASCII.GetString(psarHeaderBuffer, 0, 12);
 
-        if (psarHeader == "PSISOIMG0000")
+        if (string.Equals(psarHeader, "PSISOIMG0000", StringComparison.Ordinal))
         {
             discs.Add(new PbpDiscInfo(stream, header.DataPsarOffset, 1));
         }
@@ -240,7 +229,7 @@ public sealed class PbpFile : IDisposable
         {
             // Multi-disc: check for PSTITLEIMG000000
             var fullHeader = Encoding.ASCII.GetString(psarHeaderBuffer, 0, 16);
-            if (fullHeader != "PSTITLEIMG000000")
+            if (!string.Equals(fullHeader, "PSTITLEIMG000000", StringComparison.Ordinal))
                 return PbpError.InvalidPsarHeader;
 
             // Skip past the header structure

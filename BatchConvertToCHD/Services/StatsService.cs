@@ -41,7 +41,7 @@ public class StatsService
             request.Headers.Add("Authorization", $"Bearer {_apiKey}");
             request.Content = JsonContent.Create(payload);
 
-            var response = await _httpClient.SendAsync(request);
+            var response = await _httpClient.SendAsync(request).ConfigureAwait(false);
             if (response.StatusCode == (System.Net.HttpStatusCode)429)
             {
                 Logger.Debug("Usage statistics rate-limited (HTTP 429) - this is expected behavior");

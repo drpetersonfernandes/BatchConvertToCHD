@@ -1,8 +1,11 @@
+using System.Runtime.InteropServices;
+
 namespace PBPSharp;
 
 /// <summary>
 /// Represents the header of a PBP file containing offsets to embedded resources.
 /// </summary>
+[StructLayout(LayoutKind.Auto)]
 public readonly struct PbpHeader
 {
     /// <summary>

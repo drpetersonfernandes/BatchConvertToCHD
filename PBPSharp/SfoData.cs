@@ -40,7 +40,7 @@ public sealed class SfoData
     /// </summary>
     public string? GetString(string key)
     {
-        return Entries.FirstOrDefault(e => e.Key == key)?.Value as string;
+        return Entries.FirstOrDefault(e => string.Equals(e.Key, key, StringComparison.Ordinal))?.Value as string;
     }
 
     /// <summary>
@@ -48,7 +48,7 @@ public sealed class SfoData
     /// </summary>
     public uint? GetUInt32(string key)
     {
-        return Entries.FirstOrDefault(e => e.Key == key)?.Value as uint?;
+        return Entries.FirstOrDefault(e => string.Equals(e.Key, key, StringComparison.Ordinal))?.Value as uint?;
     }
 
     /// <summary>

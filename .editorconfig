@@ -1,0 +1,2 @@
+[*.cs]
+dotnet_diagnostic.MA0051.severity = silent

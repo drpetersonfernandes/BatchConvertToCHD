@@ -1,8 +1,11 @@
+using System.Runtime.InteropServices;
+
 namespace CSOSharp;
 
 /// <summary>
 /// Represents the header of a CSO/CISO file.
 /// </summary>
+[StructLayout(LayoutKind.Auto)]
 public readonly struct CsoHeader
 {
     /// <summary>

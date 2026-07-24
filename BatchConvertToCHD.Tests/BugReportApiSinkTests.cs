@@ -139,7 +139,9 @@ public class BugReportApiSinkTests
             .WriteTo.Sink(sink)
             .CreateLogger();
 
-        var ex = new ArgumentException("Arg error");
+#pragma warning disable MA0015
+        var ex = new ArgumentException("Arg error", "ex");
+#pragma warning restore MA0015
         logger.Warning(ex, "Warning with exception");
 
         Assert.Equal(1, service.CallCount);

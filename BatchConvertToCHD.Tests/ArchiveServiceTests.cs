@@ -44,7 +44,7 @@ public class ArchiveServiceTests : IDisposable
 
         Assert.False(result.Success);
         Assert.Contains(logs, static msg => msg.Contains("WARNING", StringComparison.OrdinalIgnoreCase) && msg.Contains("missing", StringComparison.OrdinalIgnoreCase));
-        Assert.Contains("File not found", result.ErrorMessage);
+        Assert.Contains("File not found", result.ErrorMessage, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -58,7 +58,7 @@ public class ArchiveServiceTests : IDisposable
         var result = await service.ExtractArchiveAsync(filePath, tempDir, static _ => { }, CancellationToken.None);
 
         Assert.False(result.Success);
-        Assert.Contains("Unsupported archive type", result.ErrorMessage);
+        Assert.Contains("Unsupported archive type", result.ErrorMessage, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -105,11 +105,11 @@ public class ArchiveServiceTests : IDisposable
         var result = await service.ExtractArchiveAsync(zipPath, tempDir, static _ => { }, CancellationToken.None);
 
         Assert.False(result.Success);
-        Assert.Contains("No supported primary files found", result.ErrorMessage);
+        Assert.Contains("No supported primary files found", result.ErrorMessage, StringComparison.Ordinal);
     }
 
     [Fact]
-    public async Task ExtractCsoAsyncMaxCsoNotAvailableReturnsFailure()
+    public async Task ExtractCsoAsyncMissingCsoFileReturnsFailure()
     {
         var service = new ArchiveService("7za.exe", false);
         var tempIso = Path.Combine(_tempDir, "out.iso");
@@ -117,7 +117,7 @@ public class ArchiveServiceTests : IDisposable
         var result = await service.ExtractCsoAsync("input.cso", tempIso, _tempDir, static _ => { }, CancellationToken.None);
 
         Assert.False(result.Success);
-        Assert.Contains("maxcso.exe is not available", result.ErrorMessage);
+        Assert.Contains("CSOSharp", result.ErrorMessage, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -471,7 +471,7 @@ public class ArchiveServiceTests : IDisposable
 
         Assert.True(result.Success);
         Assert.Single(result.FilePaths);
-        Assert.Contains("subdir", result.FilePaths[0]);
+        Assert.Contains("subdir", result.FilePaths[0], StringComparison.Ordinal);
         Assert.EndsWith("game.iso", result.FilePaths[0], StringComparison.OrdinalIgnoreCase);
     }
 
@@ -728,7 +728,7 @@ public class ArchiveServiceTests : IDisposable
 
         Assert.False(result.Success);
         // Should NOT contain the generic "7za.exe extraction failed" message
-        Assert.DoesNotContain("7za.exe extraction failed", result.ErrorMessage);
+        Assert.DoesNotContain("7za.exe extraction failed", result.ErrorMessage, StringComparison.Ordinal);
     }
 
     [Fact]

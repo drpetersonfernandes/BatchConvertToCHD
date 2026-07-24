@@ -18,7 +18,7 @@ public class FileItemTests
         var fired = false;
         item.PropertyChanged += (_, e) =>
         {
-            if (e.PropertyName == nameof(FileItem.IsSelected))
+            if (string.Equals(e.PropertyName, nameof(FileItem.IsSelected), StringComparison.Ordinal))
             {
                 fired = true;
             }
@@ -48,7 +48,7 @@ public class FileItemTests
         var fired = false;
         item.PropertyChanged += (_, e) =>
         {
-            if (e.PropertyName == nameof(FileItem.FileName))
+            if (string.Equals(e.PropertyName, nameof(FileItem.FileName), StringComparison.Ordinal))
             {
                 fired = true;
             }
@@ -66,7 +66,7 @@ public class FileItemTests
         var fired = false;
         item.PropertyChanged += (_, e) =>
         {
-            if (e.PropertyName == nameof(FileItem.FullPath))
+            if (string.Equals(e.PropertyName, nameof(FileItem.FullPath), StringComparison.Ordinal))
             {
                 fired = true;
             }
@@ -84,7 +84,7 @@ public class FileItemTests
         var fired = false;
         item.PropertyChanged += (_, e) =>
         {
-            if (e.PropertyName == nameof(FileItem.DisplaySize))
+            if (string.Equals(e.PropertyName, nameof(FileItem.DisplaySize), StringComparison.Ordinal))
             {
                 fired = true;
             }
@@ -132,7 +132,7 @@ public class FileItemTests
         var displaySizeChanged = false;
         item.PropertyChanged += (_, e) =>
         {
-            if (e.PropertyName == nameof(FileItem.DisplaySize))
+            if (string.Equals(e.PropertyName, nameof(FileItem.DisplaySize), StringComparison.Ordinal))
             {
                 displaySizeChanged = true;
             }

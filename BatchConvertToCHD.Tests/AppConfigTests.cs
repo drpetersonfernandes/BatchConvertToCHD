@@ -71,6 +71,6 @@ public class AppConfigTests
     public void GitHubApiLatestReleaseUrlIsNotEmpty()
     {
         Assert.False(string.IsNullOrEmpty(AppConfig.GitHubApiLatestReleaseUrl));
-        Assert.StartsWith("https://api.github.com/repos/", AppConfig.GitHubApiLatestReleaseUrl);
+        Assert.StartsWith("https://api.github.com/repos/", AppConfig.GitHubApiLatestReleaseUrl, StringComparison.Ordinal);
     }
 }
