@@ -42,14 +42,18 @@ public class StatsService
             request.Content = JsonContent.Create(payload);
 
             var response = await _httpClient.SendAsync(request);
-            if (!response.IsSuccessStatusCode)
+            if (response.StatusCode == (System.Net.HttpStatusCode)429)
             {
-                Logger.Warning("Failed to record usage statistics: HTTP {StatusCode}", (int)response.StatusCode);
+                Logger.Debug("Usage statistics rate-limited (HTTP 429) - this is expected behavior");
+            }
+            else if (!response.IsSuccessStatusCode)
+            {
+                Logger.Information("Failed to record usage statistics: HTTP {StatusCode}", (int)response.StatusCode);
             }
         }
         catch (Exception ex)
         {
-            Logger.Warning(ex, "Failed to record usage statistics");
+            Logger.Debug(ex, "Failed to record usage statistics (network error)");
         }
     }
 }

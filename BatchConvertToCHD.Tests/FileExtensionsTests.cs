@@ -110,7 +110,7 @@ public class FileExtensionsTests
     [Fact]
     public void AllSupportedInputExtensionsForConversionArrayHasExpectedEntries()
     {
-        var expected = new[] { ".cue", ".iso", ".img", ".gdi", ".toc", ".raw", ".zip", ".7z", ".rar", ".cso", ".pbp", ".ccd" };
+        var expected = new[] { ".cue", ".iso", ".img", ".gdi", ".toc", ".raw", ".zip", ".7z", ".rar", ".cso", ".pbp" };
         Assert.Equal(expected, FileExtensions.AllSupportedInputExtensionsForConversion);
     }
 
@@ -137,8 +137,8 @@ public class FileExtensionsTests
     [InlineData(".cso", true)]
     [InlineData(".CSO", true)]
     [InlineData(".pbp", true)]
-    [InlineData(".ccd", true)]
-    [InlineData(".CCD", true)]
+    [InlineData(".ccd", false)]
+    [InlineData(".CCD", false)]
     [InlineData(".chd", false)]
     [InlineData(".sub", false)]
     [InlineData(".bin", false)]

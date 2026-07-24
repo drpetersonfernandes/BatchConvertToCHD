@@ -1628,7 +1628,7 @@ public partial class MainWindow : IDisposable
 
     private async Task<bool> ValidateDependentFilesAsync(string ext, string inputFile, string originalName, CancellationToken token)
     {
-        if (ext is not (FileExtensions.Cue or FileExtensions.Gdi or FileExtensions.Toc or FileExtensions.Ccd))
+        if (ext is not (FileExtensions.Cue or FileExtensions.Gdi or FileExtensions.Toc))
             return true;
 
         try
@@ -1637,7 +1637,6 @@ public partial class MainWindow : IDisposable
             {
                 FileExtensions.Cue => await GameFileParser.GetReferencedFilesFromCueAsync(inputFile, LogMessage, token),
                 FileExtensions.Gdi => await GameFileParser.GetReferencedFilesFromGdiAsync(inputFile, LogMessage, token),
-                FileExtensions.Ccd => [Path.ChangeExtension(inputFile, FileExtensions.Img), Path.ChangeExtension(inputFile, FileExtensions.Sub)],
                 _ => await GameFileParser.GetReferencedFilesFromTocAsync(inputFile, LogMessage, token)
             };
 
@@ -1685,7 +1684,7 @@ public partial class MainWindow : IDisposable
         try
         {
             List<string> filesToCopy;
-            if (ext is FileExtensions.Cue or FileExtensions.Gdi or FileExtensions.Toc or FileExtensions.Ccd)
+            if (ext is FileExtensions.Cue or FileExtensions.Gdi or FileExtensions.Toc)
             {
                 filesToCopy = [inputFile];
                 switch (ext)
@@ -1695,12 +1694,6 @@ public partial class MainWindow : IDisposable
                         break;
                     case FileExtensions.Gdi:
                         filesToCopy.AddRange(await GameFileParser.GetReferencedFilesFromGdiAsync(inputFile, LogMessage, token));
-                        break;
-                    case FileExtensions.Ccd:
-                        var imgFile = Path.ChangeExtension(inputFile, FileExtensions.Img);
-                        var subFile = Path.ChangeExtension(inputFile, FileExtensions.Sub);
-                        if (File.Exists(imgFile)) filesToCopy.Add(imgFile);
-                        if (File.Exists(subFile)) filesToCopy.Add(subFile);
                         break;
                     default:
                         filesToCopy.AddRange(await GameFileParser.GetReferencedFilesFromTocAsync(inputFile, LogMessage, token));
@@ -1748,7 +1741,7 @@ public partial class MainWindow : IDisposable
             catch { /* proceed */ }
 
             string tempInputFile;
-            if (ext is FileExtensions.Cue or FileExtensions.Gdi or FileExtensions.Toc or FileExtensions.Ccd)
+            if (ext is FileExtensions.Cue or FileExtensions.Gdi or FileExtensions.Toc)
             {
                 LogMessage("Copying game with dependencies to temporary directory...");
                 foreach (var file in filesToCopy.Distinct())
@@ -1791,9 +1784,7 @@ public partial class MainWindow : IDisposable
             {
                 LogMessage($"Deleting source: {originalName} (Option 'Delete originals' is enabled)");
 
-                var isImgWithCcd = ext == FileExtensions.Img && File.Exists(Path.ChangeExtension(inputFile, FileExtensions.Ccd));
-
-                if (ext is FileExtensions.Cue or FileExtensions.Gdi or FileExtensions.Toc or FileExtensions.Ccd || isImgWithCcd)
+                if (ext is FileExtensions.Cue or FileExtensions.Gdi or FileExtensions.Toc)
                     await DeleteOriginalGameFilesAsync(inputFile, token);
                 else
                     await TryDeleteFileAsync(inputFile, "original file", token);
@@ -2193,10 +2184,9 @@ public partial class MainWindow : IDisposable
         using var process = new Process();
 
         var isImg = inputFile.EndsWith(FileExtensions.Img, StringComparison.OrdinalIgnoreCase);
-        var isCcd = inputFile.EndsWith(FileExtensions.Ccd, StringComparison.OrdinalIgnoreCase);
-        var hasCcd = isImg && File.Exists(Path.ChangeExtension(inputFile, FileExtensions.Ccd));
+        var hasCue = isImg && File.Exists(Path.ChangeExtension(inputFile, FileExtensions.Cue));
 
-        var command = forceCd || isCcd || hasCcd || (!forceDvd && !inputFile.EndsWith(FileExtensions.Iso, StringComparison.OrdinalIgnoreCase) && !isImg && !inputFile.EndsWith(FileExtensions.Raw, StringComparison.OrdinalIgnoreCase))
+        var command = forceCd || hasCue || (!forceDvd && !inputFile.EndsWith(FileExtensions.Iso, StringComparison.OrdinalIgnoreCase) && !isImg && !inputFile.EndsWith(FileExtensions.Raw, StringComparison.OrdinalIgnoreCase))
             ? "createcd"
             : forceDvd || inputFile.EndsWith(FileExtensions.Iso, StringComparison.OrdinalIgnoreCase)
                 ? "createdvd"
@@ -2608,14 +2598,6 @@ public partial class MainWindow : IDisposable
             {
                 files.AddRange(await GameFileParser.GetReferencedFilesFromTocAsync(inputFile, LogMessage, token));
             }
-            else if (ext.Equals(FileExtensions.Ccd, StringComparison.OrdinalIgnoreCase))
-            {
-                // CloneCD references: .img, .sub
-                var imgFile = Path.ChangeExtension(inputFile, FileExtensions.Img);
-                var subFile = Path.ChangeExtension(inputFile, FileExtensions.Sub);
-                if (File.Exists(imgFile)) files.Add(imgFile);
-                if (File.Exists(subFile)) files.Add(subFile);
-            }
 
             foreach (var f in files.Distinct()) await TryDeleteFileAsync(f, "game file", token);
         }
@@ -2749,7 +2731,7 @@ public partial class MainWindow : IDisposable
                 // CHD compression typically reduces size, but warn if available space < 50% of input
                 if (availableGb < totalInputGb * 0.5)
                 {
-                    LogWarning($" Output drive ({outputRoot.TrimEnd('\\')}) has {availableGb:F1} GB free, input files total {totalInputGb:F1} GB.");
+                    LogMessage($" Output drive ({outputRoot.TrimEnd('\\')}) has {availableGb:F1} GB free, input files total {totalInputGb:F1} GB.");
                     LogMessage("         CHD compression usually reduces file size, but you may run out of disk space.");
                 }
             }
@@ -2758,7 +2740,7 @@ public partial class MainWindow : IDisposable
                 // Extraction: output can be larger than CHD input
                 if (availableGb < totalInputGb)
                 {
-                    LogWarning($" Output drive ({outputRoot.TrimEnd('\\')}) has {availableGb:F1} GB free, CHD files total {totalInputGb:F1} GB.");
+                    LogMessage($" Output drive ({outputRoot.TrimEnd('\\')}) has {availableGb:F1} GB free, CHD files total {totalInputGb:F1} GB.");
                     LogMessage("         Extracted files are typically larger than CHD files. You may run out of disk space.");
                 }
             }
@@ -2775,7 +2757,7 @@ public partial class MainWindow : IDisposable
                         var tempFreeGb = tempDrive.AvailableFreeSpace / (1024.0 * 1024.0 * 1024.0);
                         if (tempFreeGb < totalInputGb)
                         {
-                            LogWarning($" Temp drive ({tempRoot.TrimEnd('\\')}) has {tempFreeGb:F1} GB free, input files total {totalInputGb:F1} GB.");
+                            LogMessage($" Temp drive ({tempRoot.TrimEnd('\\')}) has {tempFreeGb:F1} GB free, input files total {totalInputGb:F1} GB.");
                             LogMessage("         Temporary files are created during conversion. You may run out of disk space.");
                         }
                     }

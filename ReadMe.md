@@ -26,7 +26,6 @@
 ### 🛠️ Intelligent Conversion & Extraction
 *   **Automated Batch Processing**: Convert entire directories of disk images with real-time progress monitoring and immediate cancellation response.
 *   **Recursive Structure Preservation**: Maintains your original directory hierarchy in the output folder when processing subfolders.
-*   **CloneCD Support**: Smart detection of `.img` files that belong to CloneCD sets (via `.ccd` files), automatically ensuring the correct `createcd` command is used.
 *   **Robust Extraction**: Supports extracting CHD files back to **.cue (CD)**, **.iso (DVD)**, **.gdi (Dreamcast/Naomi)**, and **.img (HDD)** with intelligent metadata auto-detection using the [CHDSharp](https://www.nuget.org/packages/CHDSharp) library.
 *   **Archive Integration**: Transparently handles `.zip`, `.7z`, and `.rar` archives, extracting and processing contents automatically while respecting cancellation tokens. Includes a 7za.exe fallback for `.7z` files that SharpCompress cannot extract.
 *   **CSO Decompression**: Built-in support for `.cso` (Compressed ISO) files via `maxcso` integration.
@@ -54,7 +53,7 @@
 
 | Category             | Formats                                                                      |
 |:---------------------|:-----------------------------------------------------------------------------|
-| **Standard Images**  | `.iso`, `.cue` (+`.bin`), `.img`, `.ccd` (+`.sub`), `.raw`, `.toc`           |
+| **Standard Images**  | `.iso`, `.cue` (+`.bin`), `.img`, `.raw`, `.toc`                           |
 | **Console Specific** | `.gdi` (Dreamcast), `.pbp` (PlayStation) |
 | **Compressed**       | `.cso` (Compressed ISO)                                                      |
 | **Archives**         | `.zip`, `.7z`, `.rar`                                                        |
@@ -67,8 +66,8 @@
 The application implements priority-based logic to ensure compatibility:
 
 1.  **DVD Images (`.iso`)**: Defaults to `createdvd`.
-2.  **CloneCD / Multi-track Images (`.ccd`, `.cue`, `.gdi`, `.toc`)**: Defaults to `createcd`.
-3.  **Hard Disk Images (`.img`)**: Defaults to `createhd` unless an accompanying `.ccd` file is detected.
+2.  **Multi-track Images (`.cue`, `.gdi`, `.toc`)**: Defaults to `createcd`.
+3.  **Hard Disk Images (`.img`)**: Defaults to `createhd` unless an accompanying `.cue` file is detected, in which case `createcd` is used.
 4.  **Raw Data (`.raw`)**: Defaults to `createraw`.
 5.  **PlayStation PBP (`.pbp`)**: Extracts to CUE/BIN using `psxpackager`, then converts to CHD using `createcd`.
 

@@ -37,7 +37,7 @@ public static class FileExtensions
     /// </summary>
     public static readonly string[] AllSupportedInputExtensionsForConversion =
     [
-        Cue, Iso, Img, Gdi, Toc, Raw, Zip, SevenZip, Rar, Cso, Pbp, Ccd
+        Cue, Iso, Img, Gdi, Toc, Raw, Zip, SevenZip, Rar, Cso, Pbp
     ];
 
     /// <summary>
