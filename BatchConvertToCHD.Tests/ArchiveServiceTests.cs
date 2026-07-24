@@ -35,7 +35,7 @@ public class ArchiveServiceTests : IDisposable
     [Fact]
     public async Task ExtractArchiveAsyncMissingFileReturnsFailureAndLogsWarning()
     {
-        var service = new ArchiveService("maxcso.exe", false, "7za.exe", false);
+        var service = new ArchiveService("7za.exe", false);
         var missingPath = Path.Combine(_tempDir, "missing.7z");
         var tempDir = Path.Combine(_tempDir, "extract");
         var logs = new List<string>();
@@ -50,7 +50,7 @@ public class ArchiveServiceTests : IDisposable
     [Fact]
     public async Task ExtractArchiveAsyncUnsupportedExtensionReturnsFailure()
     {
-        var service = new ArchiveService("maxcso.exe", false, "7za.exe", false);
+        var service = new ArchiveService("7za.exe", false);
         var filePath = Path.Combine(_tempDir, "test.tar");
         File.WriteAllText(filePath, "dummy");
         var tempDir = Path.Combine(_tempDir, "extract");
@@ -64,7 +64,7 @@ public class ArchiveServiceTests : IDisposable
     [Fact]
     public async Task ExtractArchiveAsyncValidZipExtractsFiles()
     {
-        var service = new ArchiveService("maxcso.exe", false, "7za.exe", false);
+        var service = new ArchiveService("7za.exe", false);
         var zipPath = Path.Combine(_tempDir, "test.zip");
         var tempDir = Path.Combine(_tempDir, "extract");
         Directory.CreateDirectory(tempDir);
@@ -88,7 +88,7 @@ public class ArchiveServiceTests : IDisposable
     [Fact]
     public async Task ExtractArchiveAsyncValidZipNoPrimaryFilesReturnsFailure()
     {
-        var service = new ArchiveService("maxcso.exe", false, "7za.exe", false);
+        var service = new ArchiveService("7za.exe", false);
         var zipPath = Path.Combine(_tempDir, "test.zip");
         var tempDir = Path.Combine(_tempDir, "extract");
         Directory.CreateDirectory(tempDir);
@@ -111,7 +111,7 @@ public class ArchiveServiceTests : IDisposable
     [Fact]
     public async Task ExtractCsoAsyncMaxCsoNotAvailableReturnsFailure()
     {
-        var service = new ArchiveService("maxcso.exe", false, "7za.exe", false);
+        var service = new ArchiveService("7za.exe", false);
         var tempIso = Path.Combine(_tempDir, "out.iso");
 
         var result = await service.ExtractCsoAsync("input.cso", tempIso, _tempDir, static _ => { }, CancellationToken.None);
@@ -123,7 +123,7 @@ public class ArchiveServiceTests : IDisposable
     [Fact]
     public void DisposeDoesNotThrow()
     {
-        var service = new ArchiveService("maxcso.exe", false, "7za.exe", false);
+        var service = new ArchiveService("7za.exe", false);
         var exception = Record.Exception(service.Dispose);
         Assert.Null(exception);
     }
@@ -154,7 +154,7 @@ public class ArchiveServiceTests : IDisposable
     [Fact]
     public async Task ExtractArchiveAsyncInvalidSevenZipReturnsFailure()
     {
-        var service = new ArchiveService("maxcso.exe", false, "7za.exe", false);
+        var service = new ArchiveService("7za.exe", false);
         var sevenZPath = Path.Combine(_tempDir, "invalid.7z");
         File.WriteAllText(sevenZPath, "not a valid 7z archive");
         var tempDir = Path.Combine(_tempDir, "extract");
@@ -167,7 +167,7 @@ public class ArchiveServiceTests : IDisposable
     [Fact]
     public async Task ExtractArchiveAsyncInvalidRarReturnsFailure()
     {
-        var service = new ArchiveService("maxcso.exe", false, "7za.exe", false);
+        var service = new ArchiveService("7za.exe", false);
         var rarPath = Path.Combine(_tempDir, "invalid.rar");
         File.WriteAllText(rarPath, "not a valid rar archive");
         var tempDir = Path.Combine(_tempDir, "extract");
@@ -409,7 +409,7 @@ public class ArchiveServiceTests : IDisposable
     [Fact]
     public async Task ExtractArchiveAsyncInvalidFormatExceptionReturnsInvalidOrIncompleteMessage()
     {
-        var service = new ArchiveService("maxcso.exe", false, "7za.exe", false);
+        var service = new ArchiveService("7za.exe", false);
         // Create a file with RAR extension but invalid content to trigger InvalidFormatException
         var rarPath = Path.Combine(_tempDir, "bad.rar");
         File.WriteAllText(rarPath, "not a valid rar archive");
@@ -429,7 +429,7 @@ public class ArchiveServiceTests : IDisposable
     [Fact]
     public async Task ExtractArchiveAsyncValidZipWithMultipleFilesExtractsAll()
     {
-        var service = new ArchiveService("maxcso.exe", false, "7za.exe", false);
+        var service = new ArchiveService("7za.exe", false);
         var zipPath = Path.Combine(_tempDir, "multi.zip");
         var tempDir = Path.Combine(_tempDir, "extract");
         Directory.CreateDirectory(tempDir);
@@ -455,7 +455,7 @@ public class ArchiveServiceTests : IDisposable
     [Fact]
     public async Task ExtractArchiveAsyncValidZipWithSubdirectoriesExtractsFiles()
     {
-        var service = new ArchiveService("maxcso.exe", false, "7za.exe", false);
+        var service = new ArchiveService("7za.exe", false);
         var zipPath = Path.Combine(_tempDir, "nested.zip");
         var tempDir = Path.Combine(_tempDir, "extract");
         Directory.CreateDirectory(tempDir);
@@ -478,7 +478,7 @@ public class ArchiveServiceTests : IDisposable
     [Fact]
     public async Task ExtractArchiveAsyncCancellationThrowsOperationCanceled()
     {
-        var service = new ArchiveService("maxcso.exe", false, "7za.exe", false);
+        var service = new ArchiveService("7za.exe", false);
         var zipPath = Path.Combine(_tempDir, "cancel.zip");
         var tempDir = Path.Combine(_tempDir, "extract");
         Directory.CreateDirectory(tempDir);
@@ -502,7 +502,7 @@ public class ArchiveServiceTests : IDisposable
     [Fact]
     public async Task ExtractArchiveAsyncInvalidSevenZipWith7ZaUnavailableReturnsFailure()
     {
-        var service = new ArchiveService("maxcso.exe", false, "7za.exe", false);
+        var service = new ArchiveService("7za.exe", false);
         var sevenZPath = Path.Combine(_tempDir, "bad.7z");
         File.WriteAllText(sevenZPath, "not a valid 7z archive");
         var tempDir = Path.Combine(_tempDir, "extract");
@@ -520,7 +520,7 @@ public class ArchiveServiceTests : IDisposable
     {
         // Use a non-existent 7za path so the fallback will fail, but we can verify it was attempted
         var fake7ZaPath = Path.Combine(_tempDir, "7za.exe");
-        var service = new ArchiveService("maxcso.exe", false, fake7ZaPath, true);
+        var service = new ArchiveService(fake7ZaPath, true);
         var sevenZPath = Path.Combine(_tempDir, "bad.7z");
         File.WriteAllText(sevenZPath, "not a valid 7z archive");
         var tempDir = Path.Combine(_tempDir, "extract");
@@ -545,7 +545,7 @@ public class ArchiveServiceTests : IDisposable
         // For a proper integration test, a real 7z file is needed. Here we test that the error path works.
         File.WriteAllBytes(sevenZPath, new byte[] { 0x37, 0x7A, 0xBC, 0xAF, 0x27, 0x1C, 0x00, 0x04 });
 
-        var service = new ArchiveService("maxcso.exe", false, "7za.exe", false);
+        var service = new ArchiveService("7za.exe", false);
         var result = await service.ExtractArchiveAsync(sevenZPath, tempDir, static _ => { }, CancellationToken.None);
 
         // This will either succeed (if the minimal header is valid enough) or fail gracefully
@@ -557,7 +557,7 @@ public class ArchiveServiceTests : IDisposable
     [Fact]
     public async Task ExtractArchiveAsyncValidZipWithLogOutput()
     {
-        var service = new ArchiveService("maxcso.exe", false, "7za.exe", false);
+        var service = new ArchiveService("7za.exe", false);
         var zipPath = Path.Combine(_tempDir, "log_test.zip");
         var tempDir = Path.Combine(_tempDir, "extract");
         Directory.CreateDirectory(tempDir);
@@ -603,7 +603,7 @@ public class ArchiveServiceTests : IDisposable
     [Fact]
     public async Task ExtractArchiveAsyncCsoAsyncWithCancellationThrows()
     {
-        var service = new ArchiveService("maxcso.exe", true, "7za.exe", false);
+        var service = new ArchiveService("7za.exe", false);
         var csoPath = Path.Combine(_tempDir, "test.cso");
         File.WriteAllBytes(csoPath, new byte[] { 0x01 });
         var tempIso = Path.Combine(_tempDir, "out.iso");
@@ -673,7 +673,7 @@ public class ArchiveServiceTests : IDisposable
     [Fact]
     public async Task ExtractArchiveAsyncLogsExtractionPath()
     {
-        var service = new ArchiveService("maxcso.exe", false, "7za.exe", false);
+        var service = new ArchiveService("7za.exe", false);
         var zipPath = Path.Combine(_tempDir, "log_test.zip");
         var tempDir = Path.Combine(_tempDir, "extract");
         Directory.CreateDirectory(tempDir);
@@ -698,7 +698,7 @@ public class ArchiveServiceTests : IDisposable
     public async Task ExtractArchiveAsyncCorrupt7ZWith7ZaReturnsCorruptErrorMessage()
     {
         var sevenZipPath = Path.Combine(AppContext.BaseDirectory, "7za.exe");
-        var service = new ArchiveService("maxcso.exe", false, sevenZipPath, true);
+        var service = new ArchiveService(sevenZipPath, true);
         var corruptPath = Path.Combine(_tempDir, "corrupt.7z");
         File.WriteAllText(corruptPath, "this is not a valid 7z archive file at all");
         var tempDir = Path.Combine(_tempDir, "extract");
@@ -718,7 +718,7 @@ public class ArchiveServiceTests : IDisposable
     public async Task ExtractArchiveAsyncCorrupt7ZWith7ZaDoesNotReturnGenericExtractionFailed()
     {
         var sevenZipPath = Path.Combine(AppContext.BaseDirectory, "7za.exe");
-        var service = new ArchiveService("maxcso.exe", false, sevenZipPath, true);
+        var service = new ArchiveService(sevenZipPath, true);
         var corruptPath = Path.Combine(_tempDir, "corrupt2.7z");
         File.WriteAllBytes(corruptPath, new byte[] { 0x00, 0x01, 0x02, 0x03 });
         var tempDir = Path.Combine(_tempDir, "extract");
@@ -735,7 +735,7 @@ public class ArchiveServiceTests : IDisposable
     public async Task ExtractArchiveAsyncCorrupt7ZWith7ZaLogs7ZaFallbackAttempt()
     {
         var sevenZipPath = Path.Combine(AppContext.BaseDirectory, "7za.exe");
-        var service = new ArchiveService("maxcso.exe", false, sevenZipPath, true);
+        var service = new ArchiveService(sevenZipPath, true);
         var corruptPath = Path.Combine(_tempDir, "corrupt3.7z");
         File.WriteAllText(corruptPath, "not a 7z archive");
         var tempDir = Path.Combine(_tempDir, "extract");
@@ -750,7 +750,7 @@ public class ArchiveServiceTests : IDisposable
     [Fact]
     public async Task ExtractArchiveAsyncCorrupt7ZWithout7ZaReturnsFailure()
     {
-        var service = new ArchiveService("maxcso.exe", false, "7za.exe", false);
+        var service = new ArchiveService("7za.exe", false);
         var corruptPath = Path.Combine(_tempDir, "corrupt_no7za.7z");
         File.WriteAllText(corruptPath, "not a 7z archive");
         var tempDir = Path.Combine(_tempDir, "extract");

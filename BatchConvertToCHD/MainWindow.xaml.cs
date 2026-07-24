@@ -14,6 +14,7 @@ using BatchConvertToCHD.Services;
 using BatchConvertToCHD.Utilities;
 using CHDSharp;
 using CHDSharp.Models;
+using PBPSharp;
 using Serilog;
 
 namespace BatchConvertToCHD;
@@ -26,11 +27,8 @@ public partial class MainWindow : IDisposable
 {
     private CancellationTokenSource _cts;
     private readonly object _ctsLock = new();
-    private readonly bool _isMaxCsoAvailable;
     private readonly bool _isChdmanAvailable;
 
-    private readonly string _psxPackagerPath;
-    private readonly bool _isPsxPackagerAvailable;
     private readonly bool _isSevenZipAvailable;
 
     // Statistics
@@ -94,18 +92,12 @@ public partial class MainWindow : IDisposable
         var chdmanPath = Path.Combine(appDirectory, AppConfig.ChdmanExeName);
         _isChdmanAvailable = File.Exists(chdmanPath);
 
-        var maxCsoPath = Path.Combine(appDirectory, "maxcso.exe");
-        _isMaxCsoAvailable = File.Exists(maxCsoPath) && !AppConfig.IsArm64;
-
-        _psxPackagerPath = Path.Combine(appDirectory, AppConfig.PsxPackagerExeName);
-        _isPsxPackagerAvailable = File.Exists(_psxPackagerPath);
-
         var sevenZipExePath = Path.Combine(appDirectory, AppConfig.SevenZipExeName);
         _isSevenZipAvailable = File.Exists(sevenZipExePath);
 
         // Initialize Services
         _updateService = new UpdateService(AppConfig.ApplicationName);
-        _archiveService = new ArchiveService(maxCsoPath, _isMaxCsoAvailable, sevenZipExePath, _isSevenZipAvailable);
+        _archiveService = new ArchiveService(sevenZipExePath, _isSevenZipAvailable);
         _screenshotService = new ScreenshotService();
 
         // Register global F8 hotkey once the window handle is available
@@ -230,23 +222,6 @@ public partial class MainWindow : IDisposable
             LogError(" " + msg.Replace("\n", " "));
             ShowMessageBox(msg, "Missing Dependency", MessageBoxButton.OK, MessageBoxImage.Error);
         }
-
-        // Optional but recommended dependencies
-        var missingOptional = new List<string>();
-        if (!_isMaxCsoAvailable && !AppConfig.IsArm64)
-        {
-            missingOptional.Add("maxcso.exe (required for .cso files)");
-        }
-
-        if (!_isPsxPackagerAvailable)
-        {
-            missingOptional.Add(AppConfig.PsxPackagerExeName + " (required for .pbp files)");
-        }
-
-        if (missingOptional.Count > 0)
-        {
-            LogMessage("NOTE: Some optional components are missing: " + string.Join(", ", missingOptional));
-        }
     }
 
     private static PerformanceCounter? CreateWritePerformanceCounter()
@@ -307,14 +282,6 @@ public partial class MainWindow : IDisposable
             StatusBarChdman.Foreground = _isChdmanAvailable
                 ? (System.Windows.Media.Brush?)Application.Current.FindResource("SuccessTextBrush") ?? System.Windows.Media.Brushes.Gray
                 : (System.Windows.Media.Brush?)Application.Current.FindResource("FailedTextBrush") ?? System.Windows.Media.Brushes.Gray;
-            StatusBarMaxcso.Text = " MAXCSO ";
-            StatusBarMaxcso.Foreground = _isMaxCsoAvailable
-                ? (System.Windows.Media.Brush?)Application.Current.FindResource("SuccessTextBrush") ?? System.Windows.Media.Brushes.Gray
-                : (System.Windows.Media.Brush?)Application.Current.FindResource("SkippedTextBrush") ?? System.Windows.Media.Brushes.Gray;
-            StatusBarPsxPackager.Text = " PSXPACKAGER ";
-            StatusBarPsxPackager.Foreground = _isPsxPackagerAvailable
-                ? (System.Windows.Media.Brush?)Application.Current.FindResource("SuccessTextBrush") ?? System.Windows.Media.Brushes.Gray
-                : (System.Windows.Media.Brush?)Application.Current.FindResource("SkippedTextBrush") ?? System.Windows.Media.Brushes.Gray;
             StatusBarMessage.Text = "Ready";
             SpeedValue.Text = "0.0 MB/s";
         });
@@ -539,16 +506,6 @@ public partial class MainWindow : IDisposable
         if (!_isChdmanAvailable)
         {
             LogWarning(" chdman.exe not found!");
-        }
-
-        if (!_isMaxCsoAvailable)
-        {
-            LogWarning(" maxcso.exe not found.");
-        }
-
-        if (!_isPsxPackagerAvailable)
-        {
-            LogWarning(" psxpackager.exe not found. PBP conversion unavailable.");
         }
 
         LogMessage("--- Ready for Conversion ---");
@@ -1581,12 +1538,6 @@ public partial class MainWindow : IDisposable
 
     private async Task<bool> ProcessPbpFileForConversionAsync(string inputFile, string originalName, string inputFolder, string outputFolder, List<string> tempDirs, CancellationToken token, string chdmanPath, int cores, bool forceCd, bool forceDvd, int? timeoutMinutes, bool deleteOriginal)
     {
-        if (!_isPsxPackagerAvailable)
-        {
-            LogError($" Cannot process {originalName}. psxpackager.exe not found.");
-            return false;
-        }
-
         long pbpSize = 0;
         try { pbpSize = new FileInfo(inputFile).Length; } catch { /* ignored */ }
 
@@ -1594,7 +1545,7 @@ public partial class MainWindow : IDisposable
         tempDirs.Add(tempDir);
         await Task.Run(() => Directory.CreateDirectory(tempDir), token);
 
-        var result = await ExtractPbpToCueBinAsync(_psxPackagerPath, inputFile, tempDir, token);
+        var result = await ExtractPbpToCueBinAsync(inputFile, tempDir, LogMessage, token);
         if (!result.Success || result.CueFilePaths.Count == 0)
         {
             LogError($" Failed to extract PBP file: {originalName}");
@@ -2332,96 +2283,65 @@ public partial class MainWindow : IDisposable
         return false;
     }
 
-    private async Task<PbpExtractionResult> ExtractPbpToCueBinAsync(string psxPackagerPath, string inputFile, string outputFolder, CancellationToken token)
+    private static async Task<PbpExtractionResult> ExtractPbpToCueBinAsync(string inputFile, string outputFolder, Action<string> onLog, CancellationToken token)
     {
-        using var process = new Process();
-        var args = $"-i \"{inputFile}\" -o \"{outputFolder}\" -x";
-        LogMessage($"PSXPACKAGER: Extracting {Path.GetFileName(inputFile)}");
-
-        // Capture both output streams for diagnostics
-        process.StartInfo = new ProcessStartInfo
-        {
-            FileName = psxPackagerPath,
-            Arguments = args,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            UseShellExecute = false,
-            CreateNoWindow = true,
-            ErrorDialog = false
-        };
-
-        var outputBuilder = new StringBuilder();
-        var errorBuilder = new StringBuilder();
-        process.OutputDataReceived += (_, args2) =>
-        {
-            if (args2.Data != null) outputBuilder.AppendLine(args2.Data);
-        };
-        process.ErrorDataReceived += (_, args2) =>
-        {
-            if (args2.Data != null) errorBuilder.AppendLine(args2.Data);
-        };
-
-        using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(token);
-        timeoutCts.CancelAfter(TimeSpan.FromHours(AppConfig.MaxConversionTimeoutHours));
-
-        process.Start();
-        process.BeginOutputReadLine();
-        process.BeginErrorReadLine();
+        onLog($"PBPSharp: Extracting {Path.GetFileName(inputFile)}");
 
         try
         {
-            await process.WaitForExitAsync(timeoutCts.Token);
-            if (token.IsCancellationRequested && !process.HasExited)
+            var extractionResult = await Task.Run(() =>
             {
-                throw new OperationCanceledException();
+                var error = PbpFile.Open(inputFile, out var pbpFile);
+                if (error != PbpError.None || pbpFile == null)
+                    return (Success: false, CuePaths: new List<string>(), Error: $"Failed to open PBP file: {error}");
+
+                using (pbpFile)
+                {
+                    var cuePaths = new List<string>();
+
+                    foreach (var t in pbpFile.Discs)
+                    {
+                        token.ThrowIfCancellationRequested();
+
+                        var disc = t;
+                        var suffix = pbpFile.IsMultiDisc ? $" - Disc {disc.Index}" : "";
+                        var binPath = Path.Combine(outputFolder, $"{Path.GetFileNameWithoutExtension(inputFile)}{suffix}.bin");
+                        var cuePath = Path.ChangeExtension(binPath, ".cue");
+
+                        var extractError = disc.ExtractToBinCue(binPath, cuePath, null, token);
+                        if (extractError != PbpError.None)
+                            return (Success: false, CuePaths: new List<string>(), Error: $"Failed to extract disc {disc.Index}: {extractError}");
+
+                        cuePaths.Add(cuePath);
+                    }
+
+                    return (Success: true, CuePaths: cuePaths, Error: string.Empty);
+                }
+            }, token);
+
+            if (!extractionResult.Success)
+            {
+                onLog($"PBPSharp: Extraction failed - {extractionResult.Error}");
+                return new PbpExtractionResult { Success = false };
             }
+
+            onLog($"PBPSharp: Extracted {extractionResult.CuePaths.Count} disc(s)");
+            return new PbpExtractionResult
+            {
+                Success = true,
+                CueFilePaths = extractionResult.CuePaths,
+                OutputFolder = outputFolder
+            };
         }
-        finally
+        catch (OperationCanceledException)
         {
-            if (!process.HasExited)
-            {
-                process.Kill(true);
-                await Task.Run(() => process.WaitForExit(5000), CancellationToken.None);
-            }
-
-            process.CancelOutputRead();
-            process.CancelErrorRead();
+            throw;
         }
-
-        if (process.ExitCode != 0)
+        catch (Exception ex)
         {
-            var errorText = errorBuilder.ToString().TrimEnd();
-            var outputText = outputBuilder.ToString().TrimEnd();
-            var detail = errorText.Length > 0 ? errorText : outputText;
-            if (detail.Length > 0)
-            {
-                LogMessage($"PSXPACKAGER: Extraction failed with exit code {process.ExitCode}: {detail}");
-            }
-            else
-            {
-                LogMessage($"PSXPACKAGER: Extraction failed with exit code {process.ExitCode} (no output captured)");
-            }
-
+            onLog($"PBPSharp: Extraction error - {ex.Message}");
             return new PbpExtractionResult { Success = false };
         }
-
-        // Find all generated CUE files in the output folder
-        var cueFiles = Directory.GetFiles(outputFolder, "*.cue");
-        if (cueFiles.Length == 0)
-        {
-            LogMessage("PSXPACKAGER: No CUE file found after extraction");
-            return new PbpExtractionResult { Success = false };
-        }
-
-        // Return all CUE files (multi-disc PBP files produce multiple CUE files)
-        LogMessage($"PSXPACKAGER: Extracted {cueFiles.Length} disc(s)");
-
-        return new PbpExtractionResult
-        {
-            Success = true,
-            CueFilePaths = cueFiles.ToList(),
-            OutputFolder = outputFolder
-        };
     }
 
     private void UpdateWriteSpeedFromPerformanceCounter()
@@ -2970,7 +2890,7 @@ public partial class MainWindow : IDisposable
         try
         {
             var currentProcessId = Environment.ProcessId;
-            var toolNames = new[] { "chdman", "maxcso", "7za", AppConfig.PsxPackagerExeName };
+            var toolNames = new[] { "chdman", "7za", AppConfig.SevenZipExeName };
 
             foreach (var toolName in toolNames)
             {

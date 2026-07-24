@@ -455,14 +455,8 @@
                                 ToolTip="Status of required external tools">
                         <TextBlock Text="Dependencies:" Margin="0,0,5,0" Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                                    ToolTip="External tools required for processing" />
-                        <TextBlock x:Name="StatusBarChdman" Text="CHDMAN" Foreground="{StaticResource SuccessTextBrush}" Margin="0,0,5,0"
+                        <TextBlock x:Name="StatusBarChdman" Text="CHDMAN" Foreground="{StaticResource SuccessTextBrush}" Margin="0"
                                    ToolTip="Status of chdman.exe" />
-                        <Separator Margin="0,0,5,0" Foreground="{DynamicResource TextFillColorDisabledBrush}" />
-                        <TextBlock x:Name="StatusBarMaxcso" Text="MAXCSO" Foreground="{StaticResource SuccessTextBrush}" Margin="0,0,5,0"
-                                   ToolTip="Status of maxcso.exe" />
-                        <Separator Margin="0,0,5,0" Foreground="{DynamicResource TextFillColorDisabledBrush}" />
-                        <TextBlock x:Name="StatusBarPsxPackager" Text="PSXPACKAGER" Foreground="{StaticResource SuccessTextBrush}" Margin="0"
-                                   ToolTip="Status of psxpackager.exe" />
                     </StackPanel>
                 </Grid>
             </Border>

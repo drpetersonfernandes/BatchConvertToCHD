@@ -4,6 +4,7 @@ using System.IO.Compression;
 using System.Text;
 using System.Security;
 using BatchConvertToCHD.Utilities;
+using CSOSharp;
 using Serilog;
 using SharpCompress.Archives;
 using SharpCompress.Archives.SevenZip;
@@ -14,14 +15,12 @@ namespace BatchConvertToCHD.Services;
 
 /// <summary>
 /// Handles decompression and extraction of compressed disc image and archive files.
-/// Supports CSO (via maxcso), ZIP (System.IO.Compression with 7za fallback),
+/// Supports CSO (via CSOSharp), ZIP (System.IO.Compression with 7za fallback),
 /// 7z and RAR (via SharpCompress with 7za fallback).
 /// Implements <see cref="IDisposable"/> for deterministic cleanup.
 /// </summary>
 public class ArchiveService : IDisposable
 {
-    private readonly string _maxCsoPath;
-    private readonly bool _isMaxCsoAvailable;
     private readonly string _sevenZipExePath;
     private readonly bool _isSevenZipAvailable;
     private static readonly ILogger Logger = Log.ForContext<ArchiveService>();
@@ -29,20 +28,16 @@ public class ArchiveService : IDisposable
     /// <summary>
     /// Initializes a new instance of the <see cref="ArchiveService"/> class.
     /// </summary>
-    /// <param name="maxCsoPath">The full path to the maxcso executable.</param>
-    /// <param name="isMaxCsoAvailable">Whether the maxcso executable was found on disk.</param>
     /// <param name="sevenZipExePath">The full path to the 7za executable.</param>
     /// <param name="isSevenZipAvailable">Whether the 7za executable was found on disk.</param>
-    public ArchiveService(string maxCsoPath, bool isMaxCsoAvailable, string sevenZipExePath, bool isSevenZipAvailable)
+    public ArchiveService(string sevenZipExePath, bool isSevenZipAvailable)
     {
-        _maxCsoPath = maxCsoPath;
-        _isMaxCsoAvailable = isMaxCsoAvailable;
         _sevenZipExePath = sevenZipExePath;
         _isSevenZipAvailable = isSevenZipAvailable;
     }
 
     /// <summary>
-    /// Decompresses a CSO (Compressed ISO) file to a temporary ISO file using maxcso.
+    /// Decompresses a CSO/CISO file to a temporary ISO file using CSOSharp.
     /// </summary>
     /// <param name="originalCsoPath">The full path to the source CSO file.</param>
     /// <param name="tempOutputIsoPath">The full path where the decompressed ISO should be written.</param>
@@ -60,57 +55,41 @@ public class ArchiveService : IDisposable
         Action<string> onLog,
         CancellationToken token)
     {
-        if (!_isMaxCsoAvailable)
-            return (false, string.Empty, tempDirectoryRoot, "maxcso.exe is not available.");
-
         var csoFileName = Path.GetFileName(originalCsoPath);
-        using var process = new Process();
 
         try
         {
             token.ThrowIfCancellationRequested();
             onLog($"Decompressing {csoFileName} to temporary ISO: {tempOutputIsoPath}");
 
-            process.StartInfo = new ProcessStartInfo
+            var error = await Task.Run(() =>
             {
-                FileName = _maxCsoPath,
-                Arguments = $"--decompress \"{originalCsoPath}\" -o \"{tempOutputIsoPath}\"",
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                UseShellExecute = false,
-                CreateNoWindow = true,
-                ErrorDialog = false
-            };
+                var result = CsoFile.Open(originalCsoPath, out var csoFile);
+                if (result != CsoError.None || csoFile == null)
+                    return result;
 
-            var outputBuilder = new StringBuilder();
-            process.OutputDataReceived += (_, args) =>
-            {
-                if (args.Data != null) outputBuilder.AppendLine(args.Data);
-            };
-            process.ErrorDataReceived += (_, args) =>
-            {
-                if (args.Data == null) return;
+                using (csoFile)
+                {
+                    return csoFile.ExtractToIso(tempOutputIsoPath, progress: null, token);
+                }
+            }, token);
 
-                outputBuilder.AppendLine(args.Data);
-                onLog($"[MAXCSO STDERR] {args.Data}");
-            };
+            if (error != CsoError.None)
+                return (false, string.Empty, tempDirectoryRoot, $"CSOSharp failed to decompress {csoFileName}: {error}");
 
-            process.Start();
-            process.BeginOutputReadLine();
-            process.BeginErrorReadLine();
-            await process.WaitForExitAsync(token);
-
-            if (process.ExitCode != 0 || !File.Exists(tempOutputIsoPath))
-                return (false, string.Empty, tempDirectoryRoot, $"MaxCSO failed. Exit code: {process.ExitCode}. Output: {outputBuilder}");
+            if (!File.Exists(tempOutputIsoPath))
+                return (false, string.Empty, tempDirectoryRoot, $"CSOSharp extraction produced no output file for {csoFileName}");
 
             onLog($"Successfully decompressed {csoFileName}");
             return (true, tempOutputIsoPath, tempDirectoryRoot, string.Empty);
         }
         catch (OperationCanceledException)
         {
-            try { if (!process.HasExited) process.Kill(true); } catch { /* ignore */ }
-
             throw;
+        }
+        catch (Exception ex)
+        {
+            return (false, string.Empty, tempDirectoryRoot, $"Error decompressing CSO {csoFileName}: {ex.Message}");
         }
     }
 

@@ -29,11 +29,6 @@ internal static class AppConfig
     public static string SevenZipExeName => IsArm64 ? "7za_arm64.exe" : "7za.exe";
 
     /// <summary>
-    /// The filename of the PSXPackager executable used for PlayStation package handling.
-    /// </summary>
-    public const string PsxPackagerExeName = "psxpackager.exe";
-
-    /// <summary>
     /// The API endpoint URL for submitting bug reports.
     /// </summary>
     public const string BugReportApiUrl = "https://www.purelogiccode.com/bugreport/api/send-bug-report";

@@ -85,20 +85,20 @@
                         <Run Text=" from the MAME project for conversions and verifications." />
                     </TextBlock>
                     <TextBlock Margin="0,0,0,8" Style="{StaticResource AboutBodyTextStyle}"
-                               ToolTip="Uses maxcso for CSO compression format decompression during conversion">
+                               ToolTip="Uses CSOSharp for CSO/CISO file decompression">
                         <Run Text="Uses " />
-                        <Hyperlink NavigateUri="https://github.com/unknownbrackets/maxcso" RequestNavigate="Hyperlink_RequestNavigate"
+                        <Hyperlink NavigateUri="https://github.com/PureLogicCode/CSOSharp" RequestNavigate="Hyperlink_RequestNavigate"
                                     Foreground="{DynamicResource AccentFillColorDefaultBrush}" FontWeight="Bold" TextDecorations="Underline"
-                                    ToolTip="Visit the maxcso project on GitHub">maxcso</Hyperlink>
-                        <Run Text=" for .cso decompression during conversion." />
+                                    ToolTip="Visit the CSOSharp project on GitHub">CSOSharp</Hyperlink>
+                        <Run Text=" for .cso/.ciso decompression during conversion." />
                     </TextBlock>
                     <TextBlock Margin="0,0,0,8" Style="{StaticResource AboutBodyTextStyle}"
-                               ToolTip="Uses psxpackager for PlayStation PKG and PBP file handling">
+                               ToolTip="Uses PBPSharp for PlayStation PBP file handling">
                         <Run Text="Uses " />
-                        <Hyperlink NavigateUri="https://github.com/RupertAvery/PSXPackager" RequestNavigate="Hyperlink_RequestNavigate"
+                        <Hyperlink NavigateUri="https://github.com/PureLogicCode/PBPSharp" RequestNavigate="Hyperlink_RequestNavigate"
                                     Foreground="{DynamicResource AccentFillColorDefaultBrush}" FontWeight="Bold" TextDecorations="Underline"
-                                    ToolTip="Visit the PSXPackager project on GitHub">psxpackager</Hyperlink>
-                        <Run Text=" for PlayStation .pkg and .pbp file handling." />
+                                    ToolTip="Visit the PBPSharp project on GitHub">PBPSharp</Hyperlink>
+                        <Run Text=" for PlayStation .pbp file handling." />
                     </TextBlock>
                 </StackPanel>
             </Border>

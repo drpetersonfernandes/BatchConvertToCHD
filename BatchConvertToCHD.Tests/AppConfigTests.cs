@@ -68,12 +68,6 @@ public class AppConfigTests
     }
 
     [Fact]
-    public void PsxPackagerExeNameIsNotEmpty()
-    {
-        Assert.False(string.IsNullOrEmpty(AppConfig.PsxPackagerExeName));
-    }
-
-    [Fact]
     public void GitHubApiLatestReleaseUrlIsNotEmpty()
     {
         Assert.False(string.IsNullOrEmpty(AppConfig.GitHubApiLatestReleaseUrl));
