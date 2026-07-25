@@ -5,7 +5,7 @@ using Serilog;
 
 namespace BatchConvertToCHD.Services;
 
-public class StatsService
+internal class StatsService
 {
     private readonly string _apiUrl;
     private readonly string _apiKey;
@@ -13,7 +13,7 @@ public class StatsService
     private readonly HttpClient _httpClient;
     private static readonly ILogger Logger = Log.ForContext<StatsService>();
 
-    public StatsService(string apiUrl, string apiKey, string applicationId)
+    internal StatsService(string apiUrl, string apiKey, string applicationId)
         : this(apiUrl, apiKey, applicationId, AppHttpClient.Client)
     {
     }
@@ -26,7 +26,7 @@ public class StatsService
         _httpClient = httpClient;
     }
 
-    public async Task RecordUsageAsync()
+    internal async Task RecordUsageAsync()
     {
         try
         {

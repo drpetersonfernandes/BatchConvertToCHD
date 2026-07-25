@@ -8,7 +8,7 @@
         WindowStartupLocation="CenterScreen"
         WindowBackdropType="Mica"
         WindowCornerPreference="Round"
-        ExtendsContentIntoTitleBar="True">
+        ExtendsContentIntoTitleBar="True" x:ClassModifier="internal">
 
     <Grid>
         <Grid.RowDefinitions>

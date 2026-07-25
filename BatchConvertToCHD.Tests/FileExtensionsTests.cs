@@ -1,3 +1,4 @@
+using System.Reflection;
 using BatchConvertToCHD.Utilities;
 
 namespace BatchConvertToCHD.Tests;
@@ -24,7 +25,7 @@ public class FileExtensionsTests
     public void ConstantHasCorrectValue(string expected, string constantName)
     {
         var actual = typeof(FileExtensions)
-            .GetField(constantName)
+            .GetField(constantName, BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static)
             ?.GetValue(null) as string;
 
         Assert.Equal(expected, actual);

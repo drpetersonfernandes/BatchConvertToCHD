@@ -1,4 +1,4 @@
-namespace PBPSharp;
+namespace PBPSharp.Models;
 
 /// <summary>
 /// Represents the SFO (System File Object) metadata header.
@@ -56,14 +56,23 @@ public sealed class SfoData
     /// </summary>
     public static class Keys
     {
+        /// <summary>Indicates whether the disc is bootable.</summary>
         public const string Bootable = "BOOTABLE";
+        /// <summary>The game category code (e.g., "ME" for PS1 EBOOT).</summary>
         public const string Category = "CATEGORY";
+        /// <summary>The disc identifier (e.g., "SCUS94163").</summary>
         public const string DiscId = "DISC_ID";
+        /// <summary>The disc version string.</summary>
         public const string DiscVersion = "DISC_VERSION";
+        /// <summary>The license identifier.</summary>
         public const string License = "LICENSE";
+        /// <summary>The parental restriction level.</summary>
         public const string ParentalLevel = "PARENTAL_LEVEL";
+        /// <summary>The minimum PSP system software version required.</summary>
         public const string PspSystemVer = "PSP_SYSTEM_VER";
+        /// <summary>The region code of the disc.</summary>
         public const string Region = "REGION";
+        /// <summary>The display title of the game.</summary>
         public const string Title = "TITLE";
     }
 }

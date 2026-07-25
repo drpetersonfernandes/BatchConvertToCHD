@@ -7,7 +7,7 @@ namespace BatchConvertToCHD.Utilities;
 /// <summary>
 /// Provides utility methods for path manipulation and validation.
 /// </summary>
-public static class PathUtils
+internal static class PathUtils
 {
     private static readonly char[] InvalidFileNameChars = Path.GetInvalidFileNameChars();
     private static readonly ILogger Logger = Log.ForContext(typeof(PathUtils));
@@ -18,7 +18,7 @@ public static class PathUtils
     /// </summary>
     /// <param name="name">The file name to sanitize.</param>
     /// <returns>A sanitized file name safe for use in the file system.</returns>
-    public static string SanitizeFileName(string name)
+    internal static string SanitizeFileName(string name)
     {
         if (string.IsNullOrEmpty(name))
         {
@@ -48,11 +48,6 @@ public static class PathUtils
 
         var sanitizedName = sb.ToString();
 
-        sanitizedName = sanitizedName.Replace("…", "_ellipsis_")
-            .Replace("â€¦", "_ellipsis_")   // UTF-8 → Windows-1252/1250/ISO-8859-1
-            .Replace("ãƒ»", "_ellipsis_")   // UTF-8 → Shift-JIS
-            .Replace("Ð²â€?", "_ellipsis_"); // UTF-8 → Windows-1251
-
         if (sanitizedName.Length == 0 || sanitizedName.All(static c => c == '_'))
         {
             sanitizedName = Guid.NewGuid().ToString("N");
@@ -68,7 +63,7 @@ public static class PathUtils
     /// <param name="desiredExtensionWithoutDot">The desired extension without the dot (e.g., "iso").</param>
     /// <param name="tempDirectory">The temporary directory path.</param>
     /// <returns>A full path to a safe temporary file.</returns>
-    public static string GetSafeTempFileName(string originalFileNameWithExtension, string desiredExtensionWithoutDot, string tempDirectory)
+    internal static string GetSafeTempFileName(string originalFileNameWithExtension, string desiredExtensionWithoutDot, string tempDirectory)
     {
         var sanitizedName = SanitizeFileName(Path.GetFileNameWithoutExtension(originalFileNameWithExtension));
         var safeBaseName = string.IsNullOrEmpty(sanitizedName) ? Guid.NewGuid().ToString("N") : sanitizedName;
@@ -81,7 +76,7 @@ public static class PathUtils
     /// falling back to "." when the paths are on different drives/roots (which
     /// <see cref="Path.GetRelativePath"/> does not support and will throw for).
     /// </summary>
-    public static string GetSafeRelativePath(string relativeTo, string path)
+    internal static string GetSafeRelativePath(string relativeTo, string path)
     {
         try
         {
@@ -108,7 +103,7 @@ public static class PathUtils
     /// enough free space for the operation, even if it is not the drive with the most
     /// total free space. Falls back to the system temp path if no suitable alternative is found.
     /// </summary>
-    public static string GetBestTempDirectory(string? inputFilePath, string? outputFolderPath, string tempDirPrefix, long requiredBytes = 0)
+    internal static string GetBestTempDirectory(string? inputFilePath, string? outputFolderPath, string tempDirPrefix, long requiredBytes = 0)
     {
         const long minFreeBytes = 1024L * 1024 * 1024; // 1 GB minimum to consider a drive viable
 
@@ -222,7 +217,14 @@ public static class PathUtils
         catch (Exception ex)
         {
             Logger.Verbose(ex, "Failed to test write access for root {RootPath}", rootPath);
-            try { if (Directory.Exists(testDir)) Directory.Delete(testDir); } catch { /* ignored */ }
+            try
+            {
+                if (Directory.Exists(testDir)) Directory.Delete(testDir);
+            }
+            catch
+            {
+                /* ignored */
+            }
 
             return false;
         }
@@ -233,7 +235,7 @@ public static class PathUtils
     /// for use by startup cleanup. Includes the system temp path and the
     /// BatchConvertToCHD_Temp folder on the root of every ready fixed drive.
     /// </summary>
-    public static IEnumerable<string> GetPossibleTempBasePaths()
+    internal static IEnumerable<string> GetPossibleTempBasePaths()
     {
         var paths = new List<string> { Path.GetTempPath() };
 
@@ -262,7 +264,7 @@ public static class PathUtils
     /// <summary>
     /// Validates and normalizes a directory path. Returns null if invalid.
     /// </summary>
-    public static string? ValidateAndNormalizePath(string? path, string pathName, Action<string> onError, Action<string> onLog)
+    internal static string? ValidateAndNormalizePath(string? path, string pathName, Action<string> onError, Action<string> onLog)
     {
         try
         {

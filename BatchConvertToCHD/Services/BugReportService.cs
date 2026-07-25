@@ -11,14 +11,14 @@ namespace BatchConvertToCHD.Services;
 /// <summary>
 /// Service responsible for sending bug reports to the BugReport API
 /// </summary>
-public class BugReportService
+internal class BugReportService
 {
     private readonly string _apiUrl;
     private readonly string _apiKey;
     private readonly string _applicationName;
     private readonly HttpClient _httpClient;
 
-    public BugReportService(string apiUrl, string apiKey, string applicationName)
+    internal BugReportService(string apiUrl, string apiKey, string applicationName)
         : this(apiUrl, apiKey, applicationName, AppHttpClient.Client)
     {
     }

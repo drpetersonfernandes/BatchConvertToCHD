@@ -1,4 +1,4 @@
-namespace PBPSharp;
+namespace PBPSharp.Models;
 
 /// <summary>
 /// Represents a single entry in the SFO (PARAM.SFO) metadata.

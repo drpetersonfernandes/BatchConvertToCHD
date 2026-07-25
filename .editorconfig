@@ -1,2 +1,4 @@
 [*.cs]
 dotnet_diagnostic.MA0051.severity = silent
+
+dotnet_diagnostic.MA0015.severity = none

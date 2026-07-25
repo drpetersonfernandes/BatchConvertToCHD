@@ -1,6 +1,6 @@
 using System.Runtime.InteropServices;
 
-namespace PBPSharp;
+namespace PBPSharp.Models;
 
 /// <summary>
 /// Represents the header of a PBP file containing offsets to embedded resources.

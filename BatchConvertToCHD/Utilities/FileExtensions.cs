@@ -3,7 +3,7 @@ namespace BatchConvertToCHD.Utilities;
 /// <summary>
 /// Centralized constants for file extensions used throughout the application.
 /// </summary>
-public static class FileExtensions
+internal static class FileExtensions
 {
     /// <summary>
     /// String comparer for ordinal case-insensitive extension comparisons.
@@ -11,31 +11,31 @@ public static class FileExtensions
     private static readonly StringComparer ExtensionComparer = StringComparer.OrdinalIgnoreCase;
 
     // Disc image formats
-    public const string Cue = ".cue";
-    public const string Iso = ".iso";
-    public const string Img = ".img";
-    public const string Gdi = ".gdi";
-    public const string Toc = ".toc";
-    public const string Raw = ".raw";
-    public const string Ccd = ".ccd";
-    public const string Sub = ".sub";
+    internal const string Cue = ".cue";
+    internal const string Iso = ".iso";
+    internal const string Img = ".img";
+    internal const string Gdi = ".gdi";
+    internal const string Toc = ".toc";
+    internal const string Raw = ".raw";
+    internal const string Ccd = ".ccd";
+    internal const string Sub = ".sub";
 
     // Archive formats
-    public const string Zip = ".zip";
-    public const string SevenZip = ".7z";
-    public const string Rar = ".rar";
+    internal const string Zip = ".zip";
+    internal const string SevenZip = ".7z";
+    internal const string Rar = ".rar";
 
     // Compressed disc image formats
-    public const string Cso = ".cso";
-    public const string Pbp = ".pbp";
+    internal const string Cso = ".cso";
+    internal const string Pbp = ".pbp";
 
     // Output format
-    public const string Chd = ".chd";
+    internal const string Chd = ".chd";
 
     /// <summary>
     /// All supported input extensions for conversion.
     /// </summary>
-    public static readonly string[] AllSupportedInputExtensionsForConversion =
+    internal static readonly string[] AllSupportedInputExtensionsForConversion =
     [
         Cue, Iso, Img, Gdi, Toc, Raw, Zip, SevenZip, Rar, Cso, Pbp
     ];
@@ -43,13 +43,13 @@ public static class FileExtensions
     /// <summary>
     /// HashSet of all supported input extensions for efficient case-insensitive lookups.
     /// </summary>
-    public static readonly HashSet<string> AllSupportedInputExtensionsForConversionSet =
+    internal static readonly HashSet<string> AllSupportedInputExtensionsForConversionSet =
         new(AllSupportedInputExtensionsForConversion, ExtensionComparer);
 
     /// <summary>
     /// Archive file extensions.
     /// </summary>
-    public static readonly string[] ArchiveExtensions =
+    internal static readonly string[] ArchiveExtensions =
     [
         Zip, SevenZip, Rar
     ];
@@ -57,13 +57,13 @@ public static class FileExtensions
     /// <summary>
     /// HashSet of archive extensions for efficient case-insensitive lookups.
     /// </summary>
-    public static readonly HashSet<string> ArchiveExtensionsSet =
+    internal static readonly HashSet<string> ArchiveExtensionsSet =
         new(ArchiveExtensions, ExtensionComparer);
 
     /// <summary>
     /// Primary target extensions for extraction from archives.
     /// </summary>
-    public static readonly string[] PrimaryTargetExtensions =
+    internal static readonly string[] PrimaryTargetExtensions =
     [
         Cue, Iso, Img, Gdi, Toc, Raw
     ];
@@ -71,6 +71,6 @@ public static class FileExtensions
     /// <summary>
     /// HashSet of primary target extensions for efficient case-insensitive lookups.
     /// </summary>
-    public static readonly HashSet<string> PrimaryTargetExtensionsSet =
+    internal static readonly HashSet<string> PrimaryTargetExtensionsSet =
         new(PrimaryTargetExtensions, ExtensionComparer);
 }

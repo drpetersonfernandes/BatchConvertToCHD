@@ -1,4 +1,4 @@
-using CSOSharp;
+using CSOSharp.Models;
 
 namespace BatchConvertToCHD.Tests;
 

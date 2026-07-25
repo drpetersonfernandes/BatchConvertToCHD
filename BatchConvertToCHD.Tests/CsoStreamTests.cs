@@ -1,4 +1,5 @@
 using CSOSharp;
+using CSOSharp.Models;
 
 namespace BatchConvertToCHD.Tests;
 
@@ -19,7 +20,11 @@ public class CsoStreamTests : IDisposable
             if (Directory.Exists(_tempDir))
                 Directory.Delete(_tempDir, true);
         }
-        catch { /* ignore */ }
+        catch
+        {
+            /* ignore */
+        }
+
         GC.SuppressFinalize(this);
     }
 

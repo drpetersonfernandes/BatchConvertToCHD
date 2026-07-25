@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.IO;
 using System.Reflection;
+using System.Text;
 using System.Windows;
 using System.Windows.Threading;
 using BatchConvertToCHD.Services;
@@ -24,7 +25,7 @@ public partial class App
     /// allowing any component to submit bug reports without needing dependency injection.
     /// May be null before or after the application lifecycle.
     /// </summary>
-    public static BugReportService? SharedBugReportService { get; private set; }
+    internal static BugReportService? SharedBugReportService { get; private set; }
 
     /// <summary>
     /// Initializes a new instance of the <see cref="App"/> class.
@@ -33,6 +34,8 @@ public partial class App
     /// </summary>
     public App()
     {
+        Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
+
         // Initialize services
         SharedBugReportService = new BugReportService(AppConfig.BugReportApiUrl, AppConfig.BugReportApiKey, AppConfig.ApplicationName);
         _bugReportService = SharedBugReportService;
@@ -117,7 +120,7 @@ public partial class App
         _ = _statsService?.RecordUsageAsync();
 
         // Preload assemblies on background thread to improve responsiveness
-        Task.Run(static () =>
+        _ = Task.Run(static () =>
         {
             try
             {

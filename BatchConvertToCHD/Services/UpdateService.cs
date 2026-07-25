@@ -10,13 +10,13 @@ namespace BatchConvertToCHD.Services;
 /// <summary>
 /// Service for checking and notifying about application updates from GitHub releases.
 /// </summary>
-public class UpdateService
+internal class UpdateService
 {
     private readonly string _applicationName;
     private readonly HttpClient _httpClient;
     private static readonly JsonSerializerOptions JsonSerializerOptions = new() { PropertyNameCaseInsensitive = true };
 
-    public UpdateService(string applicationName)
+    internal UpdateService(string applicationName)
         : this(applicationName, AppHttpClient.Client)
     {
     }
@@ -33,7 +33,7 @@ public class UpdateService
     /// <param name="onLog">Callback for logging messages.</param>
     /// <param name="onStatusUpdate">Callback for status bar updates.</param>
     /// <param name="onBugReport">Callback for reporting errors.</param>
-    public Task CheckForNewVersionAsync(Action<string> onLog, Action<string> onStatusUpdate, Func<string, Exception?, Task> onBugReport)
+    internal Task CheckForNewVersionAsync(Action<string> onLog, Action<string> onStatusUpdate, Func<string, Exception?, Task> onBugReport)
     {
         return CheckForNewVersionAsync(_httpClient, Assembly.GetExecutingAssembly().GetName().Version, onLog, onStatusUpdate, onBugReport);
     }
@@ -219,14 +219,14 @@ public class UpdateService
         {
             if (tag.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
             {
-                tag = tag.Substring(prefix.Length);
+                tag = tag[prefix.Length..];
                 break;
             }
         }
 
         while (tag.Length > 0 && !char.IsDigit(tag[0]))
         {
-            tag = tag.Substring(1);
+            tag = tag[1..];
         }
 
         return tag;

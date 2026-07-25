@@ -1,5 +1,5 @@
-using System.Buffers;
 using System.Text;
+using PBPSharp.Models;
 
 namespace PBPSharp;
 
@@ -12,9 +12,6 @@ public sealed class PbpFile : IDisposable
     private Stream _stream;
     private readonly bool _ownsStream;
     private bool _disposed;
-
-    private static readonly byte[] Psisoimg = "PSISOIMG0000"u8.ToArray();
-    private static readonly byte[] Pstitleimg = "PSTITLEIMG000000"u8.ToArray();
 
     /// <summary>
     /// The parsed PBP header containing resource offsets.
@@ -76,7 +73,7 @@ public sealed class PbpFile : IDisposable
         try
         {
             var stream = File.OpenRead(path);
-            var error = Open(stream, ownsStream: true, out pbp);
+            var error = Open(stream, true, out pbp);
             if (error != PbpError.None)
                 stream.Dispose();
             return error;
@@ -263,201 +260,6 @@ public sealed class PbpFile : IDisposable
         return PbpError.None;
     }
 
-    /// <summary>
-    /// Gets the size of a specific embedded resource.
-    /// </summary>
-    /// <param name="resourceType">The resource type to query.</param>
-    /// <param name="size">When this method returns, contains the resource size in bytes.</param>
-    /// <returns>A <see cref="PbpError"/> indicating the result.</returns>
-    public PbpError GetResourceSize(PbpResourceType resourceType, out int size)
-    {
-        size = 0;
-        if (_disposed) return PbpError.IoError;
-
-        GetResourceOffsets(resourceType, out var start, out var end);
-        if (start < 0 || end <= start)
-            return PbpError.ResourceNotFound;
-
-        size = end - start;
-        return PbpError.None;
-    }
-
-    /// <summary>
-    /// Extracts a resource from the PBP file to the specified output path.
-    /// </summary>
-    /// <param name="resourceType">The resource type to extract.</param>
-    /// <param name="outputPath">The file path to write the resource to.</param>
-    /// <returns>A <see cref="PbpError"/> indicating the result.</returns>
-    public PbpError ExtractResource(PbpResourceType resourceType, string outputPath)
-    {
-        ObjectDisposedException.ThrowIf(_disposed, this);
-
-        GetResourceOffsets(resourceType, out var start, out var end);
-        if (start < 0 || end <= start)
-            return PbpError.ResourceNotFound;
-
-        try
-        {
-            _stream.Seek(start, SeekOrigin.Begin);
-            var length = end - start;
-
-            var buffer = ArrayPool<byte>.Shared.Rent(Math.Min(length, 81920));
-            try
-            {
-                using var outputStream = File.Create(outputPath);
-                var remaining = length;
-                while (remaining > 0)
-                {
-                    var toRead = Math.Min(buffer.Length, remaining);
-                    var read = _stream.Read(buffer, 0, toRead);
-                    if (read == 0) break;
-
-                    outputStream.Write(buffer, 0, read);
-                    remaining -= read;
-                }
-            }
-            finally
-            {
-                ArrayPool<byte>.Shared.Return(buffer);
-            }
-
-            return PbpError.None;
-        }
-        catch (IOException)
-        {
-            return PbpError.IoError;
-        }
-    }
-
-    /// <summary>
-    /// Extracts all available resources from the PBP to the specified directory.
-    /// </summary>
-    /// <param name="outputDirectory">The directory to extract resources into.</param>
-    /// <returns>A <see cref="PbpError"/> indicating the result.</returns>
-    public PbpError ExtractAllResources(string outputDirectory)
-    {
-        ObjectDisposedException.ThrowIf(_disposed, this);
-
-        Directory.CreateDirectory(outputDirectory);
-
-        var resources = new (PbpResourceType Type, string FileName)[]
-        {
-            (PbpResourceType.Icon0, "ICON0.PNG"),
-            (PbpResourceType.Icon1, "ICON1.PMF"),
-            (PbpResourceType.Pic0, "PIC0.PNG"),
-            (PbpResourceType.Pic1, "PIC1.PNG"),
-            (PbpResourceType.Snd0, "SND0.AT3")
-        };
-
-        foreach (var (type, fileName) in resources)
-        {
-            GetResourceOffsets(type, out var start, out var end);
-            if (start >= 0 && end > start)
-            {
-                var error = ExtractResource(type, Path.Combine(outputDirectory, fileName));
-                if (error != PbpError.None && error != PbpError.ResourceNotFound)
-                    return error;
-            }
-        }
-
-        return PbpError.None;
-    }
-
-    /// <summary>
-    /// Extracts a specific disc to a BIN file with a CUE sheet.
-    /// </summary>
-    /// <param name="discIndex">The 1-based disc number to extract.</param>
-    /// <param name="binPath">The path for the output BIN file.</param>
-    /// <param name="cuePath">The path for the output CUE file. If null, uses binPath with .cue extension.</param>
-    /// <param name="progress">Optional callback with bytes written so far.</param>
-    /// <param name="cancellationToken">Cancellation token.</param>
-    /// <returns>A <see cref="PbpError"/> indicating the result.</returns>
-    public PbpError ExtractDisc(int discIndex, string binPath, string? cuePath = null, Action<uint>? progress = null, CancellationToken cancellationToken = default)
-    {
-        ObjectDisposedException.ThrowIf(_disposed, this);
-
-        var disc = Discs.FirstOrDefault(d => d.Index == discIndex);
-        if (disc == null)
-            return PbpError.DiscOutOfRange;
-
-        return disc.ExtractToBinCue(binPath, cuePath, progress, cancellationToken);
-    }
-
-    /// <summary>
-    /// Extracts all discs from a multi-disc PBP. For single-disc PBPs, extracts the single disc.
-    /// </summary>
-    /// <param name="outputDirectory">The directory where BIN/CUE files will be written.</param>
-    /// <param name="baseFileName">The base filename (without extension). If null, uses the PBP title or filename.</param>
-    /// <param name="progress">Optional callback with (discIndex, bytesWritten, totalDiscs).</param>
-    /// <param name="cancellationToken">Cancellation token.</param>
-    /// <returns>A <see cref="PbpError"/> indicating the result.</returns>
-    public PbpError ExtractAllDiscs(string outputDirectory, string? baseFileName = null, Action<int, uint, int>? progress = null, CancellationToken cancellationToken = default)
-    {
-        ObjectDisposedException.ThrowIf(_disposed, this);
-
-        Directory.CreateDirectory(outputDirectory);
-
-        baseFileName ??= Title ?? "disc";
-
-        foreach (var t in Discs)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-
-            var disc = t;
-            var suffix = IsMultiDisc ? $" - Disc {disc.Index}" : "";
-            var binPath = Path.Combine(outputDirectory, $"{baseFileName}{suffix}.bin");
-
-            var error = disc.ExtractToBinCue(binPath, progress: bytes => progress?.Invoke(disc.Index, bytes, Discs.Count), cancellationToken: cancellationToken);
-            if (error != PbpError.None)
-                return error;
-        }
-
-        return PbpError.None;
-    }
-
-    private void GetResourceOffsets(PbpResourceType type, out int start, out int end)
-    {
-        switch (type)
-        {
-            case PbpResourceType.Sfo:
-                start = Header.SfoOffset;
-                end = Header.Icon0Offset;
-                break;
-            case PbpResourceType.Icon0:
-                start = Header.Icon0Offset;
-                end = Header.Icon1Offset;
-                break;
-            case PbpResourceType.Icon1:
-                start = Header.Icon1Offset;
-                end = Header.Pic0Offset;
-                break;
-            case PbpResourceType.Pic0:
-                start = Header.Pic0Offset;
-                end = Header.Pic1Offset;
-                break;
-            case PbpResourceType.Pic1:
-                start = Header.Pic1Offset;
-                end = Header.Snd0Offset;
-                break;
-            case PbpResourceType.Snd0:
-                start = Header.Snd0Offset;
-                end = Header.DataPspOffset;
-                break;
-            case PbpResourceType.DataPsp:
-                start = Header.DataPspOffset;
-                end = Header.DataPsarOffset;
-                break;
-            case PbpResourceType.DataPsar:
-                start = Header.DataPsarOffset;
-                end = (int)_stream.Length;
-                break;
-            default:
-                start = -1;
-                end = -1;
-                break;
-        }
-    }
-
     private static uint ReadUInt32(Stream stream, byte[] buffer)
     {
         stream.ReadExactly(buffer, 0, 4);
@@ -490,7 +292,7 @@ public sealed class PbpFile : IDisposable
         _disposed = true;
 
         if (_ownsStream)
-            _stream?.Dispose();
+            _stream.Dispose();
 
         _stream = null!;
     }

@@ -1,5 +1,6 @@
 using System.Buffers;
 using System.IO.Compression;
+using CSOSharp.Models;
 using K4os.Compression.LZ4;
 
 namespace CSOSharp;
@@ -30,18 +31,12 @@ public sealed class CsoFile : IDisposable
     /// </summary>
     public bool IsDeflate => Header.IsV1;
 
-    /// <summary>
-    /// Whether this file was detected as CISO (based on extension or header).
-    /// </summary>
-    public bool IsCiso { get; private set; }
-
-    private CsoFile(Stream stream, bool ownsStream, CsoHeader header, uint[] indexTable, bool isCiso)
+    private CsoFile(Stream stream, bool ownsStream, CsoHeader header, uint[] indexTable)
     {
         _stream = stream;
         _ownsStream = ownsStream;
         Header = header;
         _indexTable = indexTable;
-        IsCiso = isCiso;
     }
 
     /// <summary>
@@ -60,18 +55,10 @@ public sealed class CsoFile : IDisposable
         try
         {
             var stream = File.OpenRead(path);
-            var error = Open(stream, ownsStream: true, out cso);
+            var error = Open(stream, true, out cso);
             if (error != CsoError.None)
             {
                 stream.Dispose();
-            }
-            else if (cso != null)
-            {
-                var ext = Path.GetExtension(path);
-                if (ext.Equals(".ciso", StringComparison.OrdinalIgnoreCase))
-                {
-                    cso.IsCiso = true;
-                }
             }
 
             return error;
@@ -108,7 +95,7 @@ public sealed class CsoFile : IDisposable
             if (indexError != CsoError.None)
                 return indexError;
 
-            cso = new CsoFile(stream, ownsStream, header, indexTable, isCiso: false);
+            cso = new CsoFile(stream, ownsStream, header, indexTable);
             return CsoError.None;
         }
         catch (IOException)
@@ -258,7 +245,7 @@ public sealed class CsoFile : IDisposable
             }
 
             using var compressedStream = new MemoryStream(compressedBuffer, dataOffset, actuallyRead - dataOffset);
-            using var deflateStream = new DeflateStream(compressedStream, CompressionMode.Decompress, leaveOpen: false);
+            using var deflateStream = new DeflateStream(compressedStream, CompressionMode.Decompress, false);
 
             var totalRead = 0;
             var blockSize = (int)Header.BlockSize;
@@ -381,7 +368,7 @@ public sealed class CsoFile : IDisposable
 
         if (_ownsStream)
         {
-            _stream?.Dispose();
+            _stream.Dispose();
         }
 
         _stream = null!;

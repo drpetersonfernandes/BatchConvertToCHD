@@ -1,4 +1,4 @@
-namespace CSOSharp;
+namespace CSOSharp.Models;
 
 /// <summary>
 /// Error codes returned by CSO file operations.
@@ -19,11 +19,6 @@ public enum CsoError
     /// The CSO file version is not supported (only v1 and v2 are supported).
     /// </summary>
     UnsupportedVersion,
-
-    /// <summary>
-    /// The CSO file uses an unsupported compression algorithm.
-    /// </summary>
-    UnsupportedCompression,
 
     /// <summary>
     /// The file could not be found or opened.
@@ -49,11 +44,6 @@ public enum CsoError
     /// The specified block index is out of range.
     /// </summary>
     BlockOutOfRange,
-
-    /// <summary>
-    /// The header size field is invalid.
-    /// </summary>
-    InvalidHeaderSize,
 
     /// <summary>
     /// The block size in the header is zero or invalid.

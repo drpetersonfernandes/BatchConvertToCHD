@@ -8,7 +8,7 @@ namespace BatchConvertToCHD.Models;
 /// Represents a file item in the conversion/verification/extraction lists.
 /// Implements INotifyPropertyChanged for data binding support.
 /// </summary>
-public class FileItem : INotifyPropertyChanged
+internal class FileItem : INotifyPropertyChanged
 {
     private bool _isSelected = true;
     private string _fileName = string.Empty;

@@ -1,6 +1,6 @@
 using System.Runtime.InteropServices;
 
-namespace CSOSharp;
+namespace CSOSharp.Models;
 
 /// <summary>
 /// Represents the header of a CSO/CISO file.

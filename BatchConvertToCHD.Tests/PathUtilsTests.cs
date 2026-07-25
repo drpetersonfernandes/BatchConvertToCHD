@@ -24,10 +24,10 @@ public class PathUtilsTests
     }
 
     [Fact]
-    public void SanitizeFileNameReplacesEllipsis()
+    public void SanitizeFileNamePreservesUnicodeEllipsis()
     {
         var result = PathUtils.SanitizeFileName("game…iso");
-        Assert.Equal("game_ellipsis_iso", result);
+        Assert.Equal("game…iso", result);
     }
 
     [Fact]
@@ -188,12 +188,10 @@ public class PathUtilsTests
     }
 
     [Fact]
-    public void SanitizeFileNameReplacesMojibakeEllipsis()
+    public void SanitizeFileNamePreservesMojibakeCharacters()
     {
-        // The source code replaces "â€¦" (a mojibake-encoded ellipsis)
-        // with "_ellipsis_"
         var result = PathUtils.SanitizeFileName("game\u00e2\u20ac\u00a6iso");
-        Assert.Contains("_ellipsis_", result, StringComparison.Ordinal);
+        Assert.Equal("game\u00e2\u20ac\u00a6iso", result);
     }
 
     [Fact]

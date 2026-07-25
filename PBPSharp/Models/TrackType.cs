@@ -1,4 +1,4 @@
-namespace PBPSharp;
+namespace PBPSharp.Models;
 
 /// <summary>
 /// The type of a track in the disc's Table of Contents.

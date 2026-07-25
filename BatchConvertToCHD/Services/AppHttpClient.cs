@@ -10,7 +10,7 @@ namespace BatchConvertToCHD.Services;
 /// Provides a thread-safe singleton <see cref="HttpClient"/> configured with TLS 1.2/1.3
 /// and tolerant SSL certificate validation for use across the application.
 /// </summary>
-public static class AppHttpClient
+internal static class AppHttpClient
 {
     private static SocketsHttpHandler? _handler;
     private static HttpClient? _client;
@@ -21,7 +21,7 @@ public static class AppHttpClient
     /// Gets the shared singleton <see cref="HttpClient"/> instance. Creates and configures it
     /// on first access with double-checked locking for thread safety.
     /// </summary>
-    public static HttpClient Client
+    internal static HttpClient Client
     {
         get
         {
@@ -67,7 +67,7 @@ public static class AppHttpClient
     /// Disposes the shared <see cref="HttpClient"/> and its underlying handler.
     /// Subsequent access to <see cref="Client"/> will create a new instance.
     /// </summary>
-    public static void Dispose()
+    internal static void Dispose()
     {
         lock (Lock)
         {

@@ -1,4 +1,4 @@
-namespace PBPSharp;
+namespace PBPSharp.Models;
 
 /// <summary>
 /// Error codes returned by PBP file operations.

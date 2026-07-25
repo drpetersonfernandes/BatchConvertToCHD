@@ -63,7 +63,7 @@ internal class ScreenshotService
     /// Captures a screenshot of the currently active foreground window
     /// and saves it as a PNG in the Screenshot directory.
     /// </summary>
-    public string? TakeScreenshot()
+    internal string? TakeScreenshot()
     {
         try
         {

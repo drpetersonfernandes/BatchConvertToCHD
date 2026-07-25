@@ -1,4 +1,5 @@
 using System.Buffers;
+using CSOSharp.Models;
 
 namespace CSOSharp;
 

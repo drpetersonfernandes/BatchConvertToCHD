@@ -6,7 +6,7 @@ namespace BatchConvertToCHD.Utilities;
 /// <summary>
 /// Provides methods for parsing game file formats (CUE, GDI, TOC) to extract referenced files.
 /// </summary>
-public static class GameFileParser
+internal static class GameFileParser
 {
     private static readonly char[] Separator = [' ', '\t'];
 
@@ -17,7 +17,7 @@ public static class GameFileParser
     /// <param name="onLog">Callback for logging messages.</param>
     /// <param name="token">Cancellation token to cancel the operation.</param>
     /// <returns>A list of file paths referenced by the CUE sheet.</returns>
-    public static Task<List<string>> GetReferencedFilesFromCueAsync(string cuePath, Action<string> onLog, CancellationToken token)
+    internal static Task<List<string>> GetReferencedFilesFromCueAsync(string cuePath, Action<string> onLog, CancellationToken token)
     {
         return ParseFileReferenceLinesAsync(cuePath, onLog, "CUE", token);
     }
@@ -29,7 +29,7 @@ public static class GameFileParser
     /// <param name="onLog">Callback for logging messages.</param>
     /// <param name="token">Cancellation token to cancel the operation.</param>
     /// <returns>A list of file paths referenced by the GDI file.</returns>
-    public static async Task<List<string>> GetReferencedFilesFromGdiAsync(string gdiPath, Action<string> onLog, CancellationToken token)
+    internal static async Task<List<string>> GetReferencedFilesFromGdiAsync(string gdiPath, Action<string> onLog, CancellationToken token)
     {
         var referencedFiles = new List<string>();
         var gdiDir = Path.GetDirectoryName(gdiPath) ?? string.Empty;
@@ -95,7 +95,7 @@ public static class GameFileParser
     /// <param name="onLog">Callback for logging messages.</param>
     /// <param name="token">Cancellation token to cancel the operation.</param>
     /// <returns>A list of file paths referenced by the TOC file.</returns>
-    public static Task<List<string>> GetReferencedFilesFromTocAsync(string tocPath, Action<string> onLog, CancellationToken token)
+    internal static Task<List<string>> GetReferencedFilesFromTocAsync(string tocPath, Action<string> onLog, CancellationToken token)
     {
         return ParseFileReferenceLinesAsync(tocPath, onLog, "TOC", token);
     }
@@ -107,7 +107,7 @@ public static class GameFileParser
         var directory = Path.GetDirectoryName(filePath) ?? string.Empty;
         try
         {
-            var lines = await File.ReadAllLinesAsync(filePath, token).ConfigureAwait(false);
+            var lines = await ReadAllLinesWithEncodingFallbackAsync(filePath, token).ConfigureAwait(false);
             token.ThrowIfCancellationRequested();
             foreach (var line in lines)
             {
@@ -173,5 +173,33 @@ public static class GameFileParser
         }
 
         return referencedFiles;
+    }
+
+    private static async Task<string[]> ReadAllLinesWithEncodingFallbackAsync(string filePath, CancellationToken token)
+    {
+        try
+        {
+            return await File.ReadAllLinesAsync(filePath, Encoding.UTF8, token).ConfigureAwait(false);
+        }
+        catch
+        {
+            // ignored
+        }
+
+        var fallbackEncodings = new[] { 932, 936, 1252 };
+        foreach (var codePage in fallbackEncodings)
+        {
+            try
+            {
+                var encoding = Encoding.GetEncoding(codePage);
+                return await File.ReadAllLinesAsync(filePath, encoding, token).ConfigureAwait(false);
+            }
+            catch
+            {
+                // ignored
+            }
+        }
+
+        return await File.ReadAllLinesAsync(filePath, token).ConfigureAwait(false);
     }
 }

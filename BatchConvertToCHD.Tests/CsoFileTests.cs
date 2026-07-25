@@ -1,4 +1,5 @@
 using CSOSharp;
+using CSOSharp.Models;
 
 namespace BatchConvertToCHD.Tests;
 
@@ -19,7 +20,10 @@ public class CsoFileTests : IDisposable
             if (Directory.Exists(_tempDir))
                 Directory.Delete(_tempDir, true);
         }
-        catch { /* ignore */ }
+        catch
+        {
+            /* ignore */
+        }
         GC.SuppressFinalize(this);
     }
 
@@ -117,28 +121,6 @@ public class CsoFileTests : IDisposable
         Assert.True(cso.Header.IsValid);
         Assert.False(cso.IsDeflate);
         Assert.True(cso.IsLz4);
-        cso.Dispose();
-    }
-
-    [Fact]
-    public void OpenCisoExtensionSetsIsCiso()
-    {
-        var path = CreateMinimalCsoFile(1, ".ciso");
-        var error = CsoFile.Open(path, out var cso);
-        Assert.Equal(CsoError.None, error);
-        Assert.NotNull(cso);
-        Assert.True(cso.IsCiso);
-        cso.Dispose();
-    }
-
-    [Fact]
-    public void OpenCsoExtensionDoesNotSetIsCiso()
-    {
-        var path = CreateMinimalCsoFile(1, ".cso");
-        var error = CsoFile.Open(path, out var cso);
-        Assert.Equal(CsoError.None, error);
-        Assert.NotNull(cso);
-        Assert.False(cso.IsCiso);
         cso.Dispose();
     }
 

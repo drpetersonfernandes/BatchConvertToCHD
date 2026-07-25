@@ -1,5 +1,6 @@
 using System.Text;
 using PBPSharp;
+using PBPSharp.Models;
 
 namespace BatchConvertToCHD.Tests;
 
@@ -20,7 +21,11 @@ public class PbpFileTests : IDisposable
             if (Directory.Exists(_tempDir))
                 Directory.Delete(_tempDir, true);
         }
-        catch { /* ignore */ }
+        catch
+        {
+            /* ignore */
+        }
+
         GC.SuppressFinalize(this);
     }
 
@@ -202,19 +207,6 @@ public class PbpFileTests : IDisposable
         Assert.Equal(6, (int)PbpError.DiscOutOfRange);
         Assert.Equal(7, (int)PbpError.ResourceNotFound);
         Assert.Equal(8, (int)PbpError.DecompressionError);
-    }
-
-    [Fact]
-    public void PbpResourceTypeEnumHasExpectedValues()
-    {
-        Assert.Equal(0, (int)PbpResourceType.Sfo);
-        Assert.Equal(1, (int)PbpResourceType.Icon0);
-        Assert.Equal(2, (int)PbpResourceType.Icon1);
-        Assert.Equal(3, (int)PbpResourceType.Pic0);
-        Assert.Equal(4, (int)PbpResourceType.Pic1);
-        Assert.Equal(5, (int)PbpResourceType.Snd0);
-        Assert.Equal(6, (int)PbpResourceType.DataPsp);
-        Assert.Equal(7, (int)PbpResourceType.DataPsar);
     }
 
     [Fact]

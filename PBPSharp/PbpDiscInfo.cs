@@ -1,6 +1,7 @@
 using System.Buffers;
 using System.IO.Compression;
 using System.Text;
+using PBPSharp.Models;
 
 namespace PBPSharp;
 
@@ -252,15 +253,24 @@ public sealed class PbpDiscInfo
             using var binStream = File.Create(binPath);
             ExtractTo(binStream, progress, cancellationToken);
         }
-        catch (IOException) { return PbpError.IoError; }
-        catch (InvalidDataException) { return PbpError.DecompressionError; }
+        catch (IOException)
+        {
+            return PbpError.IoError;
+        }
+        catch (InvalidDataException)
+        {
+            return PbpError.DecompressionError;
+        }
 
         var cueContent = CueSheetWriter.GenerateCueSheet(Path.GetFileName(binPath), Toc);
         try
         {
             File.WriteAllText(cuePath, cueContent);
         }
-        catch (IOException) { return PbpError.IoError; }
+        catch (IOException)
+        {
+            return PbpError.IoError;
+        }
 
         return PbpError.None;
     }
@@ -268,7 +278,7 @@ public sealed class PbpDiscInfo
     private static int DecompressBlock(byte[] compressed, int compressedLength, byte[] output)
     {
         using var compressedStream = new MemoryStream(compressed, 0, compressedLength);
-        using var deflateStream = new DeflateStream(compressedStream, CompressionMode.Decompress, leaveOpen: false);
+        using var deflateStream = new DeflateStream(compressedStream, CompressionMode.Decompress, false);
         using var outputMs = new MemoryStream(output);
 
         var writeBuffer = new byte[4096];
