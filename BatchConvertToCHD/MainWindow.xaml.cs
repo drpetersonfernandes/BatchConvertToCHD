@@ -111,6 +111,7 @@ internal partial class MainWindow : IDisposable
             {
                 await Task.Delay(2000);
                 CleanupLeftoverTempDirectories();
+                LegacyCleanupService.RunInBackground();
             }
             catch
             {
