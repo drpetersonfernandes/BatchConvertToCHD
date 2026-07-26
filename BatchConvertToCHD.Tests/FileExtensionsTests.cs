@@ -73,7 +73,7 @@ public class FileExtensionsTests
     [Fact]
     public void PrimaryTargetExtensionsArrayHasExpectedEntries()
     {
-        var expected = new[] { ".cue", ".iso", ".img", ".gdi", ".toc", ".raw" };
+        var expected = new[] { ".cue", ".iso", ".img", ".gdi", ".toc", ".raw", ".ccd" };
         Assert.Equal(expected, FileExtensions.PrimaryTargetExtensions);
     }
 
@@ -95,7 +95,8 @@ public class FileExtensionsTests
     [InlineData(".TOC", true)]
     [InlineData(".raw", true)]
     [InlineData(".RAW", true)]
-    [InlineData(".ccd", false)]
+    [InlineData(".ccd", true)]
+    [InlineData(".CCD", true)]
     [InlineData(".zip", false)]
     [InlineData(".chd", false)]
     [InlineData(".cso", false)]
@@ -111,7 +112,7 @@ public class FileExtensionsTests
     [Fact]
     public void AllSupportedInputExtensionsForConversionArrayHasExpectedEntries()
     {
-        var expected = new[] { ".cue", ".iso", ".img", ".gdi", ".toc", ".raw", ".zip", ".7z", ".rar", ".cso", ".pbp" };
+        var expected = new[] { ".cue", ".iso", ".img", ".gdi", ".toc", ".raw", ".ccd", ".zip", ".7z", ".rar", ".cso", ".pbp" };
         Assert.Equal(expected, FileExtensions.AllSupportedInputExtensionsForConversion);
     }
 
@@ -138,8 +139,8 @@ public class FileExtensionsTests
     [InlineData(".cso", true)]
     [InlineData(".CSO", true)]
     [InlineData(".pbp", true)]
-    [InlineData(".ccd", false)]
-    [InlineData(".CCD", false)]
+    [InlineData(".ccd", true)]
+    [InlineData(".CCD", true)]
     [InlineData(".chd", false)]
     [InlineData(".sub", false)]
     [InlineData(".bin", false)]

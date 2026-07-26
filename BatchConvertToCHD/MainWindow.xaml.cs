@@ -12,6 +12,7 @@ using System.Collections.ObjectModel;
 using BatchConvertToCHD.Models;
 using BatchConvertToCHD.Services;
 using BatchConvertToCHD.Utilities;
+using CCDSharp;
 using CHDSharp;
 using CHDSharp.Models;
 using PBPSharp;
@@ -1417,6 +1418,10 @@ internal partial class MainWindow : IDisposable
             {
                 return await ProcessPbpFileForConversionAsync(inputFile, originalName, inputFolder, outputFolder, tempDirs, token, chdmanPath, cores, forceCd, forceDvd, timeoutMinutes, deleteOriginal);
             }
+            else if (ext.Equals(FileExtensions.Ccd, StringComparison.OrdinalIgnoreCase))
+            {
+                return await ProcessCcdFileForConversionAsync(inputFile, originalName, inputFolder, outputFolder, tempDirs, token, chdmanPath, cores, forceCd, forceDvd, timeoutMinutes, deleteOriginal);
+            }
             else
             {
                 // Try processing directly from source first to avoid unnecessary I/O
@@ -1534,7 +1539,21 @@ internal partial class MainWindow : IDisposable
         }
 
         var allSucceeded = true;
-        foreach (var extractedFile in result.FilePaths)
+
+        // Filter out .img files that have a companion .ccd file in the same directory
+        // to avoid converting them independently when they are part of a CCD set.
+        var ccdBaseNames = new HashSet<string>(
+            result.FilePaths
+                .Where(static f => Path.GetExtension(f).Equals(FileExtensions.Ccd, StringComparison.OrdinalIgnoreCase))
+                .Select(static f => Path.GetFileNameWithoutExtension(f)),
+            StringComparer.OrdinalIgnoreCase);
+
+        var filesToConvert = result.FilePaths
+            .Where(f => !(Path.GetExtension(f).Equals(FileExtensions.Img, StringComparison.OrdinalIgnoreCase)
+                          && ccdBaseNames.Contains(Path.GetFileNameWithoutExtension(f))))
+            .ToList();
+
+        foreach (var extractedFile in filesToConvert)
         {
             token.ThrowIfCancellationRequested();
             var extractedFileOutputChd = ComputeOutputChdPathForExtractedFile(extractedFile, inputFile, inputFolder, outputFolder);
@@ -1602,6 +1621,72 @@ internal partial class MainWindow : IDisposable
             await TryDeleteFileAsync(inputFile, "original PBP", token);
 
         return allSucceeded;
+    }
+
+    private async Task<bool> ProcessCcdFileForConversionAsync(string inputFile, string originalName, string inputFolder, string outputFolder, List<string> tempDirs, CancellationToken token, string chdmanPath, int cores, bool forceCd, bool forceDvd, int? timeoutMinutes, bool deleteOriginal)
+    {
+        long imgSize = 0;
+        try
+        {
+            var disc = CcdConverter.Parse(inputFile);
+            if (disc.ImgFilePath != null && File.Exists(disc.ImgFilePath))
+            {
+                imgSize = new FileInfo(disc.ImgFilePath).Length;
+            }
+        }
+        catch
+        {
+            /* ignored - will fail later with a proper error */
+        }
+
+        var tempDir = PathUtils.GetBestTempDirectory(inputFile, outputFolder, TempDirPrefix, imgSize);
+        tempDirs.Add(tempDir);
+        await Task.Run(() => Directory.CreateDirectory(tempDir), token);
+
+        try
+        {
+            LogMessage($"CCDSharp: Converting {originalName}");
+            var tempCuePath = Path.Combine(tempDir, Path.GetFileNameWithoutExtension(inputFile) + ".cue");
+
+            await Task.Run(() => CcdConverter.ConvertToCueBin(inputFile, tempCuePath), token);
+
+            var cueFileOutputChd = ComputeOutputChdPathForExtractedFile(tempCuePath, inputFile, inputFolder, outputFolder);
+            var cueOutputDir = Path.GetDirectoryName(cueFileOutputChd) ?? outputFolder;
+            if (!Directory.Exists(cueOutputDir)) Directory.CreateDirectory(cueOutputDir);
+
+            var converted = await ConvertToChdAsync(chdmanPath, tempCuePath, cueFileOutputChd, cores, forceCd, forceDvd, timeoutMinutes, token);
+            if (!converted)
+            {
+                await TryDeleteFileAsync(cueFileOutputChd, "failed CHD", CancellationToken.None);
+                return false;
+            }
+
+            if (deleteOriginal)
+            {
+                await TryDeleteFileAsync(inputFile, "original CCD", token);
+
+                var parsedDisc = CcdConverter.Parse(inputFile);
+                if (parsedDisc.ImgFilePath != null)
+                    await TryDeleteFileAsync(parsedDisc.ImgFilePath, "original IMG", token);
+                if (parsedDisc.SubFilePath != null)
+                    await TryDeleteFileAsync(parsedDisc.SubFilePath, "original SUB", token);
+
+                var cdtPath = Path.ChangeExtension(inputFile, ".cdt");
+                if (File.Exists(cdtPath))
+                    await TryDeleteFileAsync(cdtPath, "original CDT", token);
+            }
+
+            return true;
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            LogError($"CCDSharp: Conversion error - {ex.Message}");
+            return false;
+        }
     }
 
     private async Task<bool> ValidateDependentFilesAsync(string ext, string inputFile, string originalName, CancellationToken token)
@@ -1772,7 +1857,7 @@ internal partial class MainWindow : IDisposable
             {
                 LogMessage($"Deleting source: {originalName} (Option 'Delete originals' is enabled)");
 
-                if (ext is FileExtensions.Cue or FileExtensions.Gdi or FileExtensions.Toc)
+                if (ext is FileExtensions.Cue or FileExtensions.Gdi or FileExtensions.Toc or FileExtensions.Ccd)
                     await DeleteOriginalGameFilesAsync(inputFile, token);
                 else
                     await TryDeleteFileAsync(inputFile, "original file", token);
@@ -2696,6 +2781,22 @@ internal partial class MainWindow : IDisposable
             else if (ext.Equals(FileExtensions.Toc, StringComparison.OrdinalIgnoreCase))
             {
                 files.AddRange(await GameFileParser.GetReferencedFilesFromTocAsync(inputFile, LogMessage, token));
+            }
+            else if (ext.Equals(FileExtensions.Ccd, StringComparison.OrdinalIgnoreCase))
+            {
+                try
+                {
+                    var disc = CcdConverter.Parse(inputFile);
+                    if (disc.ImgFilePath != null) files.Add(disc.ImgFilePath);
+                    if (disc.SubFilePath != null) files.Add(disc.SubFilePath);
+                }
+                catch
+                {
+                    /* ignore parse errors, just delete what we can */
+                }
+
+                var cdtPath = Path.ChangeExtension(inputFile, ".cdt");
+                if (File.Exists(cdtPath)) files.Add(cdtPath);
             }
 
             foreach (var f in files.Distinct(StringComparer.Ordinal)) await TryDeleteFileAsync(f, "game file", token);

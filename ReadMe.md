@@ -51,13 +51,13 @@
 
 ## 📂 Supported Formats
 
-| Category             | Formats                                                                      |
-|:---------------------|:-----------------------------------------------------------------------------|
-| **Standard Images**  | `.iso`, `.cue` (+`.bin`), `.img`, `.raw`, `.toc`                           |
-| **Console Specific** | `.gdi` (Dreamcast), `.pbp` (PlayStation) |
-| **Compressed**       | `.cso` (Compressed ISO)                                                      |
-| **Archives**         | `.zip`, `.7z`, `.rar`                                                        |
-| **Output**           | `.chd` (Compressed Hunks of Data)                                            |
+| Category             | Formats                                          |
+|:---------------------|:-------------------------------------------------|
+| **Standard Images**  | `.iso`, `.cue` (+`.bin`), `.img`, `.raw`, `.toc` |
+| **Console Specific** | `.gdi` (Dreamcast), `.pbp` (PlayStation)         |
+| **Compressed**       | `.cso` (Compressed ISO)                          |
+| **Archives**         | `.zip`, `.7z`, `.rar`                            |
+| **Output**           | `.chd` (Compressed Hunks of Data)                |
 
 ---
 

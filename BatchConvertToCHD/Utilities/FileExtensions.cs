@@ -37,7 +37,7 @@ internal static class FileExtensions
     /// </summary>
     internal static readonly string[] AllSupportedInputExtensionsForConversion =
     [
-        Cue, Iso, Img, Gdi, Toc, Raw, Zip, SevenZip, Rar, Cso, Pbp
+        Cue, Iso, Img, Gdi, Toc, Raw, Ccd, Zip, SevenZip, Rar, Cso, Pbp
     ];
 
     /// <summary>
@@ -65,7 +65,7 @@ internal static class FileExtensions
     /// </summary>
     internal static readonly string[] PrimaryTargetExtensions =
     [
-        Cue, Iso, Img, Gdi, Toc, Raw
+        Cue, Iso, Img, Gdi, Toc, Raw, Ccd
     ];
 
     /// <summary>
