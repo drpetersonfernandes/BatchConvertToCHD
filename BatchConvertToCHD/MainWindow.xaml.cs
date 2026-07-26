@@ -13,6 +13,7 @@ using BatchConvertToCHD.Models;
 using BatchConvertToCHD.Services;
 using BatchConvertToCHD.Utilities;
 using CCDSharp;
+using CCDSharp.Models;
 using CHDSharp;
 using CHDSharp.Models;
 using PBPSharp;
@@ -1626,12 +1627,13 @@ internal partial class MainWindow : IDisposable
     private async Task<bool> ProcessCcdFileForConversionAsync(string inputFile, string originalName, string inputFolder, string outputFolder, List<string> tempDirs, CancellationToken token, string chdmanPath, int cores, bool forceCd, bool forceDvd, int? timeoutMinutes, bool deleteOriginal)
     {
         long imgSize = 0;
+        DiscImage? parsedDisc = null;
         try
         {
-            var disc = CcdConverter.Parse(inputFile);
-            if (disc.ImgFilePath != null && File.Exists(disc.ImgFilePath))
+            parsedDisc = CcdConverter.Parse(inputFile);
+            if (parsedDisc.ImgFilePath != null && File.Exists(parsedDisc.ImgFilePath))
             {
-                imgSize = new FileInfo(disc.ImgFilePath).Length;
+                imgSize = new FileInfo(parsedDisc.ImgFilePath).Length;
             }
         }
         catch
@@ -1663,9 +1665,11 @@ internal partial class MainWindow : IDisposable
 
             if (deleteOriginal)
             {
+                // Parse the CCD before deleting it (if we didn't parse it earlier)
+                parsedDisc ??= CcdConverter.Parse(inputFile);
+
                 await TryDeleteFileAsync(inputFile, "original CCD", token);
 
-                var parsedDisc = CcdConverter.Parse(inputFile);
                 if (parsedDisc.ImgFilePath != null)
                     await TryDeleteFileAsync(parsedDisc.ImgFilePath, "original IMG", token);
                 if (parsedDisc.SubFilePath != null)
@@ -3002,7 +3006,7 @@ internal partial class MainWindow : IDisposable
         try
         {
             var currentPid = Environment.ProcessId;
-            foreach (var process in Process.GetProcessesByName(Path.GetFileNameWithoutExtension(AppConfig.ChdmanExeName)))
+            foreach (var process in Process.GetProcessesByName("chdman"))
             {
                 try
                 {

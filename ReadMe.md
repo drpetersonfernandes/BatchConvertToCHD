@@ -28,6 +28,7 @@
 *   **Recursive Structure Preservation**: Maintains your original directory hierarchy in the output folder when processing subfolders.
 *   **Robust Extraction**: Supports extracting CHD files back to **.cue (CD)**, **.iso (DVD)**, **.gdi (Dreamcast/Naomi)**, and **.img (HDD)** with intelligent metadata auto-detection using the [CHDSharp](https://www.nuget.org/packages/CHDSharp) library.
 *   **Archive Integration**: Transparently handles `.zip`, `.7z`, and `.rar` archives, extracting and processing contents automatically while respecting cancellation tokens. Includes a 7za.exe fallback for `.7z` files that SharpCompress cannot extract.
+*   **CloneCD Support**: Convert CloneCD `.ccd` disc images to CHD format via the [CCDSharp](https://) library. Automatically generates CUE/BIN from `.ccd`/`.img` sets.
 *   **CSO Decompression**: Built-in support for `.cso` and `.ciso` (Compressed ISO) files via the [CSOSharp](https://github.com/PureLogicCode/CSOSharp) library (supports deflate/zlib and LZ4).
 *   **PBP Extraction**: Convert PlayStation Portable `.pbp` files to CHD format via the [PBPSharp](https://github.com/PureLogicCode/PBPSharp) library.
 
@@ -51,13 +52,13 @@
 
 ## 📂 Supported Formats
 
-| Category             | Formats                                          |
-|:---------------------|:-------------------------------------------------|
-| **Standard Images**  | `.iso`, `.cue` (+`.bin`), `.img`, `.raw`, `.toc` |
-| **Console Specific** | `.gdi` (Dreamcast), `.pbp` (PlayStation)         |
-| **Compressed**       | `.cso` (Compressed ISO)                          |
-| **Archives**         | `.zip`, `.7z`, `.rar`                            |
-| **Output**           | `.chd` (Compressed Hunks of Data)                |
+| Category             | Formats                                                    |
+|:---------------------|:-----------------------------------------------------------|
+| **Standard Images**  | `.iso`, `.cue` (+`.bin`), `.img`, `.ccd` (+`.img`), `.raw`, `.toc` |
+| **Console Specific** | `.gdi` (Dreamcast), `.pbp` (PlayStation)                   |
+| **Compressed**       | `.cso` (Compressed ISO)                                    |
+| **Archives**         | `.zip`, `.7z`, `.rar`                                      |
+| **Output**           | `.chd` (Compressed Hunks of Data)                          |
 
 ---
 
@@ -70,6 +71,7 @@ The application implements priority-based logic to ensure compatibility:
 3.  **Hard Disk Images (`.img`)**: Defaults to `createhd` unless an accompanying `.cue` file is detected, in which case `createcd` is used.
 4.  **Raw Data (`.raw`)**: Defaults to `createraw`.
 5.  **PlayStation PBP (`.pbp`)**: Extracts to CUE/BIN using PBPSharp, then converts to CHD using `createcd`.
+6.  **CloneCD (`.ccd`)**: Converts to CUE/BIN using CCDSharp, then converts to CHD using `createcd`.
 
 *Note: Users can manually override these settings via the UI to force specific modes (except for PBP which always extracts first).*
 
@@ -85,9 +87,10 @@ The application implements priority-based logic to ensure compatibility:
 *   **Library Dependencies**:
     * [WPF-UI](https://github.com/lepoco/wpfui) (v4.3.0) — Modern Fluent Design theming and controls
     * [CHDSharp](https://www.nuget.org/packages/CHDSharp) (v1.2.0) — Pure C# CHD reading, verification, and extraction
-    * [CSOSharp](https://github.com/PureLogicCode/CSOSharp) (v1.0.0) — Pure C# CSO/CISO decompression (deflate + LZ4)
-    * [PBPSharp](https://github.com/PureLogicCode/PBPSharp) (v1.0.0) — Pure C# PBP extraction and SFO parsing
-    * [SharpCompress](https://github.com/adamhathcock/sharpcompress) (v0.50.0) — Archive extraction support
+    * [CSOSharp](https://) (v1.0.0) — Pure C# CSO/CISO decompression (deflate + LZ4)
+    * [PBPSharp](https://) (v1.0.0) — Pure C# PBP extraction and SFO parsing
+    * [CCDSharp](https://) (v1.0.0) — Pure C# CloneCD (.ccd/.img/.sub) parsing and conversion
+    * [SharpCompress](https://github.com/adamhathcock/sharpcompress) (v0.50.1) — Archive extraction support
     * [Serilog](https://serilog.net/) (v4.4.0) — Structured diagnostic logging
 
 ---
@@ -152,10 +155,11 @@ This project is licensed under the **GNU General Public License v3.0**. See the 
 
 **Acknowledgements:**
 *   [MAME Team](https://www.mamedev.org/) for `chdman`.
-*   [CHDSharp](https://www.nuget.org/packages/CHDSharp) by Gordon Jefferyes — Pure C# CHD read-only library supporting V1-V5, all 10 codecs, parent/child chaining, and parallel verification.
+*   [CHDSharp](https://www.nuget.org/packages/CHDSharp) by Peterson Fernandes — Pure C# CHD read-only library supporting V1-V5, all 10 codecs, parent/child chaining, and parallel verification.
 *   [WPF-UI](https://github.com/lepoco/wpfui) by lepoco — Modern Windows 11 Fluent Design theming and controls.
-*   [CSOSharp](https://github.com/PureLogicCode/CSOSharp) by PureLogicCode — Pure C# CSO/CISO decompression library.
-*   [PBPSharp](https://github.com/PureLogicCode/PBPSharp) by PureLogicCode — Pure C# PlayStation PBP extraction library.
+*   [CSOSharp](https://) by Peterson Fernandes — Pure C# CSO/CISO decompression library.
+*   [PBPSharp](https://) by Peterson Fernandes — Pure C# PlayStation PBP extraction library.
+*   [CCDSharp](https://) by Peterson Fernandes — Pure C# CloneCD disc image parsing and conversion library.
 *   [SharpCompress](https://github.com/adamhathcock/sharpcompress) for archive handling.
 *   [Serilog](https://serilog.net/) for structured logging.
 *   [Igor Pavlov](https://www.7-zip.org/) for `7za.exe` (7-Zip command-line tool).
