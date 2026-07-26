@@ -91,7 +91,7 @@ public class PbpFileTests : IDisposable
     [Fact]
     public void PbpHeaderMagicValueIsCorrect()
     {
-        Assert.Equal(0x00504250u, PbpHeader.MagicValue);
+        Assert.Equal(0x50425000u, PbpHeader.MagicValue);
     }
 
     [Fact]

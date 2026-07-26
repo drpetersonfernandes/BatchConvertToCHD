@@ -104,12 +104,8 @@ internal class UpdateService
                 {
                     await Application.Current.Dispatcher.InvokeAsync(() =>
                     {
-                        var releaseNotes = string.IsNullOrWhiteSpace(latestRelease.Body)
-                            ? "No release notes available."
-                            : latestRelease.Body.Replace("\r\n", "\n").Replace("\\n", "\n");
-
                         var result = MessageBox.Show(
-                            $"A new version ({remoteVersionString}) of {_applicationName} is available!\n\nRelease Notes:\n{releaseNotes}\n\nWould you like to download it?",
+                            $"A new version ({remoteVersionString}) of {_applicationName} is available!\n\nWould you like to go to the download page?",
                             "New Version Available", MessageBoxButton.YesNo, MessageBoxImage.Information);
 
                         if (result == MessageBoxResult.Yes)

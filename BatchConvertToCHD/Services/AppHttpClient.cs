@@ -14,7 +14,7 @@ internal static class AppHttpClient
 {
     private static SocketsHttpHandler? _handler;
     private static HttpClient? _client;
-    private static readonly object Lock = new();
+    private static readonly Lock Lock = new();
     private static readonly ILogger Logger = Log.ForContext(typeof(AppHttpClient));
 
     /// <summary>

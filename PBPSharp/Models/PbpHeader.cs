@@ -9,9 +9,9 @@ namespace PBPSharp.Models;
 public readonly struct PbpHeader
 {
     /// <summary>
-    /// The PBP magic bytes: 0x00504250 ("\0PBP" in ASCII).
+    /// The PBP magic bytes: 0x50425000 ("\0PBP" in ASCII, read as little-endian uint32 from bytes 00 50 42 50).
     /// </summary>
-    public const uint MagicValue = 0x00504250;
+    public const uint MagicValue = 0x50425000;
 
     /// <summary>
     /// The PBP header size (36 bytes: 9 uint32 fields).

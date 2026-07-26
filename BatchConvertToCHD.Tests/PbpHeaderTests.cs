@@ -7,7 +7,7 @@ public class PbpHeaderTests
     [Fact]
     public void MagicValueIsCorrect()
     {
-        Assert.Equal(0x00504250u, PbpHeader.MagicValue);
+        Assert.Equal(0x50425000u, PbpHeader.MagicValue);
     }
 
     [Fact]

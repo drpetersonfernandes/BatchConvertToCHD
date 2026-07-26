@@ -27,7 +27,7 @@ namespace BatchConvertToCHD;
 internal partial class MainWindow : IDisposable
 {
     private CancellationTokenSource _cts;
-    private readonly object _ctsLock = new();
+    private readonly Lock _ctsLock = new();
     private readonly bool _isChdmanAvailable;
 
     // Statistics
@@ -72,7 +72,7 @@ internal partial class MainWindow : IDisposable
     private const int MaxLogLength = 100000; // Maximum characters before log truncation
     private PerformanceCounter? _writeBytesCounter;
     private PerformanceCounter? _readBytesCounter;
-    private readonly object _performanceCounterLock = new();
+    private readonly Lock _performanceCounterLock = new();
 
     /// <summary>
     /// Initializes a new instance of the <see cref="MainWindow"/> class.
