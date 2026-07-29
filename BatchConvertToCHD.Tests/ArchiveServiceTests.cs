@@ -43,7 +43,7 @@ public class ArchiveServiceTests : IDisposable
         var result = await service.ExtractArchiveAsync(missingPath, tempDir, logs.Add, CancellationToken.None);
 
         Assert.False(result.Success);
-        Assert.Contains(logs, static msg => msg.Contains("WARNING", StringComparison.OrdinalIgnoreCase) && msg.Contains("missing", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(logs, static msg => msg.Contains("File not found", StringComparison.OrdinalIgnoreCase) && msg.Contains("missing", StringComparison.OrdinalIgnoreCase));
         Assert.Contains("File not found", result.ErrorMessage, StringComparison.Ordinal);
     }
 

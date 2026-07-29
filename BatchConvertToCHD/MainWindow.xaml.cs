@@ -219,6 +219,7 @@ internal partial class MainWindow : IDisposable
             var msg = $"CRITICAL ERROR: The following required component is missing:\n\n" +
                       $"{string.Join("\n", missingDeps)}\n\n" +
                       $"Please ensure it is placed in the application folder.\n" +
+                      $"Download it from: https://github.com/rtissera/chdman/releases\n\n" +
                       $"Conversion will NOT work without it.";
 
             LogError(" " + msg.Replace("\n", " "));
@@ -514,7 +515,7 @@ internal partial class MainWindow : IDisposable
         LogMessage($"Welcome to {AppConfig.ApplicationName}. (Conversion Mode)");
         if (!_isChdmanAvailable)
         {
-            LogWarning(" chdman.exe not found!");
+            LogWarning(" chdman.exe not found! Download it from https://github.com/rtissera/chdman/releases and place it in the application folder.");
         }
 
         LogMessage("--- Ready for Conversion ---");
@@ -1019,7 +1020,7 @@ internal partial class MainWindow : IDisposable
 
             if (!_isChdmanAvailable)
             {
-                ShowError($"{AppConfig.ChdmanExeName} is missing.");
+                ShowError($"{AppConfig.ChdmanExeName} is missing. Download it from https://github.com/rtissera/chdman/releases");
                 return;
             }
 
@@ -1388,7 +1389,7 @@ internal partial class MainWindow : IDisposable
 
         if (!File.Exists(inputFile))
         {
-            LogWarning($" File not found, skipping: {inputFile}");
+            LogMessage($" File not found, skipping: {inputFile}");
             return false;
         }
 
@@ -1689,7 +1690,14 @@ internal partial class MainWindow : IDisposable
         }
         catch (Exception ex)
         {
-            LogError($"CCDSharp: Conversion error - {ex.Message}");
+            if (ex is FileNotFoundException)
+            {
+                LogError($"CCDSharp: Conversion error - {ex.Message}. Ensure the .img file exists alongside the .ccd file with the same base name.");
+            }
+            else
+            {
+                LogError($"CCDSharp: Conversion error - {ex.Message}");
+            }
             return false;
         }
     }
@@ -2266,7 +2274,7 @@ internal partial class MainWindow : IDisposable
     {
         if (!File.Exists(chdmanPath))
         {
-            LogError($" chdman.exe not found at '{chdmanPath}'. Please verify the path in settings.");
+            LogError($" chdman.exe not found at '{chdmanPath}'. Download it from https://github.com/rtissera/chdman/releases and place it in the application folder.");
             return false;
         }
 
@@ -2490,13 +2498,22 @@ internal partial class MainWindow : IDisposable
         try
         {
             var effectiveInput = asciiInputFile ?? originalInputFile;
-            var fileSize = new FileInfo(effectiveInput).Length;
-            const long sectorSize = 2048;
-            if (fileSize > 0 && fileSize % sectorSize != 0)
+            var inputExt = Path.GetExtension(effectiveInput);
+
+            // Skip sector-size check for text-based descriptor files (.cue/.gdi/.toc).
+            // These are plain text files that reference separate data files (.bin/.iso/.raw);
+            // their file size is irrelevant to sector alignment. chdman handles them
+            // correctly when the referenced data files are present.
+            if (inputExt is not (".cue" or ".gdi" or ".toc"))
             {
-                LogError($" Failed to convert '{Path.GetFileName(originalInputFile)}': file size ({fileSize:N0} bytes) is not divisible by sector size ({sectorSize}). The file may be corrupt or truncated.");
-                if (asciiTempDir != null) TryCleanupAsciiTemp();
-                return false;
+                var fileSize = new FileInfo(effectiveInput).Length;
+                const long sectorSize = 2048;
+                if (fileSize > 0 && fileSize % sectorSize != 0)
+                {
+                    LogError($" Failed to convert '{Path.GetFileName(originalInputFile)}': file size ({fileSize:N0} bytes) is not divisible by sector size ({sectorSize}). The file may be corrupt or truncated.");
+                    if (asciiTempDir != null) TryCleanupAsciiTemp();
+                    return false;
+                }
             }
         }
         catch

@@ -7,8 +7,8 @@ namespace BatchConvertToCHD.Services;
 /// A Serilog log event sink that forwards warning-level and above log events to the
 /// <see cref="BugReportService"/> for bug report submission. Events below
 /// <see cref="LogEventLevel.Warning"/> are silently ignored. Messages matching
-/// known informational patterns (rate-limiting, disk-space warnings, archive
-/// file-type info) are also excluded.
+/// known informational patterns (rate-limiting, disk-space warnings, missing
+/// user files, archive corruption, missing dependencies) are also excluded.
 /// Uses an interlocked flag to prevent concurrent API flood when many warnings fire rapidly.
 /// </summary>
 internal class BugReportApiSink : ILogEventSink
@@ -18,22 +18,49 @@ internal class BugReportApiSink : ILogEventSink
 
     private static readonly string[] ExcludedMessagePatterns =
     [
+        // Stats / rate-limiting
         "Failed to record usage statistics",
+
+        // Disk space warnings (informational, not bugs)
         "Temp drive (",
         "Output drive (",
         "drive has ",
-        "has ",
         "drive (",
-        "drive has",
         "input files total",
         "CHD files total",
         "You may run out of disk space",
         "Temporary files are created during conversion",
         "CHD compression usually reduces",
         "Extracted files are typically larger",
-        "No supported primary files found in archive",
         "disk space",
-        "disk full"
+        "disk full",
+
+        // Archive info (not code bugs)
+        "No supported primary files found in archive",
+
+        // chdman.exe missing — user environment issue, not a code bug
+        "chdman.exe not found",
+        "CRITICAL ERROR: The following required component is missing",
+
+        // User file issues — corrupt, truncated, or incomplete ROMs
+        "referenced files are missing",
+        "is not divisible by sector size",
+        "could not validate referenced files",
+        "The file or directory is corrupted and unreadable",
+        "Retry via temp failed",
+        "archive file may be corrupted",
+        "archive is invalid or corrupt",
+        "archive file appears to be incomplete",
+        "archive file may be corrupted or in an unsupported format",
+        "archive file may be corrupted or unsupported",
+        "Archive is encrypted",
+        "compression method that is not supported",
+
+        // CCDSharp — missing .img alongside .ccd (user issue)
+        "CCDSharp: Conversion error",
+
+        // File not found during processing — user moved/deleted file
+        "File not found, skipping:"
     ];
 
     private static bool IsExcluded(string message)
@@ -59,7 +86,8 @@ internal class BugReportApiSink : ILogEventSink
     /// <summary>
     /// Emits the provided log event to the sink. Only events at or above
     /// <see cref="LogEventLevel.Warning"/> are forwarded to the bug report API.
-    /// Messages matching informational patterns (rate-limiting, disk-space, etc.) are excluded.
+    /// Messages matching informational patterns (rate-limiting, disk-space,
+    /// missing user files, missing dependencies, etc.) are excluded.
     /// </summary>
     /// <param name="logEvent">The log event to emit.</param>
     public void Emit(LogEvent logEvent)

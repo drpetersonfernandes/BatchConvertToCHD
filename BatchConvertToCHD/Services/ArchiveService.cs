@@ -117,7 +117,7 @@ internal class ArchiveService : IDisposable
 
         if (!File.Exists(originalArchivePath))
         {
-            onLog($"WARNING: File not found, skipping extraction: {originalArchivePath}");
+            onLog($"File not found, skipping extraction: {originalArchivePath}");
             return (false, [], tempDirectoryRoot, $"File not found: {originalArchivePath}");
         }
 
