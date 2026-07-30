@@ -18,6 +18,51 @@ internal class BugReportService
     private readonly string _applicationName;
     private readonly HttpClient _httpClient;
 
+    private static readonly string[] ExcludedMessagePatterns =
+    [
+        "Failed to record usage statistics",
+        "Temp drive (",
+        "Output drive (",
+        "drive has ",
+        "drive (",
+        "input files total",
+        "CHD files total",
+        "You may run out of disk space",
+        "Temporary files are created during conversion",
+        "CHD compression usually reduces",
+        "Extracted files are typically larger",
+        "disk space",
+        "disk full",
+        "No supported primary files found in archive",
+        "chdman.exe not found",
+        "CRITICAL ERROR: The following required component is missing",
+        "referenced files are missing",
+        "is not divisible by",
+        "could not validate referenced files",
+        "The file or directory is corrupted and unreadable",
+        "Retry via temp failed",
+        "archive file may be corrupted",
+        "archive is invalid or corrupt",
+        "archive file appears to be incomplete",
+        "archive file may be corrupted or in an unsupported format",
+        "archive file may be corrupted or unsupported",
+        "Archive is encrypted",
+        "compression method that is not supported",
+        "CCDSharp: Conversion error",
+        "File not found, skipping:"
+    ];
+
+    internal static bool IsExcludedFromBugReport(string message)
+    {
+        foreach (var pattern in ExcludedMessagePatterns)
+        {
+            if (message.Contains(pattern, StringComparison.OrdinalIgnoreCase))
+                return true;
+        }
+
+        return false;
+    }
+
     internal BugReportService(string apiUrl, string apiKey, string applicationName)
         : this(apiUrl, apiKey, applicationName, AppHttpClient.Client)
     {
@@ -41,6 +86,10 @@ internal class BugReportService
     public virtual async Task<bool> SendBugReportAsync(string message, Exception? ex = null, CancellationToken token = default)
     {
         token.ThrowIfCancellationRequested();
+
+        if (IsExcludedFromBugReport(message))
+            return false;
+
         try
         {
             var formattedMessage = BuildFormattedReport(message, ex);

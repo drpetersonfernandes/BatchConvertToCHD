@@ -110,7 +110,7 @@ public class PathUtilsTests
         var path2 = Path.Combine(root, "dir1", "subdir", "sub2", "file.txt");
 
         var result = PathUtils.GetSafeRelativePath(path1, path2);
-        Assert.NotEqual(".", result);
+        Assert.NotEqual(".", result, StringComparer.Ordinal);
         Assert.Contains("sub2", result, StringComparison.Ordinal);
     }
 
@@ -239,7 +239,7 @@ public class PathUtilsTests
     {
         var paths = PathUtils.GetPossibleTempBasePaths().ToList();
         Assert.NotEmpty(paths);
-        Assert.Contains(Path.GetTempPath(), paths);
+        Assert.Contains(Path.GetTempPath(), paths, StringComparer.Ordinal);
     }
 
     [Fact]

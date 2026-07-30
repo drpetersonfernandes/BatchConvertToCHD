@@ -27,8 +27,8 @@ public class PbpExtractionResultTests
         var files = new List<string> { "file1.cue", "file2.cue" };
         var result = new PbpExtractionResult { CueFilePaths = files };
         Assert.Equal(2, result.CueFilePaths.Count);
-        Assert.Contains("file1.cue", result.CueFilePaths);
-        Assert.Contains("file2.cue", result.CueFilePaths);
+        Assert.Contains("file1.cue", result.CueFilePaths, StringComparer.Ordinal);
+        Assert.Contains("file2.cue", result.CueFilePaths, StringComparer.Ordinal);
     }
 
     [Fact]

@@ -152,8 +152,8 @@ public class GameFileParserTests : IDisposable
 
         var result = await GameFileParser.GetReferencedFilesFromCueAsync(cuePath, static _ => { }, CancellationToken.None);
         Assert.Equal(2, result.Count);
-        Assert.Contains(Path.Combine(_tempDir, "track1.bin"), result);
-        Assert.Contains(Path.Combine(_tempDir, "track2.bin"), result);
+        Assert.Contains(Path.Combine(_tempDir, "track1.bin"), result, StringComparer.Ordinal);
+        Assert.Contains(Path.Combine(_tempDir, "track2.bin"), result, StringComparer.Ordinal);
     }
 
     [Fact]

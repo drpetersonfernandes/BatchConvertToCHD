@@ -49,6 +49,7 @@ internal partial class MainWindow : IDisposable
     private readonly UpdateService _updateService;
     private readonly ArchiveService _archiveService;
     private readonly ScreenshotService _screenshotService;
+    private readonly FileWatcherService _fileWatcher = new();
 
     // Global hotkey for F8 screenshot
     private const int HotkeyId = 9001;
@@ -784,6 +785,13 @@ internal partial class MainWindow : IDisposable
             RefreshFileListForActiveTab();
         }
 
+        if (targetBox == ConversionInputFolderTextBox && normalized != null)
+        {
+            _fileWatcher.StartWatching(normalized);
+            if (_fileWatcher.IsWatching)
+                LogMessage($"Monitoring input folder for file changes: {normalized}");
+        }
+
         UpdateStatusBarMessage($"{logName} folder selected");
     }
 
@@ -1390,6 +1398,11 @@ internal partial class MainWindow : IDisposable
         if (!File.Exists(inputFile))
         {
             LogMessage($" File not found, skipping: {inputFile}");
+
+            var watcherCtx = _fileWatcher.GetContextForMissingFile(inputFile);
+            if (watcherCtx != null)
+                LogMessage($"       {watcherCtx}");
+
             return false;
         }
 
@@ -2507,12 +2520,22 @@ internal partial class MainWindow : IDisposable
             if (inputExt is not (".cue" or ".gdi" or ".toc"))
             {
                 var fileSize = new FileInfo(effectiveInput).Length;
-                const long sectorSize = 2048;
-                if (fileSize > 0 && fileSize % sectorSize != 0)
+                if (fileSize > 0)
                 {
-                    LogError($" Failed to convert '{Path.GetFileName(originalInputFile)}': file size ({fileSize:N0} bytes) is not divisible by sector size ({sectorSize}). The file may be corrupt or truncated.");
-                    if (asciiTempDir != null) TryCleanupAsciiTemp();
-                    return false;
+                    // Standard CD/DVD sector sizes to try.
+                    // 2352: raw CD audio/data (2352 bytes/sector)
+                    // 2048: Mode 1 / DVD data (2048 bytes/sector)
+                    // 2336: Mode 2 XA (2336 bytes/sector)
+                    // 2324: Mode 2 Form 1 (2324 bytes/sector)
+                    var sectorSizes = new[] { 2352L, 2048L, 2336L, 2324L };
+                    var isSectorAligned = sectorSizes.Any(ss => fileSize % ss == 0);
+
+                    if (!isSectorAligned)
+                    {
+                        LogError($" Failed to convert '{Path.GetFileName(originalInputFile)}': file size ({fileSize:N0} bytes) is not divisible by any standard sector size (2048/2324/2336/2352). The file may be corrupt or truncated.");
+                        if (asciiTempDir != null) TryCleanupAsciiTemp();
+                        return false;
+                    }
                 }
             }
         }
@@ -3212,6 +3235,7 @@ internal partial class MainWindow : IDisposable
         _writeBytesCounter?.Dispose();
         _readBytesCounter?.Dispose();
         _archiveService.Dispose();
+        _fileWatcher.Dispose();
         _operationTimer.Stop();
 
         KillOrphanedProcesses();
