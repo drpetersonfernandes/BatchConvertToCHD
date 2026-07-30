@@ -86,9 +86,9 @@ internal sealed class FileWatcherService : IDisposable
             _watcher = null;
         }
 
-        _lastEventByFile.Clear();
         lock (_lock)
         {
+            _lastEventByFile.Clear();
             while (_trackedKeys.TryDequeue(out _))
             {
             }
@@ -113,7 +113,7 @@ internal sealed class FileWatcherService : IDisposable
             // - The drive was disconnected before watcher started
             // - The path is outside the watched folder tree
             // - The watcher buffer overflowed
-            if (WatchedFolder != null && !filePath.StartsWith(WatchedFolder, StringComparison.OrdinalIgnoreCase))
+            if (WatchedFolder != null && !IsPathUnderFolder(filePath, WatchedFolder))
                 return "The file path is outside the monitored input folder.";
 
             if (!Directory.Exists(WatchedFolder))
@@ -182,29 +182,29 @@ internal sealed class FileWatcherService : IDisposable
         }
     }
 
+    private static bool IsPathUnderFolder(string filePath, string folderPath)
+    {
+        var folderWithSep = folderPath.EndsWith(Path.DirectorySeparatorChar)
+            ? folderPath
+            : folderPath + Path.DirectorySeparatorChar;
+
+        return filePath.StartsWith(folderWithSep, StringComparison.OrdinalIgnoreCase)
+               || string.Equals(filePath, folderPath, StringComparison.OrdinalIgnoreCase);
+    }
+
     private void RecordEvent(string fullPath, FileWatchEventType eventType, string? relatedName)
     {
         var record = new FileEventRecord(DateTime.Now, eventType, relatedName);
 
-        _lastEventByFile[fullPath] = record;
         lock (_lock)
         {
+            _lastEventByFile[fullPath] = record;
             _trackedKeys.Enqueue(fullPath);
-        }
 
-        // Evict oldest entries if over limit
-        lock (_lock)
-        {
-            if (_trackedKeys.Count > MaxFileHistory)
+            while (_trackedKeys.Count > MaxFileHistory)
             {
-                lock (_lock)
-                {
-                    while (_trackedKeys.Count > MaxFileHistory)
-                    {
-                        if (_trackedKeys.TryDequeue(out var key))
-                            _lastEventByFile.TryRemove(key, out _);
-                    }
-                }
+                if (_trackedKeys.TryDequeue(out var key))
+                    _lastEventByFile.TryRemove(key, out _);
             }
         }
     }

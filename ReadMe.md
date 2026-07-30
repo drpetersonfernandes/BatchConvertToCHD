@@ -38,6 +38,7 @@
 *   **Automated Organization**: Optionally move verified or failed files into dedicated subfolders (`Success`/`Failed`) while ignoring these special folders during subsequent scans.
 *   **Cleanup**: Automatically removes empty subdirectories left behind after files are moved or deleted.
 *   **Dependency Protection**: Performs a critical dependency check on startup to notify you if required components (like `chdman.exe`, needed for conversion) are missing.
+*   **File System Monitoring**: Automatically monitors the input folder for file changes (deletions, renames, creations) during batch processing and provides diagnostic context when a file goes missing mid-operation.
 
 ### 📊 Performance & UI
 *   **Real-time Telemetry**: Monitor disk write/read speeds and elapsed time during operations.

@@ -324,4 +324,85 @@ public class BugReportServiceTests
 
         Assert.False(result);
     }
+
+    #region IsExcludedFromBugReport
+
+    [Theory]
+    [InlineData("chdman.exe not found")]
+    [InlineData("CRITICAL ERROR: The following required component is missing")]
+    [InlineData("Failed to record usage statistics")]
+    [InlineData("Temp drive (")]
+    [InlineData("Output drive (")]
+    [InlineData("drive has 1.5 GB")]
+    [InlineData("drive (C:)")]
+    [InlineData("input files total")]
+    [InlineData("CHD files total")]
+    [InlineData("You may run out of disk space")]
+    [InlineData("Temporary files are created during conversion")]
+    [InlineData("CHD compression usually reduces")]
+    [InlineData("Extracted files are typically larger")]
+    [InlineData("disk space")]
+    [InlineData("disk full")]
+    [InlineData("No supported primary files found in archive")]
+    [InlineData("referenced files are missing")]
+    [InlineData("is not divisible by")]
+    [InlineData("could not validate referenced files")]
+    [InlineData("The file or directory is corrupted and unreadable")]
+    [InlineData("Retry via temp failed")]
+    [InlineData("archive file may be corrupted")]
+    [InlineData("archive is invalid or corrupt")]
+    [InlineData("archive file appears to be incomplete")]
+    [InlineData("archive file may be corrupted or in an unsupported format")]
+    [InlineData("archive file may be corrupted or unsupported")]
+    [InlineData("Archive is encrypted")]
+    [InlineData("compression method that is not supported")]
+    [InlineData("CCDSharp: Conversion error")]
+    [InlineData("File not found, skipping:")]
+    public void IsExcludedFromBugReport_KnownPatterns_ReturnsTrue(string message)
+    {
+        Assert.True(BugReportService.IsExcludedFromBugReport(message));
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("A real application error occurred")]
+    [InlineData("NullReferenceException")]
+    [InlineData("Unhandled exception in conversion pipeline")]
+    [InlineData("Failed to initialize service")]
+    [InlineData("Unexpected error during processing")]
+    public void IsExcludedFromBugReport_NormalMessages_ReturnsFalse(string message)
+    {
+        Assert.False(BugReportService.IsExcludedFromBugReport(message));
+    }
+
+    [Theory]
+    [InlineData("CHDMAN.EXE NOT FOUND")]
+    [InlineData("Archive Is Encrypted")]
+    [InlineData("DISK FULL")]
+    [InlineData("File Not Found, Skipping: some path")]
+    public void IsExcludedFromBugReport_CaseInsensitive(string message)
+    {
+        Assert.True(BugReportService.IsExcludedFromBugReport(message));
+    }
+
+    [Fact]
+    public void IsExcludedFromBugReport_SubstringMatchIsExcluded()
+    {
+        Assert.True(BugReportService.IsExcludedFromBugReport("disk space is critically low"));
+        Assert.True(BugReportService.IsExcludedFromBugReport("The archive file may be corrupted, please verify"));
+    }
+
+    [Fact]
+    public async Task SendBugReportAsync_ExcludedMessage_ReturnsFalseWithoutHttpCall()
+    {
+        var handler = new FakeHttpMessageHandler(_ => throw new InvalidOperationException("Should not be called"));
+        using var httpClient = new HttpClient(handler);
+        var service = new BugReportService(TestApiUrl, TestApiKey, TestAppName, httpClient);
+
+        var result = await service.SendBugReportAsync("disk space is running low");
+
+        Assert.False(result);
+    }
+
+    #endregion
 }
