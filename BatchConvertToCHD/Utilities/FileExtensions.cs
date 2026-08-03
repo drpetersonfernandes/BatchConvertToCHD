@@ -19,6 +19,7 @@ internal static class FileExtensions
     internal const string Raw = ".raw";
     internal const string Ccd = ".ccd";
     internal const string Sub = ".sub";
+    internal const string Bin = ".bin";
 
     // Archive formats
     internal const string Zip = ".zip";

@@ -15,8 +15,10 @@ internal sealed class FileWatcherService : IDisposable
     private const int BufferSize = 65536;
 
     private readonly Lock _lock = new();
+
     private readonly ConcurrentDictionary<string, FileEventRecord> _lastEventByFile
         = new(StringComparer.OrdinalIgnoreCase);
+
     private readonly ConcurrentQueue<string> _trackedKeys = new();
 
     private FileSystemWatcher? _watcher;

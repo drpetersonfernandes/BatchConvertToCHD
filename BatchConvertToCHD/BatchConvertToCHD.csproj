@@ -8,8 +8,8 @@
     <UseWPF>true</UseWPF>
     <ApplicationIcon>icon\chd.ico</ApplicationIcon>
     <SupportedOSPlatformVersion>7.0</SupportedOSPlatformVersion>
-    <AssemblyVersion>3.2.0</AssemblyVersion>
-    <FileVersion>3.2.0</FileVersion>
+    <AssemblyVersion>3.3.0</AssemblyVersion>
+    <FileVersion>3.3.0</FileVersion>
     <IsPackable>false</IsPackable>
     <NeutralLanguage>en</NeutralLanguage>
     <DebugType>embedded</DebugType>
@@ -42,11 +42,12 @@
 
   <ItemGroup>
     <PackageReference Include="CHDSharp" Version="1.2.0" />
-    <PackageReference Include="Meziantou.Analyzer" Version="3.0.136">
+    <PackageReference Include="Meziantou.Analyzer" Version="3.0.138">
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
       <PrivateAssets>all</PrivateAssets>
     </PackageReference>
-    <PackageReference Include="SharpCompress" Version="0.50.1" />
+    <PackageReference Include="NAudio" Version="2.3.0" />
+    <PackageReference Include="SharpCompress" Version="0.50.3" />
     <PackageReference Include="WPF-UI" Version="4.3.0" />
     <PackageReference Include="Serilog" Version="4.4.0" />
     <PackageReference Include="Serilog.Sinks.File" Version="7.0.0" />

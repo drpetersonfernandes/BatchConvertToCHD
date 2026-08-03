@@ -94,6 +94,7 @@ internal static class AppConfig
 
             _decryptedApiKey = Encoding.UTF8.GetString(data);
         }
+
         return _decryptedApiKey;
     }
 }

@@ -203,6 +203,7 @@ public static class IsoWriter
 
             totalRead += read;
         }
+
         return totalRead;
     }
 }

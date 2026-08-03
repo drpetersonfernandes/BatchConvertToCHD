@@ -154,6 +154,33 @@ internal class ArchiveService : IDisposable
                     .ToList();
             }, token).ConfigureAwait(false);
 
+            if (foundFiles.Count == 0)
+            {
+                // No descriptor found: if the archive contains a bare .bin, generate a cue for it
+                // (single data track) so the disc can still be converted.
+                var binFiles = Directory.GetFiles(tempDirectoryRoot, "*.*",
+                        new EnumerationOptions { RecurseSubdirectories = true, IgnoreInaccessible = true })
+                    .Where(static f => Path.GetExtension(f).Equals(FileExtensions.Bin, StringComparison.OrdinalIgnoreCase))
+                    .ToList();
+
+                if (binFiles.Count > 0)
+                {
+                    var largestBin = binFiles.OrderByDescending(f => new FileInfo(f).Length).First();
+                    if (binFiles.Count > 1)
+                    {
+                        onLog($"WARNING: Archive contains {binFiles.Count} .bin files but no descriptor (.cue/.iso/.img). Converting the largest one ({Path.GetFileName(largestBin)}) as a single data track; multi-track sets need their .cue file to convert fully.");
+                    }
+
+                    var cuePath = BinCueGenerator.GetAutoCuePath(largestBin);
+                    await File.WriteAllTextAsync(
+                        cuePath,
+                        BinCueGenerator.BuildCueContent(Path.GetFileName(largestBin), BinCueGenerator.Mode2),
+                        token).ConfigureAwait(false);
+                    onLog($"No descriptor (.cue/.iso/.img) found; generated cue for {Path.GetFileName(largestBin)} (MODE2/2352).");
+                    foundFiles = [cuePath];
+                }
+            }
+
             return foundFiles.Count > 0
                 ? (true, foundFiles, tempDirectoryRoot, string.Empty)
                 : (false, new List<string>(), tempDirectoryRoot, "No supported primary files found in archive.");
@@ -169,6 +196,7 @@ internal class ArchiveService : IDisposable
                 return (false, [], tempDirectoryRoot,
                     "The archive file uses a compression method that is not supported by the built-in ZIP extractor (e.g., Deflate64, LZMA, PPMd). Try re-compressing the archive with standard Deflate compression, or extract it manually with 7-Zip or WinRAR and add the extracted files for conversion.");
             }
+
             return (false, [], tempDirectoryRoot, $"The archive file may be corrupted or incomplete and could not be extracted. Try re-downloading or re-copying the file, then attempt the conversion again. Details: {ex.Message}");
         }
         catch (IncompleteArchiveException ex)
@@ -182,6 +210,10 @@ internal class ArchiveService : IDisposable
         catch (CryptographicException ex)
         {
             return (false, [], tempDirectoryRoot, $"Archive is encrypted/password-protected and cannot be processed. Please extract it manually and add the extracted files. Details: {ex.Message}");
+        }
+        catch (InvalidFormatException ex) when (IsMultiPartRarError(ex))
+        {
+            return (false, [], tempDirectoryRoot, $"The archive appears to be a multi-part RAR with a missing volume. Download ALL parts (e.g. .part01.rar, .r00, .r01 ...) into the same folder and try again. Details: {ex.Message}");
         }
         catch (InvalidFormatException ex)
         {
@@ -205,7 +237,9 @@ internal class ArchiveService : IDisposable
         {
             var errorMsg = ex.Message.Contains("being used by another process", StringComparison.OrdinalIgnoreCase)
                 ? $"The archive file '{archiveFileName}' is locked by another application. Close any programs that may be using the file (e.g., antivirus, file explorer, another instance) and try again. Details: {ex.Message}"
-                : $"File access error while extracting '{archiveFileName}': {ex.Message}";
+                : IsNetworkUnavailableError(ex)
+                    ? $"The source file '{archiveFileName}' is on an unavailable network location. Check that the drive or share is connected and accessible, then try again. Details: {ex.Message}"
+                    : $"File access error while extracting '{archiveFileName}': {ex.Message}";
             return (false, [], tempDirectoryRoot, errorMsg);
         }
         catch (Exception ex)
@@ -506,6 +540,26 @@ internal class ArchiveService : IDisposable
     private static bool IsDiskFullException(Exception ex)
     {
         return ex is IOException { HResult: -2147024784 or -2147024783 };
+    }
+
+    /// <summary>
+    /// Detects the SharpCompress error thrown when a multi-part RAR is missing one of its volumes.
+    /// </summary>
+    internal static bool IsMultiPartRarError(Exception ex)
+    {
+        return ex is InvalidFormatException && ex.Message.Contains("Multi-part", StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// Detects I/O errors caused by an unavailable network location (disconnected drive/share).
+    /// </summary>
+    internal static bool IsNetworkUnavailableError(Exception ex)
+    {
+        return ex.Message.Contains("network path was not found", StringComparison.OrdinalIgnoreCase) ||
+               ex.Message.Contains("network location cannot be reached", StringComparison.OrdinalIgnoreCase) ||
+               ex.Message.Contains("network name is no longer available", StringComparison.OrdinalIgnoreCase) ||
+               ex.Message.Contains("The specified network name", StringComparison.OrdinalIgnoreCase) ||
+               ex.Message.Contains("An unexpected network error occurred", StringComparison.OrdinalIgnoreCase);
     }
 
     private static string? CheckTempDiskSpace(string originalArchivePath, string tempDirectoryRoot, string archiveFileName)

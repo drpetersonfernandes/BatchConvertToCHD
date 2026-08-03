@@ -26,6 +26,7 @@ public class CsoFileIntegrationTests : IDisposable
         {
             /* ignore */
         }
+
         GC.SuppressFinalize(this);
     }
 

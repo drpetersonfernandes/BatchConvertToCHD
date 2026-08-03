@@ -26,6 +26,7 @@ public class PbpFileIntegrationTests : IDisposable
         {
             /* ignore */
         }
+
         GC.SuppressFinalize(this);
     }
 

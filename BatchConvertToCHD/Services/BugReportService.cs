@@ -46,6 +46,8 @@ internal class BugReportService
         "archive file appears to be incomplete",
         "archive file may be corrupted or in an unsupported format",
         "archive file may be corrupted or unsupported",
+        "multi-part RAR with a missing volume",
+        "unavailable network location",
         "Archive is encrypted",
         "compression method that is not supported",
         "CCDSharp: Conversion error",

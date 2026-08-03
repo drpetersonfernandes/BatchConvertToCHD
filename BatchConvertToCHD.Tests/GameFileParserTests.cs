@@ -7,6 +7,11 @@ public class GameFileParserTests : IDisposable
 {
     private readonly string _tempDir;
 
+    static GameFileParserTests()
+    {
+        Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
+    }
+
     public GameFileParserTests()
     {
         _tempDir = Path.Combine(Path.GetTempPath(), $"GameFileParserTests_{Guid.NewGuid():N}");

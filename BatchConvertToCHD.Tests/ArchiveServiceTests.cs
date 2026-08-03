@@ -109,6 +109,34 @@ public class ArchiveServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task ExtractArchiveAsyncZipWithOnlyBinGeneratesCue()
+    {
+        var service = new ArchiveService("7za.exe", false);
+        var zipPath = Path.Combine(_tempDir, "test.zip");
+        var tempDir = Path.Combine(_tempDir, "extract");
+        Directory.CreateDirectory(tempDir);
+
+        await using (var archive = ZipFile.Open(zipPath, ZipArchiveMode.Create))
+        {
+            var entry = archive.CreateEntry("game.bin");
+            await using (var stream = entry.Open())
+            {
+                stream.WriteByte(0x01);
+            }
+        }
+
+        var result = await service.ExtractArchiveAsync(zipPath, tempDir, static _ => { }, CancellationToken.None);
+
+        Assert.True(result.Success);
+        var cue = Assert.Single(result.FilePaths);
+        Assert.EndsWith(".autocue.cue", cue, StringComparison.OrdinalIgnoreCase);
+
+        var content = await File.ReadAllTextAsync(cue);
+        Assert.Contains("FILE \"game.bin\" BINARY", content, StringComparison.Ordinal);
+        Assert.Contains("TRACK 01 MODE2/2352", content, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task ExtractCsoAsyncMissingCsoFileReturnsFailure()
     {
         var service = new ArchiveService("7za.exe", false);
@@ -405,6 +433,26 @@ public class ArchiveServiceTests : IDisposable
     }
 
     // --- Tests for ExtractArchiveAsync exception handling ---
+
+    [Fact]
+    public void IsMultiPartRarErrorDetectsMissingVolume()
+    {
+        var ex = new InvalidFormatException("Multi-part rar file is incomplete.  Entry expects a new volume: Kessen [PAL]\\Kessen.iso");
+
+        Assert.True(ArchiveService.IsMultiPartRarError(ex));
+        Assert.False(ArchiveService.IsMultiPartRarError(new InvalidFormatException("unrelated error")));
+        Assert.False(ArchiveService.IsMultiPartRarError(new IOException("Multi-part rar file is incomplete.")));
+    }
+
+    [Fact]
+    public void IsNetworkUnavailableErrorDetectsDisconnectedShares()
+    {
+        Assert.True(ArchiveService.IsNetworkUnavailableError(new IOException(@"The network path was not found. : '\\HENRY-MEDIA\External-Archive\Roms\PS1\Persona 2.7z'.")));
+        Assert.True(ArchiveService.IsNetworkUnavailableError(new IOException("The specified network name is no longer available.")));
+        Assert.True(ArchiveService.IsNetworkUnavailableError(new IOException("The network location cannot be reached.")));
+        Assert.False(ArchiveService.IsNetworkUnavailableError(new IOException("Access to the path is denied.")));
+        Assert.False(ArchiveService.IsNetworkUnavailableError(new IOException("The process cannot access the file because it is being used by another process.")));
+    }
 
     [Fact]
     public async Task ExtractArchiveAsyncInvalidFormatExceptionReturnsInvalidOrIncompleteMessage()

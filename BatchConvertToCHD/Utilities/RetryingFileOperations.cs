@@ -1,0 +1,110 @@
+using System.IO;
+
+namespace BatchConvertToCHD.Utilities;
+
+/// <summary>
+/// File operations that retry with backoff, used when files may be temporarily locked by
+/// another process (e.g. antivirus scanning a freshly written CHD before the original file
+/// is deleted).
+/// </summary>
+internal static class RetryingFileOperations
+{
+    internal const int MaxDeleteAttempts = 10;
+
+    /// <summary>Backoff schedule in milliseconds per attempt (0-based). Total ≈ 45 s.</summary>
+    internal static int GetDeleteBackoffMs(int attempt)
+    {
+        return attempt switch
+        {
+            0 => 500,
+            1 => 1000,
+            2 => 2000,
+            3 => 4000,
+            4 => 6000,
+            _ => 8000
+        };
+    }
+
+    /// <summary>
+    /// Attempts to delete <paramref name="path"/>, retrying with backoff while the file is
+    /// locked. Returns true when deleted or already gone, false after all attempts failed.
+    /// Read-only files have the ReadOnly attribute cleared once so the deletion can proceed;
+    /// other permanent failures (e.g. access denied) fail fast instead of retrying pointlessly.
+    /// </summary>
+    /// <param name="path">Path of the file to delete.</param>
+    /// <param name="token">Cancellation token; cancelling aborts the retry loop.</param>
+    /// <param name="onRetry">Called with the 0-based attempt number before each retry.</param>
+    /// <param name="backoffMsProvider">Optional backoff override (used by tests).</param>
+    internal static async Task<bool> TryDeleteAsync(string path, CancellationToken token, Action<int>? onRetry = null, Func<int, int>? backoffMsProvider = null)
+    {
+        var clearedReadOnly = false;
+        for (var attempt = 0; attempt < MaxDeleteAttempts; attempt++)
+        {
+            token.ThrowIfCancellationRequested();
+
+            try
+            {
+                await Task.Run(() => File.Delete(path), token).ConfigureAwait(false);
+                return true;
+            }
+            catch (FileNotFoundException)
+            {
+                return true;
+            }
+            catch (DirectoryNotFoundException)
+            {
+                return true;
+            }
+            catch (IOException)
+            {
+                if (attempt >= MaxDeleteAttempts - 1)
+                {
+                    return false;
+                }
+
+                onRetry?.Invoke(attempt);
+                await DelayAsync(backoffMsProvider, attempt, token).ConfigureAwait(false);
+            }
+            catch (UnauthorizedAccessException)
+            {
+                // Typically the ReadOnly attribute (or an ACL). Clear the attribute once and
+                // retry; if it still fails, the file is ACL-protected and retrying won't help.
+                if (clearedReadOnly)
+                {
+                    return false;
+                }
+
+                clearedReadOnly = true;
+                TryClearReadOnly(path);
+                onRetry?.Invoke(attempt);
+                await DelayAsync(backoffMsProvider, attempt, token).ConfigureAwait(false);
+            }
+        }
+
+        return false;
+    }
+
+    private static async Task DelayAsync(Func<int, int>? backoffMsProvider, int attempt, CancellationToken token)
+    {
+        var delayMs = (backoffMsProvider ?? GetDeleteBackoffMs)(attempt);
+        if (delayMs > 0)
+        {
+            await Task.Delay(delayMs, token).ConfigureAwait(false);
+        }
+    }
+
+    private static void TryClearReadOnly(string path)
+    {
+        try
+        {
+            if (File.Exists(path))
+            {
+                File.SetAttributes(path, FileAttributes.Normal);
+            }
+        }
+        catch (Exception)
+        {
+            // ignored
+        }
+    }
+}

@@ -24,6 +24,7 @@ public class CsoFileTests : IDisposable
         {
             /* ignore */
         }
+
         GC.SuppressFinalize(this);
     }
 

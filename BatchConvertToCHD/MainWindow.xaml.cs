@@ -66,6 +66,9 @@ internal partial class MainWindow : IDisposable
     // Temp Directory Prefix
     private const string TempDirPrefix = "BatchConvertToCHD_Temp_";
 
+    // MP3 audio track decoder (Media Foundation) for cue sheets with MP3 tracks.
+    private static readonly IMp3Decoder Mp3Decoder = new Mp3ToWavDecoder();
+
     // File collections for DataGrids
     private readonly ObservableCollection<FileItem> _conversionFiles = new();
     private readonly ObservableCollection<FileItem> _verificationFiles = new();
@@ -1573,11 +1576,31 @@ internal partial class MainWindow : IDisposable
         {
             token.ThrowIfCancellationRequested();
             var extractedFileOutputChd = ComputeOutputChdPathForExtractedFile(extractedFile, inputFile, inputFolder, outputFolder);
+            if (BinCueGenerator.IsAutoCue(extractedFile))
+            {
+                // Auto-generated cue ("Game.autocue.cue") should produce "Game.chd", not "Game.autocue.chd".
+                var outputDir = Path.GetDirectoryName(extractedFileOutputChd) ?? outputFolder;
+                extractedFileOutputChd = Path.Combine(outputDir, Path.GetFileNameWithoutExtension(Path.GetFileNameWithoutExtension(extractedFile)) + FileExtensions.Chd);
+            }
+
             var extractedOutputDir = Path.GetDirectoryName(extractedFileOutputChd) ?? outputFolder;
             if (!Directory.Exists(extractedOutputDir)) Directory.CreateDirectory(extractedOutputDir);
 
             LogMessage($"Converting extracted file: {Path.GetFileName(extractedFile)}");
             var converted = await ConvertToChdAsync(chdmanPath, extractedFile, extractedFileOutputChd, cores, forceCd, forceDvd, timeoutMinutes, token);
+
+            if (!converted && BinCueGenerator.IsAutoCue(extractedFile))
+            {
+                // The auto-generated cue guessed the track mode; retry once with the alternate
+                // mode (MODE2/2352 <-> MODE1/2352) before giving up.
+                var mode = await BinCueGenerator.ReadTrackModeAsync(extractedFile, token);
+                var alternateMode = BinCueGenerator.GetAlternateMode(mode);
+                await BinCueGenerator.RewriteCueAsync(extractedFile, alternateMode, token);
+                LogMessage($"Auto-generated cue failed with {mode}; retrying with {alternateMode}...");
+                await TryDeleteFileAsync(extractedFileOutputChd, "failed CHD", CancellationToken.None);
+                converted = await ConvertToChdAsync(chdmanPath, extractedFile, extractedFileOutputChd, cores, forceCd, forceDvd, timeoutMinutes, token);
+            }
+
             if (!converted)
             {
                 await TryDeleteFileAsync(extractedFileOutputChd, "failed CHD", CancellationToken.None);
@@ -1711,6 +1734,7 @@ internal partial class MainWindow : IDisposable
             {
                 LogError($"CCDSharp: Conversion error - {ex.Message}");
             }
+
             return false;
         }
     }
@@ -1722,19 +1746,32 @@ internal partial class MainWindow : IDisposable
 
         try
         {
-            var referencedFiles = ext switch
+            if (string.Equals(ext, FileExtensions.Cue, StringComparison.Ordinal))
             {
-                FileExtensions.Cue => await GameFileParser.GetReferencedFilesFromCueAsync(inputFile, LogMessage, token),
-                FileExtensions.Gdi => await GameFileParser.GetReferencedFilesFromGdiAsync(inputFile, LogMessage, token),
-                _ => await GameFileParser.GetReferencedFilesFromTocAsync(inputFile, LogMessage, token)
-            };
+                // Use the normalizer's resolution (exact → case-insensitive → zero-padding-tolerant)
+                // so pad/case mismatches like "(Track 2)" vs "(Track 02)" are rescued instead of
+                // being wrongly rejected as missing files.
+                var normalization = await CueNormalizer.NormalizeAsync(inputFile, token);
+                if (normalization.UnresolvedNames.Count > 0)
+                {
+                    var missingNames = string.Join(", ", normalization.UnresolvedNames);
+                    LogWarning($" {originalName} — referenced files are missing: {missingNames}");
+                    return false;
+                }
+            }
+            else
+            {
+                var referencedFiles = string.Equals(ext, FileExtensions.Gdi, StringComparison.Ordinal)
+                    ? await GameFileParser.GetReferencedFilesFromGdiAsync(inputFile, LogMessage, token)
+                    : await GameFileParser.GetReferencedFilesFromTocAsync(inputFile, LogMessage, token);
 
-            var missingFiles = referencedFiles.Where(static f => !File.Exists(f)).ToList();
-            if (missingFiles.Count > 0)
-            {
-                var missingNames = string.Join(", ", missingFiles.Select(Path.GetFileName));
-                LogWarning($" {originalName} — referenced files are missing: {missingNames}");
-                return false;
+                var missingFiles = referencedFiles.Where(static f => !File.Exists(f)).ToList();
+                if (missingFiles.Count > 0)
+                {
+                    var missingNames = string.Join(", ", missingFiles.Select(Path.GetFileName));
+                    LogWarning($" {originalName} — referenced files are missing: {missingNames}");
+                    return false;
+                }
             }
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
@@ -2283,6 +2320,42 @@ internal partial class MainWindow : IDisposable
         }, token);
     }
 
+    /// <summary>
+    /// When a cue/toc descriptor cannot be handed to chdman as-is (non-UTF-8 cue text, non-ASCII
+    /// names or paths, zero-padding name mismatches, or unresolved references after correction),
+    /// this creates an isolated ASCII work directory containing a canonicalized cue plus every
+    /// referenced file under safe ASCII names, so chdman sees a self-contained cue set.
+    /// Returns (null, null) when the descriptor can be converted directly.
+    /// </summary>
+    private async Task<(string? WorkCuePath, string? WorkDir)> PrepareCueWorkDirAsync(string cuePath, CancellationToken token)
+    {
+        CueWorkDirectoryResult work;
+        try
+        {
+            work = await CueWorkDirectory.PrepareAsync(cuePath, TempDirPrefix, Mp3Decoder, LogMessage, token);
+        }
+        catch (Exception ex)
+        {
+            if (IsCancellationException(ex)) throw;
+
+            LogMessage($" Cue normalization failed for {Path.GetFileName(cuePath)}: {ex.Message}");
+            return (null, null);
+        }
+
+        if (work.UnresolvedNames.Count > 0)
+        {
+            LogWarning($" {Path.GetFileName(cuePath)} — cue references could not be resolved: {string.Join(", ", work.UnresolvedNames)}");
+            return (null, null);
+        }
+
+        if (work.WorkCuePath is not null)
+        {
+            LogMessage($" Prepared self-contained cue set for {Path.GetFileName(cuePath)} in a temporary directory.");
+        }
+
+        return (work.WorkCuePath, work.WorkDir);
+    }
+
     private async Task<bool> ConvertToChdAsync(string chdmanPath, string inputFile, string outputFile, int cores, bool forceCd, bool forceDvd, int? timeoutMinutes, CancellationToken token)
     {
         if (!File.Exists(chdmanPath))
@@ -2318,7 +2391,37 @@ internal partial class MainWindow : IDisposable
         var originalInputFile = inputFile;
         var originalOutputFile = outputFile;
 
-        if (pathNeedsAscii || pathNeedsAsciiOut)
+        // Warn early about likely-corrupt disc images, but still let chdman try: some
+        // legitimate images use non-standard sector layouts (e.g. 2448-byte sectors with
+        // subchannel data) that chdman can convert. The post-failure check remains the hard gate.
+        if (string.Equals(command, "createdvd", StringComparison.Ordinal))
+        {
+            var sectorWarning = IsoSectorValidator.GetSectorSizeWarning(originalInputFile);
+            if (sectorWarning is not null)
+            {
+                LogWarning($" {Path.GetFileName(originalInputFile)}: {sectorWarning} Proceeding with conversion anyway.");
+            }
+        }
+
+        var isCueDescriptor = inputFile.EndsWith(FileExtensions.Cue, StringComparison.OrdinalIgnoreCase) ||
+                              inputFile.EndsWith(FileExtensions.Toc, StringComparison.OrdinalIgnoreCase);
+
+        // For cue/toc descriptors, hand chdman a canonicalized, self-contained cue set instead of the raw file:
+        // this fixes non-UTF-8 cue text (Korean/Cyrillic), zero-padding name mismatches, and non-ASCII
+        // names/paths, which previously produced "couldn't find bin file" errors from chdman.
+        if (isCueDescriptor)
+        {
+            var work = await PrepareCueWorkDirAsync(inputFile, token);
+            if (work.WorkDir is not null && work.WorkCuePath is not null)
+            {
+                asciiTempDir = work.WorkDir;
+                asciiInputFile = work.WorkCuePath;
+                inputFile = asciiInputFile;
+                args = args.Replace(originalInputFile, inputFile);
+            }
+        }
+
+        if (asciiTempDir == null && (pathNeedsAscii || pathNeedsAsciiOut))
         {
             asciiTempDir = Path.Combine(Path.GetTempPath(), TempDirPrefix + Guid.NewGuid().ToString("N"));
             Directory.CreateDirectory(asciiTempDir);
@@ -2328,6 +2431,13 @@ internal partial class MainWindow : IDisposable
             inputFile = asciiInputFile;
             outputFile = asciiOutputFile;
             args = args.Replace(originalInputFile, inputFile).Replace(originalOutputFile, outputFile);
+        }
+        else if (asciiTempDir != null && pathNeedsAsciiOut)
+        {
+            // Work directory already prepared for the input; only the output name is non-ASCII.
+            asciiOutputFile = Path.Combine(asciiTempDir, Guid.NewGuid().ToString("N") + FileExtensions.Chd);
+            outputFile = asciiOutputFile;
+            args = args.Replace(originalOutputFile, outputFile);
         }
 
         LogMessage($"CHDMAN: {command} {Path.GetFileName(originalInputFile)}");
@@ -2384,12 +2494,22 @@ internal partial class MainWindow : IDisposable
 
         using var ctsSpeed = CancellationTokenSource.CreateLinkedTokenSource(token);
 
-        process.Start();
-        process.BeginOutputReadLine();
-        process.BeginErrorReadLine();
+        try
+        {
+            process.Start();
+            process.BeginOutputReadLine();
+            process.BeginErrorReadLine();
+        }
+        catch (Exception ex)
+        {
+            if (IsCancellationException(ex)) throw;
+
+            TryCleanupAsciiTemp();
+            LogError($" Failed to start chdman: {ex.Message}");
+            return false;
+        }
 
         var speedToken = ctsSpeed.Token;
-
         var speedMonitoringTask = Task.Run(async () =>
         {
             try
@@ -2405,6 +2525,7 @@ internal partial class MainWindow : IDisposable
             }
         }, speedToken);
 
+        var cleanupAfterProcessKill = false;
         try
         {
             token.ThrowIfCancellationRequested();
@@ -2425,9 +2546,13 @@ internal partial class MainWindow : IDisposable
         catch (Exception ex) when (ex is OperationCanceledException)
         {
             if (token.IsCancellationRequested)
+            {
+                cleanupAfterProcessKill = true;
                 throw;
+            }
 
             if (timeoutMinutes != null) LogMessage($"TIMEOUT: Conversion of '{Path.GetFileName(inputFile)}' exceeded {timeoutMinutes.Value} minute(s). Marking as failed.");
+            cleanupAfterProcessKill = true;
             return false;
         }
         finally
@@ -2442,125 +2567,142 @@ internal partial class MainWindow : IDisposable
             await Task.WhenAny(speedMonitoringTask, Task.Delay(500, CancellationToken.None));
             process.CancelOutputRead();
             process.CancelErrorRead();
+
+            // On cancellation/timeout the process was just killed; wait for it to release its
+            // file handles before deleting the temp directory, otherwise the cleanup silently fails.
+            if (cleanupAfterProcessKill)
+            {
+                await Task.Delay(300, CancellationToken.None);
+                TryCleanupAsciiTemp();
+            }
         }
 
-        var exitCode = process.ExitCode;
-        var success = exitCode == 0 && !token.IsCancellationRequested;
-
-        if (!success && !token.IsCancellationRequested && exitCode != 0)
+        try
         {
-            var errorText = errorBuffer.ToString().TrimEnd();
+            var exitCode = process.ExitCode;
+            var success = exitCode == 0 && !token.IsCancellationRequested;
 
-            if (errorText.Contains("Unrecognized track type", StringComparison.OrdinalIgnoreCase) &&
-                string.Equals(command, "createcd", StringComparison.Ordinal) && !forceCd)
+            if (!success && !token.IsCancellationRequested && exitCode != 0)
             {
-                LogMessage($" Retrying with createdvd (unrecognized track type) for {Path.GetFileName(originalInputFile)}...");
-                return await ConvertToChdAsync(chdmanPath, originalInputFile, originalOutputFile, cores, false, true, timeoutMinutes, token);
-            }
+                var errorText = errorBuffer.ToString().TrimEnd();
 
-            if (File.Exists(outputFile))
-            {
-                try
+                if (errorText.Contains("Unrecognized track type", StringComparison.OrdinalIgnoreCase) &&
+                    string.Equals(command, "createcd", StringComparison.Ordinal) && !forceCd)
                 {
-                    var outputSize = new FileInfo(outputFile).Length;
-                    if (outputSize > 0)
+                    LogMessage($" Retrying with createdvd (unrecognized track type) for {Path.GetFileName(originalInputFile)}...");
+                    return await ConvertToChdAsync(chdmanPath, originalInputFile, originalOutputFile, cores, false, true, timeoutMinutes, token);
+                }
+
+                if (File.Exists(outputFile))
+                {
+                    try
                     {
-                        LogMessage($" chdman exited with code {exitCode} but produced a valid output file ({outputSize} bytes). Treating as success.");
-                        success = true;
+                        var outputSize = new FileInfo(outputFile).Length;
+                        if (outputSize > 0)
+                        {
+                            LogMessage($" chdman exited with code {exitCode} but produced a valid output file ({outputSize} bytes). Treating as success.");
+                            success = true;
+                        }
                     }
-                }
-                catch
-                {
-                    // ignored
-                }
-            }
-        }
-
-        if (success)
-        {
-            if (asciiTempDir != null)
-            {
-                try
-                {
-                    var targetDir = Path.GetDirectoryName(originalOutputFile);
-                    if (!string.IsNullOrEmpty(targetDir) && !Directory.Exists(targetDir))
-                        Directory.CreateDirectory(targetDir);
-                    if (File.Exists(originalOutputFile))
-                        File.Delete(originalOutputFile);
-                    File.Move(outputFile, originalOutputFile);
-                }
-                catch (Exception ex)
-                {
-                    LogError($" Failed to move temp output to destination: {ex.Message}");
-                    success = false;
+                    catch
+                    {
+                        // ignored
+                    }
                 }
             }
 
             if (success)
-                return true;
-        }
-
-        if (token.IsCancellationRequested)
-        {
-            if (asciiTempDir != null) TryCleanupAsciiTemp();
-            return false;
-        }
-
-        var errorTextFinal = errorBuffer.ToString().TrimEnd();
-
-        try
-        {
-            var effectiveInput = asciiInputFile ?? originalInputFile;
-            var inputExt = Path.GetExtension(effectiveInput);
-
-            // Skip sector-size check for text-based descriptor files (.cue/.gdi/.toc).
-            // These are plain text files that reference separate data files (.bin/.iso/.raw);
-            // their file size is irrelevant to sector alignment. chdman handles them
-            // correctly when the referenced data files are present.
-            if (inputExt is not (".cue" or ".gdi" or ".toc"))
             {
-                var fileSize = new FileInfo(effectiveInput).Length;
-                if (fileSize > 0)
+                if (asciiOutputFile != null)
                 {
-                    // Standard CD/DVD sector sizes to try.
-                    // 2352: raw CD audio/data (2352 bytes/sector)
-                    // 2048: Mode 1 / DVD data (2048 bytes/sector)
-                    // 2336: Mode 2 XA (2336 bytes/sector)
-                    // 2324: Mode 2 Form 1 (2324 bytes/sector)
-                    var sectorSizes = new[] { 2352L, 2048L, 2336L, 2324L };
-                    var isSectorAligned = sectorSizes.Any(ss => fileSize % ss == 0);
-
-                    if (!isSectorAligned)
+                    try
                     {
-                        LogError($" Failed to convert '{Path.GetFileName(originalInputFile)}': file size ({fileSize:N0} bytes) is not divisible by any standard sector size (2048/2324/2336/2352). The file may be corrupt or truncated.");
-                        if (asciiTempDir != null) TryCleanupAsciiTemp();
-                        return false;
+                        var targetDir = Path.GetDirectoryName(originalOutputFile);
+                        if (!string.IsNullOrEmpty(targetDir) && !Directory.Exists(targetDir))
+                            Directory.CreateDirectory(targetDir);
+                        if (File.Exists(originalOutputFile))
+                            File.Delete(originalOutputFile);
+                        File.Move(outputFile, originalOutputFile);
+                    }
+                    catch (Exception ex)
+                    {
+                        LogError($" Failed to move temp output to destination: {ex.Message}");
+                        success = false;
+                    }
+                }
+
+                if (success)
+                    return true;
+            }
+
+            if (token.IsCancellationRequested)
+            {
+                return false;
+            }
+
+            var errorTextFinal = errorBuffer.ToString().TrimEnd();
+
+            try
+            {
+                var effectiveInput = asciiInputFile ?? originalInputFile;
+                var inputExt = Path.GetExtension(effectiveInput);
+
+                // Skip sector-size check for text-based descriptor files (.cue/.gdi/.toc).
+                // These are plain text files that reference separate data files (.bin/.iso/.raw);
+                // their file size is irrelevant to sector alignment. chdman handles them
+                // correctly when the referenced data files are present.
+                if (inputExt is not (".cue" or ".gdi" or ".toc"))
+                {
+                    var fileSize = new FileInfo(effectiveInput).Length;
+                    if (fileSize > 0)
+                    {
+                        // Standard CD/DVD sector sizes to try.
+                        // 2352: raw CD audio/data (2352 bytes/sector)
+                        // 2048: Mode 1 / DVD data (2048 bytes/sector)
+                        // 2336: Mode 2 XA (2336 bytes/sector)
+                        // 2324: Mode 2 Form 1 (2324 bytes/sector)
+                        var sectorSizes = new[] { 2352L, 2048L, 2336L, 2324L };
+                        var isSectorAligned = sectorSizes.Any(ss => fileSize % ss == 0);
+
+                        if (!isSectorAligned)
+                        {
+                            LogError($" Failed to convert '{Path.GetFileName(originalInputFile)}': file size ({fileSize:N0} bytes) is not divisible by any standard sector size (2048/2324/2336/2352). The file may be corrupt or truncated.");
+                            return false;
+                        }
                     }
                 }
             }
-        }
-        catch
-        {
-            // ignored
-        }
+            catch
+            {
+                // ignored
+            }
 
-        if (IsDiskSpaceError(errorTextFinal))
-        {
-            LogError($" Conversion of '{Path.GetFileName(originalInputFile)}' failed due to insufficient disk space.");
-            LogMessage("       Free up disk space on the output drive and try again.");
-        }
-        else if (errorTextFinal.Length > 0)
-        {
-            var firstLine = errorTextFinal.IndexOf('\n') > 0 ? errorTextFinal[..errorTextFinal.IndexOf('\n')].TrimEnd() : errorTextFinal;
-            LogError($" Failed to convert '{Path.GetFileName(originalInputFile)}': {firstLine}");
-        }
-        else
-        {
-            LogError($" Failed to convert '{Path.GetFileName(originalInputFile)}': chdman exited with code {exitCode} but produced no error output. The file may be corrupted or in an unsupported format.");
-        }
+            if (IsDiskSpaceError(errorTextFinal))
+            {
+                LogError($" Conversion of '{Path.GetFileName(originalInputFile)}' failed due to insufficient disk space.");
+                LogMessage("       Free up disk space on the output drive and try again.");
+            }
+            else if (errorTextFinal.Length > 0)
+            {
+                var firstLine = errorTextFinal.IndexOf('\n') > 0 ? errorTextFinal[..errorTextFinal.IndexOf('\n')].TrimEnd() : errorTextFinal;
+                LogError($" Failed to convert '{Path.GetFileName(originalInputFile)}': {firstLine}");
 
-        if (asciiTempDir != null) TryCleanupAsciiTemp();
-        return false;
+                if (firstLine.Contains("couldn't find bin file", StringComparison.OrdinalIgnoreCase))
+                {
+                    LogWarning($"       Files found in input directory ({Path.GetDirectoryName(originalInputFile) ?? "?"}): {GetDirectoryDiagnostics(originalInputFile)}");
+                }
+            }
+            else
+            {
+                LogError($" Failed to convert '{Path.GetFileName(originalInputFile)}': chdman exited with code {exitCode} but produced no error output. The file may be corrupted or in an unsupported format.");
+            }
+
+            return false;
+        }
+        finally
+        {
+            TryCleanupAsciiTemp();
+        }
 
         void TryCleanupAsciiTemp()
         {
@@ -2590,6 +2732,38 @@ internal partial class MainWindow : IDisposable
             {
                 // ignored
             }
+        }
+    }
+
+    /// <summary>
+    /// Returns a capped, sorted listing of file names in the directory containing <paramref name="filePath"/>,
+    /// used as a diagnostic when chdman reports a missing bin file.
+    /// </summary>
+    private static string GetDirectoryDiagnostics(string filePath)
+    {
+        var directory = Path.GetDirectoryName(filePath);
+        if (string.IsNullOrEmpty(directory) || !Directory.Exists(directory))
+        {
+            return "(input directory not accessible)";
+        }
+
+        try
+        {
+            const int maxShown = 40;
+            var names = Directory.GetFiles(directory)
+                .Select(Path.GetFileName)
+                .Where(static n => n is not null)
+                .OrderBy(static n => n, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            var shown = names.Take(maxShown).ToList();
+            var extra = names.Count - shown.Count;
+            var suffix = extra > 0 ? $", ... and {extra} more" : string.Empty;
+            return string.Join(", ", shown) + suffix;
+        }
+        catch (Exception ex)
+        {
+            return $"(directory listing failed: {ex.Message})";
         }
     }
 
@@ -3017,29 +3191,20 @@ internal partial class MainWindow : IDisposable
 
     private async Task TryDeleteFileAsync(string path, string desc, CancellationToken token)
     {
-        for (var attempt = 0; attempt < MaxFileOperationRetries; attempt++)
+        var deleted = await RetryingFileOperations.TryDeleteAsync(path, token, attempt =>
         {
-            try
-            {
-                await Task.Run(() => File.Delete(path), token);
-                LogMessage($"Deleted {desc}: {Path.GetFileName(path)}");
-                return;
-            }
-            catch (FileNotFoundException)
-            {
-                LogMessage($"{desc} already deleted: {Path.GetFileName(path)}");
-                return;
-            }
-            catch when (attempt < MaxFileOperationRetries - 1)
-            {
-                if (attempt >= 2)
-                    KillChdmanProcesses();
+            if (attempt >= 2)
+                KillChdmanProcesses();
+        });
 
-                await Task.Delay(500 * (attempt + 1), token);
-            }
+        if (deleted)
+        {
+            LogMessage($"Deleted {desc}: {Path.GetFileName(path)}");
         }
-
-        LogError($"Failed to delete {desc}: {Path.GetFileName(path)}");
+        else
+        {
+            LogError($"Failed to delete {desc}: {Path.GetFileName(path)}");
+        }
     }
 
     private static void KillChdmanProcesses()
