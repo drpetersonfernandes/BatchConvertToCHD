@@ -31,6 +31,9 @@
 *   **CloneCD Support**: Convert CloneCD `.ccd` disc images to CHD format via the [CCDSharp](https://) library. Automatically generates CUE/BIN from `.ccd`/`.img` sets.
 *   **CSO Decompression**: Built-in support for `.cso` and `.ciso` (Compressed ISO) files via the [CSOSharp](https://github.com/PureLogicCode/CSOSharp) library (supports deflate/zlib and LZ4).
 *   **PBP Extraction**: Convert PlayStation Portable `.pbp` files to CHD format via the [PBPSharp](https://github.com/PureLogicCode/PBPSharp) library.
+*   **Smart CUE Normalization**: Detects the actual encoding of `.cue`/`.toc` files (UTF-8, Shift-JIS, Korean CP949, Cyrillic CP1251, Latin-1 and more), resolves referenced files case-insensitively and zero-padding-tolerantly (`(Track 2)` vs `(Track 02)`), and hands chdman a self-contained, canonicalized cue set — eliminating the common "couldn't find bin file" failures on non-ASCII cues.
+*   **MP3 Audio Track Support**: Cue sheets with MP3 audio tracks (common in Neo Geo CD and older PS1 rips) are automatically decoded to WAV before conversion, so chdman can process them.
+*   **bin-only Archives**: Archives that contain only `.bin` files (no `.cue`/`.iso` descriptor) now get an auto-generated cue and convert automatically (MODE2/2352 with automatic MODE1/2352 fallback).
 
 ### ✅ Integrity, Safety & Verification
 *   **Safe Deletion**: Source files (and their dependencies like `.bin`, `.sub`, etc.) are only deleted if the conversion/extraction is confirmed successful.
@@ -39,6 +42,9 @@
 *   **Cleanup**: Automatically removes empty subdirectories left behind after files are moved or deleted.
 *   **Dependency Protection**: Performs a critical dependency check on startup to notify you if required components (like `chdman.exe`, needed for conversion) are missing.
 *   **File System Monitoring**: Automatically monitors the input folder for file changes (deletions, renames, creations) during batch processing and provides diagnostic context when a file goes missing mid-operation.
+*   **Corrupt Image Detection**: Warns early when a disc image's size does not match any standard sector layout, so you can spot truncated or corrupt files before the conversion runs.
+*   **Resilient File Deletion**: Source-file deletion retries with backoff for up to ~45 seconds (handles transient antivirus/file-explorer locks) and automatically clears the read-only attribute when needed.
+*   **Clear Error Messages**: Precise, actionable messages for data-side failures — missing volumes in multi-part RAR archives, disconnected network drives, and locked files — instead of generic errors.
 
 ### 📊 Performance & UI
 *   **Real-time Telemetry**: Monitor disk write/read speeds and elapsed time during operations.
@@ -92,6 +98,7 @@ The application implements priority-based logic to ensure compatibility:
     * [PBPSharp](https://) (v1.0.0) — Pure C# PBP extraction and SFO parsing
     * [CCDSharp](https://) (v1.0.0) — Pure C# CloneCD (.ccd/.img/.sub) parsing and conversion
     * [SharpCompress](https://github.com/adamhathcock/sharpcompress) (v0.50.1) — Archive extraction support
+    * [NAudio](https://github.com/naudio/NAudio) (v2.2.1) — MP3 audio track decoding (Media Foundation)
     * [Serilog](https://serilog.net/) (v4.4.0) — Structured diagnostic logging
 
 ---
@@ -162,6 +169,7 @@ This project is licensed under the **GNU General Public License v3.0**. See the 
 *   [PBPSharp](https://) by Peterson Fernandes — Pure C# PlayStation PBP extraction library.
 *   [CCDSharp](https://) by Peterson Fernandes — Pure C# CloneCD disc image parsing and conversion library.
 *   [SharpCompress](https://github.com/adamhathcock/sharpcompress) for archive handling.
+*   [NAudio](https://github.com/naudio/NAudio) by Mark Heath — MP3 decoding via Windows Media Foundation.
 *   [Serilog](https://serilog.net/) for structured logging.
 *   [Igor Pavlov](https://www.7-zip.org/) for `7za.exe` (7-Zip command-line tool).
 

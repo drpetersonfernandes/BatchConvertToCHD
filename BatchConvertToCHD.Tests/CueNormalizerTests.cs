@@ -133,7 +133,7 @@ public class CueNormalizerTests : IDisposable
         const string name = "game.bin";
         CreateFile(name, "dummy");
         var cuePath = Path.Combine(_tempDir, "utf32.cue");
-        var content = $"FILE \"{name}\" BINARY\r\n  TRACK 01 MODE2/2352\r\n    INDEX 01 00:00:00";
+        const string content = $"FILE \"{name}\" BINARY\r\n  TRACK 01 MODE2/2352\r\n    INDEX 01 00:00:00";
         var bytes = new UTF32Encoding(false, true).GetPreamble()
             .Concat(new UTF32Encoding(false, false).GetBytes(content))
             .ToArray();
