@@ -357,6 +357,61 @@ public class CueWorkDirectoryTests : IDisposable
     }
 
     [Fact]
+    public async Task PrepareAsyncUtf8BomCueWithZeroPaddingMismatchPreparesWorkCue()
+    {
+        // BOM + zero-padding mismatch ("(Track 02)" vs "(Track 2)"): the canonical rewrite must
+        // keep the correction while remaining BOM-free, via either the in-place or the copy path.
+        CreateFile("Game (Track 2).bin", "dummy");
+        var cuePath = CreateFile(
+            "game.cue",
+            "FILE \"Game (Track 02).bin\" BINARY\r\n  TRACK 01 MODE2/2352\r\n    INDEX 01 00:00:00",
+            Encoding.UTF8);
+
+        var (result, workDir) = await PrepareAsync(cuePath);
+
+        try
+        {
+            Assert.NotNull(workDir);
+            Assert.NotNull(result.WorkCuePath);
+            Assert.Empty(result.UnresolvedNames);
+
+            var workCueBytes = await File.ReadAllBytesAsync(result.WorkCuePath);
+            Assert.False(workCueBytes is [0xEF, 0xBB, 0xBF, ..], "work cue must not start with a UTF-8 BOM");
+
+            // The zero-padding correction must be applied: the uncorrected name may never appear.
+            // Depending on drive layout the file is either referenced in place under its corrected
+            // on-disk name (fast path) or copied into the work dir under a trackNN name (copy path).
+            var workCue = await File.ReadAllTextAsync(result.WorkCuePath, Encoding.UTF8);
+            Assert.DoesNotContain("Track 02", workCue, StringComparison.Ordinal);
+            Assert.DoesNotContain("(Track 02", workCue, StringComparison.OrdinalIgnoreCase);
+
+            var filesInWorkDir = Directory.GetFiles(workDir).Select(Path.GetFileName).ToList();
+            if (filesInWorkDir.Contains("track01.bin", StringComparer.OrdinalIgnoreCase))
+            {
+                Assert.Contains("FILE \"track01.bin\" BINARY", workCue, StringComparison.Ordinal);
+            }
+            else
+            {
+                Assert.Contains("Game (Track 2).bin", workCue, StringComparison.Ordinal);
+            }
+        }
+        finally
+        {
+            if (workDir is not null)
+            {
+                try
+                {
+                    Directory.Delete(workDir, true);
+                }
+                catch
+                {
+                    /* ignore */
+                }
+            }
+        }
+    }
+
+    [Fact]
     public async Task PrepareAsyncMissingReferenceReturnsNoWorkDirAndReportsUnresolved()
     {
         var cuePath = CreateFile("game.cue", "FILE \"missing.bin\" BINARY\n  TRACK 01 MODE2/2352\n    INDEX 01 00:00:00");
@@ -607,7 +662,13 @@ public class CueWorkDirectoryTests : IDisposable
     public async Task Mono22050Mp3DecodesToChdmanCompatibleWav()
     {
         // Craft an MPEG-2 Layer III stream (64 kbps, 22.05 kHz, mono) filled with silence.
-        const int frameSize = 417;
+        // Header: 0xFF sync + 0xF3 (1111 0011 → version 10 = MPEG-2, layer 01 = Layer III, no CRC)
+        // + 0x90 (64 kbps, 22050 Hz) + 0xC0 (mono). MPEG-2 L3 frame size = 72 * bitrate / samplerate
+        // = 72 * 64000 / 22050 = 208.98 → 208 bytes (MPEG-1 L3 would be 144 * bitrate / samplerate
+        // = 417; using the wrong size misaligns every frame and the decoder skips half of them).
+        // Media Foundation's MP3 decoder on Windows does not support MPEG-2 streams, so this test
+        // also exercises the built-in (ACM) fallback path.
+        const int frameSize = 208;
         const int frameCount = 100;
         var frames = new byte[frameSize * frameCount];
         var header = new byte[] { 0xFF, 0xF3, 0x90, 0xC0 }; // MPEG-2 L3, 64kbps, 22050 Hz, mono
@@ -624,6 +685,10 @@ public class CueWorkDirectoryTests : IDisposable
         await decoder.DecodeAsync(mp3Path, wavPath, null, CancellationToken.None);
 
         await using var reader = new NAudio.Wave.WaveFileReader(wavPath);
+
+        // The ACM decoder outputs 22050 Hz mono, so these format asserts are the proof that
+        // NormalizeForChdman resampled to 44100 and upmixed to stereo — without it the WAV
+        // would be rejected by chdman ("unsupported samplerate 22050 / only stereo is supported").
         Assert.Equal(44100, reader.WaveFormat.SampleRate);
         Assert.Equal(2, reader.WaveFormat.Channels);
         Assert.Equal(16, reader.WaveFormat.BitsPerSample);
