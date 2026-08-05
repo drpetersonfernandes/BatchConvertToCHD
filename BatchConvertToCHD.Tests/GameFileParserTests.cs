@@ -261,4 +261,35 @@ public class GameFileParserTests : IDisposable
         Assert.Single(result);
         Assert.Equal(Path.Combine(_tempDir, "track1.bin"), result[0]);
     }
+
+    [Fact]
+    public async Task ReadLinesWithDetectedEncodingAsyncReportsBomPresence()
+    {
+        const string content = "FILE \"track1.bin\" BINARY\n  TRACK 01 MODE2/2352\n    INDEX 01 00:00:00";
+
+        // UTF-8 with BOM (what many Windows-authored cue files have; chdman chokes on the BOM).
+        var bomPath = Path.Combine(_tempDir, "bom.cue");
+        await File.WriteAllTextAsync(bomPath, content, Encoding.UTF8);
+
+        var (bomLines, bomEncoding, hasBom) = await GameFileParser.ReadLinesWithDetectedEncodingAsync(bomPath, CancellationToken.None);
+        Assert.True(hasBom);
+        Assert.Equal("utf-8", bomEncoding.WebName, true);
+        Assert.Contains(bomLines, static l => l.StartsWith("FILE ", StringComparison.OrdinalIgnoreCase));
+
+        // UTF-8 without BOM.
+        var plainPath = Path.Combine(_tempDir, "plain.cue");
+        await File.WriteAllTextAsync(plainPath, content, new UTF8Encoding(false));
+
+        var (_, plainEncoding, plainHasBom) = await GameFileParser.ReadLinesWithDetectedEncodingAsync(plainPath, CancellationToken.None);
+        Assert.False(plainHasBom);
+        Assert.Equal("utf-8", plainEncoding.WebName, true);
+
+        // Legacy code page (Shift-JIS) — no BOM.
+        var sjisPath = Path.Combine(_tempDir, "sjis.cue");
+        await File.WriteAllTextAsync(sjisPath, "FILE \"日本語.bin\" BINARY\n  TRACK 01 MODE2/2352\n    INDEX 01 00:00:00", Encoding.GetEncoding(932));
+
+        var (_, sjisEncoding, sjisHasBom) = await GameFileParser.ReadLinesWithDetectedEncodingAsync(sjisPath, CancellationToken.None);
+        Assert.False(sjisHasBom);
+        Assert.Equal(932, sjisEncoding.CodePage);
+    }
 }

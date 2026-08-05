@@ -107,11 +107,17 @@ internal static class GameFileParser
 
     /// <summary>
     /// Reads a CUE/TOC file and returns its lines together with the encoding that was detected
-    /// as the most plausible one. Detection order: BOM, strict UTF-8, then <see cref="FallbackCodePages"/>
+    /// as the most plausible one, and whether the file started with an explicit BOM.
+    /// Detection order: BOM, strict UTF-8, then <see cref="FallbackCodePages"/>
     /// filtered to losslessly decodable code pages and scored by how many referenced file names
     /// actually resolve to files in the same directory (ties broken by declared order).
     /// </summary>
-    internal static async Task<(string[] Lines, Encoding Encoding)> ReadLinesWithDetectedEncodingAsync(string filePath, CancellationToken token)
+    /// <remarks>
+    /// The returned <c>HasBom</c> flag matters because chdman's cue parser does not skip a
+    /// UTF-8 BOM: the first token becomes "\uFEFFFILE" and the FILE directive is never parsed,
+    /// which makes chdman report "couldn't find bin file []" even when every bin exists.
+    /// </remarks>
+    internal static async Task<(string[] Lines, Encoding Encoding, bool HasBom)> ReadLinesWithDetectedEncodingAsync(string filePath, CancellationToken token)
     {
         var bytes = await File.ReadAllBytesAsync(filePath, token).ConfigureAwait(false);
 
@@ -121,24 +127,24 @@ internal static class GameFileParser
             case >= 3 when bytes[0] == 0xEF && bytes[1] == 0xBB && bytes[2] == 0xBF:
             {
                 var bomUtf8 = new UTF8Encoding(false);
-                return (DecodeLines(bytes[3..], bomUtf8), bomUtf8);
+                return (DecodeLines(bytes[3..], bomUtf8), bomUtf8, true);
             }
             case >= 4 when bytes[0] == 0xFF && bytes[1] == 0xFE && bytes[2] == 0x00 && bytes[3] == 0x00:
             {
                 // UTF-32LE BOM (FF FE 00 00) — must be checked before the UTF-16LE BOM.
                 var bomUtf32 = new UTF32Encoding(false, false);
-                return (DecodeLines(bytes[4..], bomUtf32), bomUtf32);
+                return (DecodeLines(bytes[4..], bomUtf32), bomUtf32, true);
             }
             case >= 2 when bytes[0] == 0xFF && bytes[1] == 0xFE:
-                return (DecodeLines(bytes[2..], Encoding.Unicode), Encoding.Unicode);
+                return (DecodeLines(bytes[2..], Encoding.Unicode), Encoding.Unicode, true);
             case >= 2 when bytes[0] == 0xFE && bytes[1] == 0xFF:
-                return (DecodeLines(bytes[2..], Encoding.BigEndianUnicode), Encoding.BigEndianUnicode);
+                return (DecodeLines(bytes[2..], Encoding.BigEndianUnicode), Encoding.BigEndianUnicode, true);
         }
 
         // 2) Strict UTF-8 (throws on invalid byte sequences)
         try
         {
-            return (DecodeLines(bytes, new UTF8Encoding(false, true)), new UTF8Encoding(false));
+            return (DecodeLines(bytes, new UTF8Encoding(false, true)), new UTF8Encoding(false), false);
         }
         catch (DecoderFallbackException)
         {
@@ -207,11 +213,11 @@ internal static class GameFileParser
 
         if (bestLines is not null && bestEncoding is not null)
         {
-            return (bestLines, bestEncoding);
+            return (bestLines, bestEncoding, false);
         }
 
         // 4) Last resort
-        return (DecodeLines(bytes, Encoding.Default), Encoding.Default);
+        return (DecodeLines(bytes, Encoding.Default), Encoding.Default, false);
     }
 
     /// <summary>
@@ -273,7 +279,7 @@ internal static class GameFileParser
         var directory = Path.GetDirectoryName(filePath) ?? string.Empty;
         try
         {
-            var (lines, _) = await ReadLinesWithDetectedEncodingAsync(filePath, token).ConfigureAwait(false);
+            var (lines, _, _) = await ReadLinesWithDetectedEncodingAsync(filePath, token).ConfigureAwait(false);
             token.ThrowIfCancellationRequested();
             foreach (var line in lines)
             {

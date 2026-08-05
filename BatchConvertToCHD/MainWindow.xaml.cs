@@ -1583,6 +1583,31 @@ internal partial class MainWindow : IDisposable
                 extractedFileOutputChd = Path.Combine(outputDir, Path.GetFileNameWithoutExtension(Path.GetFileNameWithoutExtension(extractedFile)) + FileExtensions.Chd);
             }
 
+            // Archive extractions skip the regular dependency validation, so a cue whose bins are
+            // missing (incomplete download, separate bin archive, CRC-skipped entries) would
+            // otherwise fail deep inside chdman with a cryptic "couldn't find bin file" error.
+            // Detect that up front and skip with a clear warning.
+            var extractedExt = Path.GetExtension(extractedFile);
+            if (extractedExt is FileExtensions.Cue or FileExtensions.Gdi or FileExtensions.Toc)
+            {
+                try
+                {
+                    var missingNames = await GetMissingDependentFileNamesAsync(extractedExt, extractedFile, token);
+                    if (missingNames.Count > 0)
+                    {
+                        LogWarning($" {Path.GetFileName(extractedFile)} — referenced files are missing: {string.Join(", ", missingNames)}. Skipping (data files not found in the archive).");
+                        allSucceeded = false;
+                        continue;
+                    }
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    LogWarning($" {Path.GetFileName(extractedFile)} — could not validate referenced files: {ex.Message}. Skipping.");
+                    allSucceeded = false;
+                    continue;
+                }
+            }
+
             var extractedOutputDir = Path.GetDirectoryName(extractedFileOutputChd) ?? outputFolder;
             if (!Directory.Exists(extractedOutputDir)) Directory.CreateDirectory(extractedOutputDir);
 
@@ -1633,7 +1658,18 @@ internal partial class MainWindow : IDisposable
         var result = await ExtractPbpToCueBinAsync(inputFile, tempDir, LogMessage, token);
         if (!result.Success || result.CueFilePaths.Count == 0)
         {
-            LogError($" Failed to extract PBP file: {originalName}");
+            // PSP homebrew / application EBOOT.PBPs have no PlayStation disc image to convert,
+            // and truncated/corrupt PSX eboots report the same header error. Inform the user
+            // without raising a bug report either way.
+            if (result.ErrorCode == PbpError.InvalidPsarHeader)
+            {
+                LogMessage($" {originalName} does not contain a PlayStation disc image (PSP application, unsupported variant, or corrupt file) — skipping.");
+            }
+            else
+            {
+                LogError($" Failed to extract PBP file: {originalName}");
+            }
+
             return false;
         }
 
@@ -1746,32 +1782,11 @@ internal partial class MainWindow : IDisposable
 
         try
         {
-            if (string.Equals(ext, FileExtensions.Cue, StringComparison.Ordinal))
+            var missingNames = await GetMissingDependentFileNamesAsync(ext, inputFile, token);
+            if (missingNames.Count > 0)
             {
-                // Use the normalizer's resolution (exact → case-insensitive → zero-padding-tolerant)
-                // so pad/case mismatches like "(Track 2)" vs "(Track 02)" are rescued instead of
-                // being wrongly rejected as missing files.
-                var normalization = await CueNormalizer.NormalizeAsync(inputFile, token);
-                if (normalization.UnresolvedNames.Count > 0)
-                {
-                    var missingNames = string.Join(", ", normalization.UnresolvedNames);
-                    LogWarning($" {originalName} — referenced files are missing: {missingNames}");
-                    return false;
-                }
-            }
-            else
-            {
-                var referencedFiles = string.Equals(ext, FileExtensions.Gdi, StringComparison.Ordinal)
-                    ? await GameFileParser.GetReferencedFilesFromGdiAsync(inputFile, LogMessage, token)
-                    : await GameFileParser.GetReferencedFilesFromTocAsync(inputFile, LogMessage, token);
-
-                var missingFiles = referencedFiles.Where(static f => !File.Exists(f)).ToList();
-                if (missingFiles.Count > 0)
-                {
-                    var missingNames = string.Join(", ", missingFiles.Select(Path.GetFileName));
-                    LogWarning($" {originalName} — referenced files are missing: {missingNames}");
-                    return false;
-                }
+                LogWarning($" {originalName} — referenced files are missing: {string.Join(", ", missingNames)}");
+                return false;
             }
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
@@ -1781,6 +1796,48 @@ internal partial class MainWindow : IDisposable
         }
 
         return true;
+    }
+
+    /// <summary>
+    /// Returns the names of files referenced by a .cue/.gdi/.toc descriptor that cannot be
+    /// resolved next to the descriptor. For cue files this uses the normalizer's resolution
+    /// (exact → case-insensitive → zero-padding-tolerant), for gdi/toc a plain existence check.
+    /// </summary>
+    private async Task<List<string>> GetMissingDependentFileNamesAsync(string ext, string filePath, CancellationToken token)
+    {
+        if (string.Equals(ext, FileExtensions.Cue, StringComparison.Ordinal))
+        {
+            var normalization = await CueNormalizer.NormalizeAsync(filePath, token).ConfigureAwait(false);
+            return [.. normalization.UnresolvedNames];
+        }
+
+        var referencedFiles = string.Equals(ext, FileExtensions.Gdi, StringComparison.Ordinal)
+            ? await GameFileParser.GetReferencedFilesFromGdiAsync(filePath, LogMessage, token).ConfigureAwait(false)
+            : await GameFileParser.GetReferencedFilesFromTocAsync(filePath, LogMessage, token).ConfigureAwait(false);
+
+        return referencedFiles.Where(static f => !File.Exists(f)).Select(static f => Path.GetFileName(f)).ToList();
+    }
+
+    /// <summary>
+    /// True when the cue references any MP3 audio track. chdman cannot consume MP3 tracks, so
+    /// such cues must go through the MP3→WAV work-directory preparation; if that preparation
+    /// fails, running chdman on the raw cue would only produce a misleading error.
+    /// </summary>
+    private static async Task<bool> CueHasMp3TracksAsync(string cuePath, CancellationToken token)
+    {
+        try
+        {
+            var normalization = await CueNormalizer.NormalizeAsync(cuePath, token).ConfigureAwait(false);
+            return normalization.References.Any(static r => string.Equals(r.TrackType, "MP3", StringComparison.Ordinal));
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch
+        {
+            return false;
+        }
     }
 
     private async Task<bool> TryDirectConversionAsync(string chdmanPath, string fileToProcess, string outputChd, int cores, bool forceCd, bool forceDvd, int? timeoutMinutes, CancellationToken token, string originalName)
@@ -1887,6 +1944,14 @@ internal partial class MainWindow : IDisposable
                 }
 
                 tempInputFile = Path.Combine(tempDir, Path.GetFileName(inputFile));
+
+                // chdman's cue parser does not skip a UTF-8 BOM (it produces "couldn't find bin
+                // file []"); the temp copy is ours, so strip the BOM in place to surface the real
+                // conversion error instead of the confusing empty-bin failure.
+                if (ext is FileExtensions.Cue or FileExtensions.Toc)
+                {
+                    await StripUtf8BomIfPresentAsync(tempInputFile, token);
+                }
             }
             else
             {
@@ -2321,10 +2386,11 @@ internal partial class MainWindow : IDisposable
     }
 
     /// <summary>
-    /// When a cue/toc descriptor cannot be handed to chdman as-is (non-UTF-8 cue text, non-ASCII
-    /// names or paths, zero-padding name mismatches, or unresolved references after correction),
-    /// this creates an isolated ASCII work directory containing a canonicalized cue plus every
-    /// referenced file under safe ASCII names, so chdman sees a self-contained cue set.
+    /// When a cue/toc descriptor cannot be handed to chdman as-is (UTF-8 BOM, non-UTF-8 cue text,
+    /// non-ASCII names or paths, zero-padding name mismatches, MP3 audio tracks, or unresolved
+    /// references after correction), this creates an isolated ASCII work directory containing a
+    /// canonicalized cue plus every referenced file under safe ASCII names (MP3 tracks decoded to
+    /// WAV, which chdman requires), so chdman sees a self-contained cue set.
     /// Returns (null, null) when the descriptor can be converted directly.
     /// </summary>
     private async Task<(string? WorkCuePath, string? WorkDir)> PrepareCueWorkDirAsync(string cuePath, CancellationToken token)
@@ -2338,7 +2404,17 @@ internal partial class MainWindow : IDisposable
         {
             if (IsCancellationException(ex)) throw;
 
-            LogMessage($" Cue normalization failed for {Path.GetFileName(cuePath)}: {ex.Message}");
+            // chdman cannot read MP3 tracks at all, so a failed work-dir preparation for an MP3
+            // cue must not fall through to a direct chdman attempt ("Unhandled track type MP3").
+            if (await CueHasMp3TracksAsync(cuePath, token))
+            {
+                LogError($" MP3 audio track could not be decoded to WAV for {Path.GetFileName(cuePath)}: {ex.Message}. The MP3 track(s) may be corrupt or in an unsupported format.");
+            }
+            else
+            {
+                LogMessage($" Cue normalization failed for {Path.GetFileName(cuePath)}: {ex.Message}");
+            }
+
             return (null, null);
         }
 
@@ -2407,8 +2483,9 @@ internal partial class MainWindow : IDisposable
                               inputFile.EndsWith(FileExtensions.Toc, StringComparison.OrdinalIgnoreCase);
 
         // For cue/toc descriptors, hand chdman a canonicalized, self-contained cue set instead of the raw file:
-        // this fixes non-UTF-8 cue text (Korean/Cyrillic), zero-padding name mismatches, and non-ASCII
-        // names/paths, which previously produced "couldn't find bin file" errors from chdman.
+        // this fixes UTF-8 BOMs, non-UTF-8 cue text (Korean/Cyrillic), zero-padding name mismatches, and
+        // non-ASCII names/paths, which previously produced "couldn't find bin file" errors from chdman.
+        // MP3 audio tracks are decoded to WAV in the work directory because chdman cannot read MP3.
         if (isCueDescriptor)
         {
             var work = await PrepareCueWorkDirAsync(inputFile, token);
@@ -2418,6 +2495,13 @@ internal partial class MainWindow : IDisposable
                 asciiInputFile = work.WorkCuePath;
                 inputFile = asciiInputFile;
                 args = args.Replace(originalInputFile, inputFile);
+            }
+            else if (await CueHasMp3TracksAsync(originalInputFile, token))
+            {
+                // The cue references MP3 tracks whose decode to WAV failed (the error was already
+                // logged). chdman would only add a misleading "Unhandled track type MP3" error,
+                // so stop here instead of attempting a direct conversion.
+                return false;
             }
         }
 
@@ -2777,7 +2861,7 @@ internal partial class MainWindow : IDisposable
             {
                 var error = PbpFile.Open(inputFile, out var pbpFile);
                 if (error != PbpError.None || pbpFile == null)
-                    return (Success: false, CuePaths: new List<string>(), Error: $"Failed to open PBP file: {error}");
+                    return (Success: false, CuePaths: new List<string>(), Error: $"Failed to open PBP file: {error}", ErrorCode: error);
 
                 using (pbpFile)
                 {
@@ -2793,19 +2877,19 @@ internal partial class MainWindow : IDisposable
 
                         var extractError = t.ExtractToBinCue(binPath, cuePath, null, token);
                         if (extractError != PbpError.None)
-                            return (Success: false, CuePaths: new List<string>(), Error: $"Failed to extract disc {t.Index}: {extractError}");
+                            return (Success: false, CuePaths: new List<string>(), Error: $"Failed to extract disc {t.Index}: {extractError}", ErrorCode: extractError);
 
                         cuePaths.Add(cuePath);
                     }
 
-                    return (Success: true, CuePaths: cuePaths, Error: string.Empty);
+                    return (Success: true, CuePaths: cuePaths, Error: string.Empty, ErrorCode: PbpError.None);
                 }
             }, token);
 
             if (!extractionResult.Success)
             {
                 onLog($"PBPSharp: Extraction failed - {extractionResult.Error}");
-                return new PbpExtractionResult { Success = false };
+                return new PbpExtractionResult { Success = false, ErrorCode = extractionResult.ErrorCode };
             }
 
             onLog($"PBPSharp: Extracted {extractionResult.CuePaths.Count} disc(s)");
@@ -2823,7 +2907,7 @@ internal partial class MainWindow : IDisposable
         catch (Exception ex)
         {
             onLog($"PBPSharp: Extraction error - {ex.Message}");
-            return new PbpExtractionResult { Success = false };
+            return new PbpExtractionResult { Success = false, ErrorCode = PbpError.CorruptFile };
         }
     }
 
@@ -3027,6 +3111,28 @@ internal partial class MainWindow : IDisposable
     }
 
     private const int MaxFileOperationRetries = 5;
+
+    /// <summary>
+    /// Rewrites <paramref name="filePath"/> without its UTF-8 BOM when present. chdman's cue parser
+    /// does not skip a BOM (the first token becomes "\uFEFFFILE", so the FILE directive is never
+    /// parsed and chdman reports "couldn't find bin file []"). Best effort — failures are ignored
+    /// so the real conversion error still surfaces.
+    /// </summary>
+    internal static async Task StripUtf8BomIfPresentAsync(string filePath, CancellationToken token)
+    {
+        try
+        {
+            var bytes = await File.ReadAllBytesAsync(filePath, token).ConfigureAwait(false);
+            if (bytes is [0xEF, 0xBB, 0xBF, ..])
+            {
+                await File.WriteAllBytesAsync(filePath, bytes[3..], token).ConfigureAwait(false);
+            }
+        }
+        catch
+        {
+            // best effort — the conversion will surface the real error otherwise
+        }
+    }
 
     private static async Task CopyFileWithRetryAsync(string source, string dest, CancellationToken token)
     {

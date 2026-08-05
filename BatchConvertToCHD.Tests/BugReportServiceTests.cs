@@ -345,6 +345,8 @@ public class BugReportServiceTests
     [InlineData("disk full")]
     [InlineData("No supported primary files found in archive")]
     [InlineData("referenced files are missing")]
+    [InlineData("could not be resolved")]
+    [InlineData("MP3 audio track could not be decoded")]
     [InlineData("is not divisible by")]
     [InlineData("could not validate referenced files")]
     [InlineData("The file or directory is corrupted and unreadable")]

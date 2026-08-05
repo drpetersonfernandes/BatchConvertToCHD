@@ -27,7 +27,7 @@ internal static class CueNormalizer
     internal static async Task<CueNormalizationResult> NormalizeAsync(
         string cuePath, CancellationToken token, CueFileLineTransform? transform = null)
     {
-        var (lines, encoding) = await GameFileParser.ReadLinesWithDetectedEncodingAsync(cuePath, token).ConfigureAwait(false);
+        var (lines, encoding, hasBom) = await GameFileParser.ReadLinesWithDetectedEncodingAsync(cuePath, token).ConfigureAwait(false);
         token.ThrowIfCancellationRequested();
 
         var directory = Path.GetDirectoryName(cuePath) ?? string.Empty;
@@ -84,7 +84,7 @@ internal static class CueNormalizer
             canonicalLines.Add(canonicalLine);
         }
 
-        return new CueNormalizationResult(encoding, references, unresolved, canonicalLines, needsRewrite, referencesChanged);
+        return new CueNormalizationResult(encoding, hasBom, references, unresolved, canonicalLines, needsRewrite, referencesChanged);
     }
 
     /// <summary>

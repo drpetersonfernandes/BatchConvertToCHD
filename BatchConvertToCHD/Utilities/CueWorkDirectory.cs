@@ -4,9 +4,12 @@ namespace BatchConvertToCHD.Utilities;
 
 /// <summary>
 /// Prepares an isolated ASCII work directory for a cue/toc descriptor when chdman cannot be handed
-/// the original file as-is: non-UTF-8 cue text, non-ASCII names or paths, or referenced names that
-/// needed zero-padding correction. The work directory contains a canonicalized cue plus every
+/// the original file as-is: UTF-8 BOM (which chdman's parser does not skip, producing
+/// "couldn't find bin file []"), non-UTF-8 cue text, non-ASCII names or paths, or referenced names
+/// that needed zero-padding correction. The work directory contains a canonicalized cue plus every
 /// referenced file under safe ASCII names (trackNN.ext), so chdman sees a self-contained cue set.
+/// When the only problem is a BOM and the bins are on the same drive as the work directory, the
+/// bins are NOT copied — the canonical cue instead references them via relative paths.
 /// </summary>
 internal static class CueWorkDirectory
 {
@@ -33,9 +36,9 @@ internal static class CueWorkDirectory
 
         var isUtf8 = string.Equals(result.SourceEncoding.WebName, "utf-8", StringComparison.OrdinalIgnoreCase);
         var hasMp3Tracks = mp3Decoder is not null && result.References.Any(static r => string.Equals(r.TrackType, "MP3", StringComparison.Ordinal));
-        var needsWorkDir = !isUtf8 || result.NeedsRewrite || result.ReferencesChanged || hasMp3Tracks ||
-                           cuePath.Any(static c => c > 127) ||
-                           result.References.Any(static r => r.ReferencedName.Any(static c => c > 127));
+        var namesNeedAscii = cuePath.Any(static c => c > 127) ||
+                             result.References.Any(static r => r.ReferencedName.Any(static c => c > 127));
+        var needsWorkDir = !isUtf8 || result.HasBom || result.NeedsRewrite || result.ReferencesChanged || hasMp3Tracks || namesNeedAscii;
         if (!needsWorkDir)
         {
             return new CueWorkDirectoryResult(null, null, []);
@@ -46,6 +49,20 @@ internal static class CueWorkDirectory
 
         try
         {
+            // Fast path for BOM-only cues (canonical content, ASCII names, no MP3): write the
+            // BOM-free canonical cue into the work directory and reference each bin via a relative
+            // path from the work directory, so chdman reads the bins in place without copying them.
+            // chdman prepends the cue's directory to every FILE name, so the relative path must stay
+            // relative — a rooted path (bins on another drive) forces the copy-based fallback below.
+            if (result.HasBom && !hasMp3Tracks && !namesNeedAscii)
+            {
+                var inPlaceWorkCue = await TryWriteInPlaceWorkCueAsync(cuePath, workDir, token).ConfigureAwait(false);
+                if (inPlaceWorkCue is not null)
+                {
+                    return new CueWorkDirectoryResult(inPlaceWorkCue, workDir, []);
+                }
+            }
+
             // Assign a unique ASCII work name (trackNN.ext) to every referenced file.
             // MP3 tracks are decoded to trackNN.wav so chdman can consume them.
             var workNames = new Dictionary<string, string>(StringComparer.Ordinal); // FullPath -> work name
@@ -121,6 +138,44 @@ internal static class CueWorkDirectory
             }
 
             throw;
+        }
+    }
+
+    /// <summary>
+    /// Attempts the in-place fast path: writes a BOM-free canonical cue named "game.cue" into
+    /// <paramref name="workDir"/> whose FILE lines reference every bin via a path relative to
+    /// <paramref name="workDir"/> (chdman prepends the cue's directory to every FILE name, so the
+    /// bins must be addressed relative to where the cue lives). No bin files are copied.
+    /// Returns null when any bin cannot be referenced relatively (e.g. it is on another drive),
+    /// in which case the caller must fall back to the copy-based path.
+    /// </summary>
+    internal static async Task<string?> TryWriteInPlaceWorkCueAsync(string cuePath, string workDir, CancellationToken token)
+    {
+        var normalized = await CueNormalizer.NormalizeAsync(cuePath, token, TransformRelative).ConfigureAwait(false);
+        try
+        {
+            if (normalized.UnresolvedNames.Count > 0 || normalized.References.Any(r => Path.IsPathRooted(Path.GetRelativePath(workDir, r.ResolvedFullPath))))
+            {
+                return null;
+            }
+        }
+        catch (ArgumentException)
+        {
+            // Partially-qualified or drive-vs-UNC root mismatches make GetRelativePath throw;
+            // decline the in-place fast path so the caller falls back to the copy-based path.
+            return null;
+        }
+
+        var workCue = Path.Combine(workDir, "game.cue");
+        await CueNormalizer.WriteCanonicalCueAsync(workCue, normalized, token).ConfigureAwait(false);
+        return workCue;
+
+        // Rewrite the cue so its FILE lines reference each bin via a path relative to the
+        // work directory (chdman prepends the cue's directory to every FILE name, so the
+        // bins must be addressed relative to where the cue lives).
+        (string Name, string? TrackType)? TransformRelative(CueFileReference reference)
+        {
+            return (Path.GetRelativePath(workDir, reference.ResolvedFullPath), reference.TrackType);
         }
     }
 

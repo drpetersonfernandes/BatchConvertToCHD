@@ -37,6 +37,8 @@ internal class BugReportService
         "chdman.exe not found",
         "CRITICAL ERROR: The following required component is missing",
         "referenced files are missing",
+        "could not be resolved",
+        "MP3 audio track could not be decoded",
         "is not divisible by",
         "could not validate referenced files",
         "The file or directory is corrupted and unreadable",

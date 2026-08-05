@@ -1,3 +1,5 @@
+using PBPSharp.Models;
+
 namespace BatchConvertToCHD.Models;
 
 /// <summary>
@@ -19,4 +21,10 @@ internal sealed class PbpExtractionResult
     /// Gets or sets the output folder path where files were extracted.
     /// </summary>
     internal string? OutputFolder { get; set; }
+
+    /// <summary>
+    /// Gets or sets the underlying PBP error when extraction failed, or null on success.
+    /// Lets callers distinguish "not a PlayStation disc image" (PSP homebrew) from real failures.
+    /// </summary>
+    internal PbpError? ErrorCode { get; set; }
 }
