@@ -10,7 +10,8 @@ namespace BatchConvertToCHD.Services;
 
 /// <summary>
 /// Captures a screenshot of the currently active (foreground) window
-/// and saves it as a PNG file in the Screenshot folder.
+/// and saves it as a PNG file in the screenshots folder under
+/// %LocalAppData%\BatchConvertToCHD\screenshots.
 /// </summary>
 internal class ScreenshotService
 {
@@ -61,7 +62,8 @@ internal class ScreenshotService
 
     /// <summary>
     /// Captures a screenshot of the currently active foreground window
-    /// and saves it as a PNG in the Screenshot directory.
+    /// and saves it as a PNG in the screenshots folder under
+    /// %LocalAppData%\BatchConvertToCHD\screenshots.
     /// </summary>
     internal string? TakeScreenshot()
     {
@@ -92,7 +94,10 @@ internal class ScreenshotService
                 var bitmapSource = Imaging.CreateBitmapSourceFromHBitmap(
                     bitmap, IntPtr.Zero, Int32Rect.Empty, BitmapSizeOptions.FromEmptyOptions());
 
-                var screenshotDir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Screenshot");
+                var screenshotDir = Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                    AppConfig.ApplicationName,
+                    "screenshots");
                 Directory.CreateDirectory(screenshotDir);
 
                 var timestamp = DateTime.Now.ToString("yyyy-MM-dd_HH-mm-ss-fff", CultureInfo.InvariantCulture);

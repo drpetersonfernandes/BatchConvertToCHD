@@ -166,7 +166,8 @@ internal static class PathUtils
 
         if (selectedRoot != null && !IsRootDirectoryWritable(selectedRoot))
         {
-            Logger.Warning("Selected temp root {Root} is not writable, falling back to system temp", selectedRoot);
+            // Informational: the fallback is expected behavior, not an error condition.
+            Logger.Information("Selected temp root {Root} is not writable, falling back to system temp", selectedRoot);
             selectedRoot = null;
             selectedFree = 0;
         }

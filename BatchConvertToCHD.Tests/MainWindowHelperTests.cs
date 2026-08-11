@@ -64,4 +64,42 @@ public class MainWindowHelperTests : IDisposable
         // Best-effort helper: must not throw for a missing file.
         await MainWindow.StripUtf8BomIfPresentAsync(Path.Combine(_tempDir, "nope.cue"), CancellationToken.None);
     }
+
+    [Fact]
+    public void SelectChdmanErrorLine_SkipsProgressLinesAndReturnsLastRealError()
+    {
+        const string errorText = "Compressing, 0.0% complete... (ratio=100.0%)\r\n" +
+                                 "Output bytes: 1234\r\n" +
+                                 "ERROR: couldn't find bin file [track1.bin]";
+
+        var line = MainWindow.SelectChdmanErrorLine(errorText);
+
+        Assert.Equal("ERROR: couldn't find bin file [track1.bin]", line);
+    }
+
+    [Fact]
+    public void SelectChdmanErrorLine_ProgressOnly_ReturnsLastLine()
+    {
+        const string errorText = "Compressing, 10.0% complete... (ratio=95.0%)\n" +
+                                 "Converting, 20.0% complete...";
+
+        var line = MainWindow.SelectChdmanErrorLine(errorText);
+
+        Assert.Equal("Converting, 20.0% complete...", line);
+    }
+
+    [Fact]
+    public void SelectChdmanErrorLine_SingleErrorLineIsReturned()
+    {
+        var line = MainWindow.SelectChdmanErrorLine("Unit size must be specified if no output parent CHD is supplied");
+
+        Assert.Equal("Unit size must be specified if no output parent CHD is supplied", line);
+    }
+
+    [Fact]
+    public void SelectChdmanErrorLine_EmptyInputReturnsEmpty()
+    {
+        Assert.Equal(string.Empty, MainWindow.SelectChdmanErrorLine(string.Empty));
+        Assert.Equal(string.Empty, MainWindow.SelectChdmanErrorLine(" \r\n \n "));
+    }
 }

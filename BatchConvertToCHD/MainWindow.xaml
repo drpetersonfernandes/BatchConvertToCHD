@@ -32,13 +32,13 @@
                         About
                     </ui:Button>
                     <ui:Button Appearance="Info"
-                               Click="OpenLogsFolderMenuItem_Click"
+                               Click="OpenAppDataFolderMenuItem_Click"
                                Margin="4,0"
-                               ToolTip="Open the AppData folder containing application logs">
+                               ToolTip="Open the AppData folder for this application (logs, screenshots)">
                         <ui:Button.Icon>
                             <ui:SymbolIcon Symbol="Folder24"/>
                         </ui:Button.Icon>
-                        Logs
+                        AppData
                     </ui:Button>
                     <ui:Button Appearance="Secondary"
                                Click="ExitMenuItem_Click"

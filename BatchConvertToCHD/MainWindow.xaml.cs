@@ -1667,7 +1667,8 @@ internal partial class MainWindow : IDisposable
             }
             else
             {
-                LogError($" Failed to extract PBP file: {originalName}");
+                var errorDetail = string.IsNullOrWhiteSpace(result.Error) ? string.Empty : $" - {result.Error}";
+                LogError($" Failed to extract PBP file: {originalName}{errorDetail}");
             }
 
             return false;
@@ -2097,10 +2098,20 @@ internal partial class MainWindow : IDisposable
             // Delete destination if it already exists
             if (File.Exists(destFile))
             {
-                File.Delete(destFile);
+                var deleted = await RetryingFileOperations.TryDeleteAsync(destFile, token).ConfigureAwait(false);
+                if (!deleted)
+                {
+                    throw new IOException($"Could not delete existing destination '{destFile}'.");
+                }
             }
 
-            await Task.Run(() => File.Move(sourceFile, destFile), token);
+            // The file may still be held open (antivirus, file indexer) right after verification,
+            // so retry transient lock failures before giving up.
+            var moved = await RetryingFileOperations.TryMoveAsync(sourceFile, destFile, token).ConfigureAwait(false);
+            if (!moved)
+            {
+                throw new IOException($"Could not move '{sourceFile}' to '{destFile}' after retries.");
+            }
         }
         catch (Exception ex)
         {
@@ -2165,7 +2176,7 @@ internal partial class MainWindow : IDisposable
         var success = false;
         try
         {
-            success = await Task.Run(() =>
+            success = await Task.Run(async () =>
             {
                 var err = ChdFile.Open(chdFile, out var chd);
                 if (err != ChdError.Chderrnone || chd == null)
@@ -2174,7 +2185,7 @@ internal partial class MainWindow : IDisposable
                     return false;
                 }
 
-                using (chd)
+                await using (chd)
                 {
                     if (extractCommand is "extractdvd" or "extracthd")
                     {
@@ -2182,7 +2193,7 @@ internal partial class MainWindow : IDisposable
                     }
                     else
                     {
-                        ExtractChdTracksToDirectory(chd, chdFile, targetDir, fileName, token);
+                        await ExtractChdTracksToDirectory(chd, chdFile, targetDir, fileName, token);
                     }
                 }
 
@@ -2238,7 +2249,7 @@ internal partial class MainWindow : IDisposable
         }
     }
 
-    private void ExtractChdTracksToDirectory(ChdFile chd, string chdFile, string targetDir, string baseFileName, CancellationToken token)
+    private async Task ExtractChdTracksToDirectory(ChdFile chd, string chdFile, string targetDir, string baseFileName, CancellationToken token)
     {
         var tempExtractDir = Path.Combine(targetDir, "_extract_temp_" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(tempExtractDir);
@@ -2254,17 +2265,27 @@ internal partial class MainWindow : IDisposable
                 throw new InvalidOperationException($"No files extracted from '{Path.GetFileName(chdFile)}'.");
             }
 
-            // Move files from temp to target directory, overwriting existing
+            // Move files from temp to target directory, overwriting existing. Retry transient
+            // lock failures (antivirus/indexer) so a locked file doesn't abort the whole disc.
             foreach (var srcPath in extractedFiles)
             {
                 token.ThrowIfCancellationRequested();
                 var destPath = Path.Combine(targetDir, Path.GetFileName(srcPath));
                 if (File.Exists(destPath))
                 {
-                    File.Delete(destPath);
+                    var deleted = await RetryingFileOperations.TryDeleteAsync(destPath, token).ConfigureAwait(false);
+                    if (!deleted)
+                    {
+                        throw new IOException($"Could not delete existing destination '{destPath}'.");
+                    }
                 }
 
-                File.Move(srcPath, destPath);
+                var moved = await RetryingFileOperations.TryMoveAsync(srcPath, destPath, token).ConfigureAwait(false);
+                if (!moved)
+                {
+                    throw new IOException($"Failed to move extracted file '{srcPath}' to '{destPath}'.");
+                }
+
                 LogMessage($" Extracted: {Path.GetFileName(destPath)}");
             }
 
@@ -2705,8 +2726,19 @@ internal partial class MainWindow : IDisposable
                         if (!string.IsNullOrEmpty(targetDir) && !Directory.Exists(targetDir))
                             Directory.CreateDirectory(targetDir);
                         if (File.Exists(originalOutputFile))
-                            File.Delete(originalOutputFile);
-                        File.Move(outputFile, originalOutputFile);
+                        {
+                            var deleted = await RetryingFileOperations.TryDeleteAsync(originalOutputFile, token).ConfigureAwait(false);
+                            if (!deleted)
+                            {
+                                throw new IOException($"Could not delete existing destination '{originalOutputFile}'.");
+                            }
+                        }
+
+                        var moved = await RetryingFileOperations.TryMoveAsync(outputFile, originalOutputFile, token).ConfigureAwait(false);
+                        if (!moved)
+                        {
+                            throw new IOException($"Could not move temp output '{outputFile}' to '{originalOutputFile}'.");
+                        }
                     }
                     catch (Exception ex)
                     {
@@ -2768,10 +2800,10 @@ internal partial class MainWindow : IDisposable
             }
             else if (errorTextFinal.Length > 0)
             {
-                var firstLine = errorTextFinal.IndexOf('\n') > 0 ? errorTextFinal[..errorTextFinal.IndexOf('\n')].TrimEnd() : errorTextFinal;
-                LogError($" Failed to convert '{Path.GetFileName(originalInputFile)}': {firstLine}");
+                var errorLine = SelectChdmanErrorLine(errorTextFinal);
+                LogError($" Failed to convert '{Path.GetFileName(originalInputFile)}': {errorLine}");
 
-                if (firstLine.Contains("couldn't find bin file", StringComparison.OrdinalIgnoreCase))
+                if (errorLine.Contains("couldn't find bin file", StringComparison.OrdinalIgnoreCase))
                 {
                     LogWarning($"       Files found in input directory ({Path.GetDirectoryName(originalInputFile) ?? "?"}): {GetDirectoryDiagnostics(originalInputFile)}");
                 }
@@ -2817,6 +2849,38 @@ internal partial class MainWindow : IDisposable
                 // ignored
             }
         }
+    }
+
+    /// <summary>
+    /// Picks the most useful line from chdman's error output: the last non-empty line that is
+    /// not progress output. chdman streams progress ("Compressing, 0.0% complete... (ratio=100.0%)")
+    /// to stderr, so the first line of the error buffer is often a progress line rather than the
+    /// actual error; the real error (e.g. "couldn't find bin file [...]") comes last.
+    /// </summary>
+    internal static string SelectChdmanErrorLine(string errorText)
+    {
+        var lines = errorText.Split('\n')
+            .Select(static l => l.TrimEnd('\r').Trim())
+            .Where(static l => l.Length > 0)
+            .ToList();
+
+        for (var i = lines.Count - 1; i >= 0; i--)
+        {
+            var line = lines[i];
+            if (line.Contains("% complete", StringComparison.OrdinalIgnoreCase) ||
+                line.Contains("Compressing,", StringComparison.OrdinalIgnoreCase) ||
+                line.Contains("Converting,", StringComparison.OrdinalIgnoreCase) ||
+                line.Contains("Output bytes", StringComparison.OrdinalIgnoreCase) ||
+                line.Contains("Compression ratio", StringComparison.OrdinalIgnoreCase) ||
+                line.Contains("ratio=", StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            return line;
+        }
+
+        return lines.Count > 0 ? lines[^1] : string.Empty;
     }
 
     /// <summary>
@@ -2889,7 +2953,7 @@ internal partial class MainWindow : IDisposable
             if (!extractionResult.Success)
             {
                 onLog($"PBPSharp: Extraction failed - {extractionResult.Error}");
-                return new PbpExtractionResult { Success = false, ErrorCode = extractionResult.ErrorCode };
+                return new PbpExtractionResult { Success = false, ErrorCode = extractionResult.ErrorCode, Error = extractionResult.Error };
             }
 
             onLog($"PBPSharp: Extracted {extractionResult.CuePaths.Count} disc(s)");
@@ -2907,7 +2971,7 @@ internal partial class MainWindow : IDisposable
         catch (Exception ex)
         {
             onLog($"PBPSharp: Extraction error - {ex.Message}");
-            return new PbpExtractionResult { Success = false, ErrorCode = PbpError.CorruptFile };
+            return new PbpExtractionResult { Success = false, ErrorCode = PbpError.CorruptFile, Error = ex.Message };
         }
     }
 
@@ -3463,7 +3527,7 @@ internal partial class MainWindow : IDisposable
         new AboutWindow { Owner = this }.ShowDialog();
     }
 
-    private void OpenLogsFolderMenuItem_Click(object sender, RoutedEventArgs e)
+    private void OpenAppDataFolderMenuItem_Click(object sender, RoutedEventArgs e)
     {
         try
         {

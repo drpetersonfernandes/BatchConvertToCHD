@@ -11,7 +11,7 @@ internal static class LegacyCleanupService
 {
     private static readonly ILogger Logger = Log.ForContext(typeof(LegacyCleanupService));
 
-    private static readonly string[] FoldersToDelete = ["logs", "Resources"];
+    private static readonly string[] FoldersToDelete = ["logs", "Resources", "Screenshot"];
 
     private static readonly string[] FilesToDelete = ["maxcso.exe", "psxpackager.exe"];
 

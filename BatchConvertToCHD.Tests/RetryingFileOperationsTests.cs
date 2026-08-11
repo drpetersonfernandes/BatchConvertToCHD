@@ -124,4 +124,100 @@ public class RetryingFileOperationsTests : IDisposable
             lockStream.Dispose();
         }
     }
+
+    [Fact]
+    public async Task TryMoveAsyncMovesFileAndReturnsTrue()
+    {
+        var source = Path.Combine(_tempDir, "move-src.bin");
+        var dest = Path.Combine(_tempDir, "move-dst.bin");
+        await File.WriteAllTextAsync(source, "data");
+
+        var moved = await RetryingFileOperations.TryMoveAsync(source, dest, CancellationToken.None);
+
+        Assert.True(moved);
+        Assert.False(File.Exists(source));
+        Assert.True(File.Exists(dest));
+    }
+
+    [Fact]
+    public async Task TryMoveAsyncMissingSourceReturnsTrue()
+    {
+        var moved = await RetryingFileOperations.TryMoveAsync(
+            Path.Combine(_tempDir, "missing-src.bin"),
+            Path.Combine(_tempDir, "missing-dst.bin"),
+            CancellationToken.None);
+
+        Assert.True(moved);
+    }
+
+    [Fact]
+    public async Task TryMoveAsyncMissingDestinationDirectoryReturnsFalse()
+    {
+        var source = Path.Combine(_tempDir, "move-no-dir-src.bin");
+        var dest = Path.Combine(_tempDir, "does-not-exist", "move-no-dir-dst.bin");
+        await File.WriteAllTextAsync(source, "data");
+
+        var moved = await RetryingFileOperations.TryMoveAsync(
+            source, dest, CancellationToken.None,
+            onRetry: static _ => { },
+            backoffMsProvider: static _ => 1);
+
+        Assert.False(moved);
+        Assert.True(File.Exists(source), "source must remain in place when the move fails");
+    }
+
+    [Fact]
+    public async Task TryMoveAsyncLockedFileRetriesThenGivesUp()
+    {
+        var source = Path.Combine(_tempDir, "move-locked.bin");
+        var dest = Path.Combine(_tempDir, "move-locked-dst.bin");
+        await File.WriteAllTextAsync(source, "data");
+        var retries = 0;
+
+        // Hold an exclusive lock for the whole call so every attempt fails.
+        await using var lockStream = new FileStream(source, FileMode.Open, FileAccess.Read, FileShare.None);
+        var moved = await RetryingFileOperations.TryMoveAsync(
+            source, dest, CancellationToken.None,
+            _ => { retries++; },
+            static _ => 1);
+
+        Assert.False(moved);
+        Assert.Equal(RetryingFileOperations.MaxDeleteAttempts - 1, retries);
+        Assert.True(File.Exists(source));
+        Assert.False(File.Exists(dest));
+    }
+
+    [Fact]
+    public async Task TryMoveAsyncLockedFileSucceedsAfterLockReleased()
+    {
+        var source = Path.Combine(_tempDir, "move-released.bin");
+        var dest = Path.Combine(_tempDir, "move-released-dst.bin");
+        await File.WriteAllTextAsync(source, "data");
+        var attempts = 0;
+        var lockStream = new FileStream(source, FileMode.Open, FileAccess.Read, FileShare.None);
+
+        try
+        {
+            var moved = await RetryingFileOperations.TryMoveAsync(
+                source, dest, CancellationToken.None,
+                _ =>
+                {
+                    attempts++;
+                    if (attempts == 2)
+                    {
+                        // Release the lock so the next attempt succeeds.
+                        lockStream.Dispose();
+                    }
+                },
+                static _ => 1);
+
+            Assert.True(moved);
+            Assert.False(File.Exists(source));
+            Assert.True(File.Exists(dest));
+        }
+        finally
+        {
+            lockStream.Dispose();
+        }
+    }
 }

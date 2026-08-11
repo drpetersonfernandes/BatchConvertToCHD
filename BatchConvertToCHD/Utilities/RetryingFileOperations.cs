@@ -84,6 +84,56 @@ internal static class RetryingFileOperations
         return false;
     }
 
+    /// <summary>
+    /// Attempts to move <paramref name="sourcePath"/> to <paramref name="destinationPath"/>,
+    /// retrying with backoff while the source is temporarily locked (e.g. antivirus scanning a
+    /// freshly written CHD, or another process still holding the file open). Returns true when
+    /// the move succeeded or the source is already gone, false after all attempts failed.
+    /// </summary>
+    /// <param name="sourcePath">Path of the file to move.</param>
+    /// <param name="destinationPath">Destination path for the move.</param>
+    /// <param name="token">Cancellation token; cancelling aborts the retry loop.</param>
+    /// <param name="onRetry">Called with the 0-based attempt number before each retry.</param>
+    /// <param name="backoffMsProvider">Optional backoff override (used by tests).</param>
+    internal static async Task<bool> TryMoveAsync(string sourcePath, string destinationPath, CancellationToken token, Action<int>? onRetry = null, Func<int, int>? backoffMsProvider = null)
+    {
+        for (var attempt = 0; attempt < MaxDeleteAttempts; attempt++)
+        {
+            token.ThrowIfCancellationRequested();
+
+            try
+            {
+                await Task.Run(() => File.Move(sourcePath, destinationPath), token).ConfigureAwait(false);
+                return true;
+            }
+            catch (FileNotFoundException)
+            {
+                // Source already gone — nothing to move.
+                return true;
+            }
+            catch (IOException)
+            {
+                // Includes DirectoryNotFoundException (missing destination directory, e.g.
+                // disconnected network path): retry in case it resolves, then report failure.
+                // Never treat a failed move as success — the source file still exists.
+                if (attempt >= MaxDeleteAttempts - 1)
+                {
+                    return false;
+                }
+
+                onRetry?.Invoke(attempt);
+                await DelayAsync(backoffMsProvider, attempt, token).ConfigureAwait(false);
+            }
+            catch (UnauthorizedAccessException)
+            {
+                // ACL-protected paths won't resolve with retries; fail fast.
+                return false;
+            }
+        }
+
+        return false;
+    }
+
     private static async Task DelayAsync(Func<int, int>? backoffMsProvider, int attempt, CancellationToken token)
     {
         var delayMs = (backoffMsProvider ?? GetDeleteBackoffMs)(attempt);

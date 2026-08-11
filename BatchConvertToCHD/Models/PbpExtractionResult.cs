@@ -27,4 +27,10 @@ internal sealed class PbpExtractionResult
     /// Lets callers distinguish "not a PlayStation disc image" (PSP homebrew) from real failures.
     /// </summary>
     internal PbpError? ErrorCode { get; set; }
+
+    /// <summary>
+    /// Gets or sets a human-readable description of the extraction failure, when one occurred.
+    /// Preserved so callers can surface the real reason (e.g. "Failed to open PBP file: ...").
+    /// </summary>
+    internal string? Error { get; set; }
 }
