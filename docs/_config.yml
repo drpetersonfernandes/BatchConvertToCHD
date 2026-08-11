@@ -1,0 +1,5 @@
+# Jekyll configuration for the docs/ wiki site (GitHub Pages).
+# Reference: https://jekyllrb.com/docs/configuration/
+title: BatchConvertToCHD — Wiki
+description: Official documentation for Batch Convert to CHD — user guide, architecture, developer references, and troubleshooting.
+theme: jekyll-theme-cayman

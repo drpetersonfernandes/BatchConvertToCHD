@@ -147,6 +147,26 @@ BatchConvertToCHD.exe "C:\ROMs\MyGames"
 
 ---
 
+## 📖 Documentation
+
+The full project documentation (user guide, architecture, developer references, and troubleshooting) lives in the **[`docs/`](docs/index.md) wiki**:
+
+* [Project Overview](docs/01-overview.md)
+* [Getting Started](docs/02-getting-started.md)
+* [Architecture](docs/03-architecture.md)
+* [User Guide](docs/04-user-guide.md)
+* [Conversion Pipeline](docs/05-conversion-pipeline.md)
+* [Extraction & Verification](docs/06-extraction-and-verification.md)
+* [Services Reference](docs/07-services-reference.md)
+* [Utilities Reference](docs/08-utilities-reference.md)
+* [Bug Reporting System](docs/09-bug-reporting.md)
+* [Embedded Libraries](docs/10-libraries.md)
+* [Testing](docs/11-testing.md)
+* [Application Data](docs/12-application-data.md)
+* [Troubleshooting](docs/13-troubleshooting.md)
+
+---
+
 ## 🤝 Contributing & Support
 
 If you encounter issues or have feature requests, please use the [GitHub Issues](https://github.com/drpetersonfernandes/BatchConvertToCHD/issues) tracker.
