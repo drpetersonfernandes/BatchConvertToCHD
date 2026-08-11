@@ -11,12 +11,6 @@
 ![Batch Convert to CHD Screenshot](screenshot2.png)
 ![Batch Convert to CHD Screenshot](screenshot3.png)
 
-## 📝 What's New
-
-See [WhatsNew.md](WhatsNew.md) for the release notes of the latest version.
-
----
-
 ## 🚀 Key Features
 
 ### 💻 Modern Side-by-Side Dashboard
