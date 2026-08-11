@@ -11,6 +11,12 @@
 ![Batch Convert to CHD Screenshot](screenshot2.png)
 ![Batch Convert to CHD Screenshot](screenshot3.png)
 
+## 📝 What's New
+
+See [WhatsNew.md](WhatsNew.md) for the release notes of the latest version.
+
+---
+
 ## 🚀 Key Features
 
 ### 💻 Modern Side-by-Side Dashboard
@@ -50,6 +56,7 @@
 ### 📊 Performance & UI
 *   **Real-time Telemetry**: Monitor disk write/read speeds and elapsed time during operations.
 *   **Optimized Logging**: High-performance logging system with automatic truncation to keep the application responsive during long-running tasks.
+*   **AppData Storage**: Logs and F8 screenshots are stored under `%LocalAppData%\BatchConvertToCHD` (`logs` / `screenshots`); the title-bar **AppData** button opens the folder.
 *   **WPF-UI Theming**: Modern dark-themed UI powered by [WPF-UI](https://github.com/lepoco/wpfui) with Mica backdrop, rounded corners, and native Windows 11 aesthetics.
 
 ### 🔄 Updates & Stability
