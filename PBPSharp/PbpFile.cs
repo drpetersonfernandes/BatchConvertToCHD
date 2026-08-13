@@ -166,6 +166,13 @@ public sealed class PbpFile : IDisposable
 
         sfoData.Magic = ReadUInt32(stream, sfoBuffer);
         sfoData.Version = ReadUInt32(stream, sfoBuffer);
+
+        // A real SFO starts with the bytes 00 50 53 46 ("\0PSF"), which as a little-endian
+        // uint32 is 0x46535000. Anything else means the SFO region is corrupt or the PBP
+        // header offsets point at the wrong place.
+        if (sfoData.Magic != 0x46535000)
+            return PbpError.CorruptFile;
+
         sfoData.KeyTableOffset = ReadUInt32(stream, sfoBuffer);
         sfoData.DataTableOffset = ReadUInt32(stream, sfoBuffer);
         var entryCount = ReadUInt32(stream, sfoBuffer);
@@ -234,9 +241,16 @@ public sealed class PbpFile : IDisposable
             stream.ReadExactly(skipBuffer, 0, 4); // padding
             stream.ReadExactly(skipBuffer, 0, 4); // padding
 
-            // Read and validate magic values
+            // Read and validate the fixed magic values of the PSTITLEIMG000000 header.
+            // The reference implementation rejects files whose DWORDs differ.
             var magicBuffer = new byte[16];
             stream.ReadExactly(magicBuffer, 0, 16);
+
+            if (BitConverter.ToUInt32(magicBuffer, 0) != 0x2CC9C5BC ||
+                BitConverter.ToUInt32(magicBuffer, 4) != 0x33B5A90F ||
+                BitConverter.ToUInt32(magicBuffer, 8) != 0x06F6B4B3 ||
+                BitConverter.ToUInt32(magicBuffer, 12) != 0xB25945BA)
+                return PbpError.InvalidPsarHeader;
 
             // Skip 0x76 uint32 values
             var dummyBuffer = new byte[4];

@@ -17,8 +17,8 @@
     <PackageId>PBPSharp</PackageId>
     <Version>1.0.0</Version>
     <Authors>PureLogicCode</Authors>
-    <Description>A managed C# library for reading and extracting PlayStation Portable PBP (EBOOT.PBP) files. Supports single-disc and multi-disc PBP, SFO metadata parsing, resource extraction (ICON0, PIC0, PIC1, SND0), and ISO extraction with CUE sheet generation. Read-only library.</Description>
-    <PackageTags>pbp;psp;playstation;iso;eboot;psx;ps1;disc-image</PackageTags>
+    <Description>A managed C# read-only library for reading and extracting PlayStation Portable PBP (EBOOT.PBP) files. Supports single-disc and multi-disc PBP, SFO metadata parsing, and ISO extraction with CUE sheet generation. Designed as an intermediate step for converting PBP discs to other formats (e.g. CHD). Read-only: it can open and extract, but cannot create or modify PBP files.</Description>
+    <PackageTags>pbp;psp;playstation;iso;eboot;psx;ps1;disc-image;read-only</PackageTags>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <PackageProjectUrl>https://github.com/PureLogicCode/PBPSharp</PackageProjectUrl>
     <RepositoryUrl>https://github.com/PureLogicCode/PBPSharp</RepositoryUrl>

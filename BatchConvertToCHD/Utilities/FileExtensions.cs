@@ -42,6 +42,9 @@ internal static class FileExtensions
     // Output format
     internal const string Chd = ".chd";
 
+    // Extraction outputs (chdman fallback)
+    internal const string Avi = ".avi";
+
     /// <summary>
     /// All supported input extensions for conversion.
     /// </summary>

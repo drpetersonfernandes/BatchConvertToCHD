@@ -60,6 +60,14 @@ public sealed class PbpDiscInfo
         DiscId = ReadDiscId();
         Toc = ReadToc();
         _isoIndex = ReadIsoIndexes();
+
+        // A disc with no ISO index entries is not a PlayStation disc image (e.g. a PSP
+        // application PBP or a truncated file). The reference implementation rejects it
+        // explicitly; without this guard the later block reads would throw a raw
+        // ArgumentOutOfRangeException instead of a clean PbpError.CorruptFile.
+        if (_isoIndex.Count == 0)
+            throw new InvalidDataException("No ISO index was found.");
+
         IsoSize = ReadIsoSize();
     }
 
@@ -177,6 +185,13 @@ public sealed class PbpDiscInfo
             throw new ArgumentOutOfRangeException(nameof(blockIndex));
 
         var entry = _isoIndex[blockIndex];
+
+        // The index length is read as a signed value; a corrupt negative length (or one
+        // larger than the uncompressed block size) would otherwise surface as a raw
+        // ArgumentOutOfRangeException from ArrayPool.Rent or MemoryStream.Write.
+        if (entry.Length is < 0 or > 16 * IsoBlockSize)
+            throw new InvalidDataException("Invalid ISO block length in PSAR index.");
+
         var thisOffset = _psarOffset + PsarIsoOffset + entry.Offset;
         _stream.Seek(thisOffset, SeekOrigin.Begin);
 
@@ -260,6 +275,16 @@ public sealed class PbpDiscInfo
         catch (InvalidDataException)
         {
             return PbpError.DecompressionError;
+        }
+        catch (NotSupportedException)
+        {
+            // A corrupt block inflated beyond the fixed output buffer capacity.
+            return PbpError.CorruptFile;
+        }
+        catch (ArgumentOutOfRangeException)
+        {
+            // Corrupt index entry (block or length out of range).
+            return PbpError.CorruptFile;
         }
 
         var cueContent = CueSheetWriter.GenerateCueSheet(Path.GetFileName(binPath), Toc);
