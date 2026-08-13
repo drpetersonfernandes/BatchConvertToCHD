@@ -1,6 +1,6 @@
 # 11. Testing
 
-The solution contains a single test project, `BatchConvertToCHD.Tests` (xUnit, `net10.0-windows`), with **~570 passing tests** across 32 test files (plus the shared `FakeHttpMessageHandler` helper).
+The solution contains a single test project, `BatchConvertToCHD.Tests` (xUnit, `net10.0-windows`), with **~580 passing tests** across 32 test files (plus the shared `FakeHttpMessageHandler` helper).
 
 ## 11.1 Running the Tests
 
