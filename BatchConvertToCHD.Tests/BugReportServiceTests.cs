@@ -335,11 +335,8 @@ public class BugReportServiceTests
     [InlineData("Invalid or corrupt data")]
     [InlineData("Cannot open file")]
     [InlineData(@"Partial extraction: 1 file(s) remain in temp directory: C:\temp\x")]
-    [InlineData("Failed to read hunk 0: Chderrdecompressionerror")]
     [InlineData("Fatal error occurred: 1")]
     [InlineData("Unhandled exception: cannot create std::vector larger than max_size()")]
-    [InlineData("Failed to open PBP file: InvalidPsarHeader")]
-    [InlineData("Failed to extract PBP file: Ridge Racer Type 4.PBP - Failed to extract disc 1: DecompressionError")]
     [InlineData("Temp drive (")]
     [InlineData("Output drive (")]
     [InlineData("drive has 1.5 GB")]
@@ -381,6 +378,9 @@ public class BugReportServiceTests
     [InlineData("Unhandled exception in conversion pipeline")]
     [InlineData("Failed to initialize service")]
     [InlineData("Unexpected error during processing")]
+    [InlineData("Failed to open PBP file: DecompressionError (code 8)")]
+    [InlineData("Failed to extract PBP file: Ridge Racer Type 4.PBP (650,000,000 bytes) - Failed to extract disc 1 of 2: DecompressionError (code 8)")]
+    [InlineData("Failed to read hunk 0: Chderrdecompressionerror")]
     public void IsExcludedFromBugReport_NormalMessages_ReturnsFalse(string message)
     {
         Assert.False(BugReportService.IsExcludedFromBugReport(message));

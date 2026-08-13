@@ -82,6 +82,172 @@ public class PbpFileTests : IDisposable
     }
 
     [Fact]
+    public void OpenFileWithInvalidSfoMagicReturnsCorruptFile()
+    {
+        var path = Path.Combine(_tempDir, $"badsfo_{Guid.NewGuid():N}.pbp");
+
+        using var ms = new MemoryStream();
+        WriteStandardPbpHeader(ms);
+
+        var sfo = BuildMinimalSfo();
+        BitConverter.GetBytes(0xDEADBEEFu).CopyTo(sfo, 0); // corrupt the SFO magic
+        ms.Write(sfo);
+
+        while (ms.Position < 0x200)
+            ms.WriteByte(0);
+
+        File.WriteAllBytes(path, ms.ToArray());
+
+        var error = PbpFile.Open(path, out var pbp);
+        Assert.Equal(PbpError.CorruptFile, error);
+        Assert.Null(pbp);
+    }
+
+    [Fact]
+    public void OpenMultiDiscPbpWithInvalidHeaderMagicReturnsInvalidPsarHeader()
+    {
+        var path = Path.Combine(_tempDir, $"badmagic_{Guid.NewGuid():N}.pbp");
+
+        using var ms = new MemoryStream();
+        WriteStandardPbpHeader(ms);
+        ms.Write(BuildMinimalSfo());
+
+        while (ms.Position < 0x200)
+            ms.WriteByte(0);
+
+        ms.Write("PSTITLEIMG000000"u8.ToArray());
+        ms.Write(new byte[8]); // 2 x padding uint32
+        ms.Write(new byte[16]); // wrong magic DWORDs (all zero)
+
+        File.WriteAllBytes(path, ms.ToArray());
+
+        var error = PbpFile.Open(path, out var pbp);
+        Assert.Equal(PbpError.InvalidPsarHeader, error);
+        Assert.Null(pbp);
+    }
+
+    [Fact]
+    public void OpenSingleDiscPbpWithNoIsoIndexReturnsCorruptFile()
+    {
+        var path = Path.Combine(_tempDir, $"noindex_{Guid.NewGuid():N}.pbp");
+
+        using var ms = new MemoryStream();
+        WriteStandardPbpHeader(ms);
+        ms.Write(BuildMinimalSfo());
+
+        while (ms.Position < 0x200)
+            ms.WriteByte(0);
+
+        // PSISOIMG0000 disc with GameID/TOC regions but no ISO index table.
+        ms.Write("PSISOIMG0000"u8.ToArray());
+        while (ms.Position < 0x200 + 0x800 + 0x20)
+            ms.WriteByte(0);
+
+        File.WriteAllBytes(path, ms.ToArray());
+
+        var error = PbpFile.Open(path, out var pbp);
+        Assert.Equal(PbpError.CorruptFile, error);
+        Assert.Null(pbp);
+    }
+
+    [Fact]
+    public void OpenSingleDiscPbpWithNegativeBlockLengthReturnsCorruptFile()
+    {
+        var path = Path.Combine(_tempDir, $"negativelen_{Guid.NewGuid():N}.pbp");
+
+        using var ms = new MemoryStream();
+        WriteStandardPbpHeader(ms);
+        ms.Write(BuildMinimalSfo());
+
+        while (ms.Position < 0x200)
+            ms.WriteByte(0);
+
+        ms.Write("PSISOIMG0000"u8.ToArray());
+
+        while (ms.Position < 0x200 + 0x4000)
+            ms.WriteByte(0);
+
+        // index[0]: raw block at offset 0
+        ms.Write(BitConverter.GetBytes(0u));
+        ms.Write(BitConverter.GetBytes(0x9300));
+        ms.Write(new byte[24]);
+        // index[1]: negative (corrupt) length
+        ms.Write(BitConverter.GetBytes(0x9300u));
+        ms.Write(BitConverter.GetBytes(unchecked((int)0xFFFFFFFF)));
+        ms.Write(new byte[24]);
+
+        File.WriteAllBytes(path, ms.ToArray());
+
+        var error = PbpFile.Open(path, out var pbp);
+        Assert.Equal(PbpError.CorruptFile, error);
+        Assert.Null(pbp);
+    }
+
+    [Fact]
+    public void ExtractToBinCueWithCorruptBlockReturnsDecompressionError()
+    {
+        var path = Path.Combine(_tempDir, $"corruptblock_{Guid.NewGuid():N}.pbp");
+
+        using var ms = new MemoryStream();
+        WriteStandardPbpHeader(ms);
+        ms.Write(BuildMinimalSfo());
+
+        while (ms.Position < 0x200)
+            ms.WriteByte(0);
+
+        ms.Write("PSISOIMG0000"u8.ToArray());
+
+        while (ms.Position < 0x200 + 0x4000)
+            ms.WriteByte(0);
+
+        // Two valid raw blocks, then a block with a negative (corrupt) length.
+        for (var i = 0; i < 2; i++)
+        {
+            ms.Write(BitConverter.GetBytes((uint)(i * 0x9300)));
+            ms.Write(BitConverter.GetBytes(0x9300));
+            ms.Write(new byte[24]);
+        }
+
+        ms.Write(BitConverter.GetBytes(2u * 0x9300));
+        ms.Write(BitConverter.GetBytes(unchecked((int)0xFFFFFFFF)));
+        ms.Write(new byte[24]);
+
+        // Raw ISO data for the two valid blocks (starts at psarOffset + 0x100000).
+        while (ms.Position < 0x200 + 0x100000 + 2 * 0x9300)
+            ms.WriteByte(0);
+
+        File.WriteAllBytes(path, ms.ToArray());
+
+        var error = PbpFile.Open(path, out var pbp);
+        Assert.Equal(PbpError.None, error);
+        Assert.NotNull(pbp);
+
+        using (pbp)
+        {
+            Assert.Equal(3, pbp.Discs[0].BlockCount);
+
+            var binPath = Path.Combine(_tempDir, $"corrupt_{Guid.NewGuid():N}.bin");
+            var cuePath = Path.ChangeExtension(binPath, ".cue");
+            var result = pbp.Discs[0].ExtractToBinCue(binPath, cuePath);
+            Assert.Equal(PbpError.DecompressionError, result);
+        }
+    }
+
+    private static void WriteStandardPbpHeader(Stream ms, int sfoOffset = 0x28, int dataPsarOffset = 0x200)
+    {
+        ms.Write(BitConverter.GetBytes(PbpHeader.MagicValue));
+        ms.Write(BitConverter.GetBytes(1u)); // version
+        ms.Write(BitConverter.GetBytes(sfoOffset));
+        ms.Write(BitConverter.GetBytes(0x100)); // icon0
+        ms.Write(BitConverter.GetBytes(0x100)); // icon1
+        ms.Write(BitConverter.GetBytes(0x100)); // pic0
+        ms.Write(BitConverter.GetBytes(0x100)); // pic1
+        ms.Write(BitConverter.GetBytes(0x100)); // snd0
+        ms.Write(BitConverter.GetBytes(0x100)); // dataPsp
+        ms.Write(BitConverter.GetBytes(dataPsarOffset)); // dataPsar
+    }
+
+    [Fact]
     public void DefaultPbpHeaderIsNotValid()
     {
         var header = default(PbpHeader);

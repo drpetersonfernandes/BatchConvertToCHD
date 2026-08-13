@@ -28,7 +28,7 @@ Serilog Logger                             (App.xaml.cs:56–78)
 Additionally, **unhandled exceptions** are reported directly (not via the sink):
 
 - `AppDomain.CurrentDomain.UnhandledException` → `Log.Fatal` + synchronous `ReportException` (the process is about to terminate, so the report must complete inline — `App.xaml.cs:236–250`).
-- `DispatcherUnhandledException` → `Log.Error` + `ReportException`; a small allowlist of known-benign WPF rendering exceptions (`GlyphTypeface` URI errors, PresentationCore OOM in `DUCE.Channel`/`HwndTarget`) is suppressed (`App.xaml.cs:207–227`).
+- `DispatcherUnhandledException` → `Log.Error` + `ReportException`; a small allowlist of known-benign exceptions is suppressed (`App.xaml.cs:207–233`): WPF rendering errors (`GlyphTypeface` URI errors, PresentationCore OOM in `DUCE.Channel`/`HwndTarget`) and the WPF-internal `FileNotFoundException` from `PopupSecurityHelper.ForceMsaaToUiaBridge` (ToolTip/Popup opening when the OS accessibility bridge cannot be loaded — the tooltip simply never appears).
 - `TaskScheduler.UnobservedTaskException` → `Log.Error` + `ReportException`, then `SetObserved()`.
 
 ## 9.2 API Contract
@@ -63,10 +63,11 @@ Environment Details includes: date/time, app name + version, OS version, archite
 | **Extraction outcomes** | `"No supported primary files found in archive"`, `"Partial extraction:"`, `"File not found, skipping:"` |
 | **Tooling** | `"chdman.exe not found"`, `"CRITICAL ERROR: The following required component is missing"` |
 | **Corrupt/unopenable CHD data** | `"Not a valid CHD file"`, `"Invalid or corrupt data"`, `"Cannot open file"` |
+| **chdman output (user data)** | `"Fatal error occurred"` (chdman exit summary), `"cannot create std::vector"` (chdman C++ crash on user input) |
 | **Cue/dependency validation** | `"referenced files are missing"`, `"could not be resolved"`, `"could not validate referenced files"`, `"MP3 audio track could not be decoded"`, `"is not divisible by"`, `"The file or directory is corrupted and unreadable"`, `"Retry via temp failed"` |
 | **Archive errors** | `"archive file may be corrupted"`, `"archive is invalid or corrupt"`, `"archive file appears to be incomplete"`, `"multi-part RAR with a missing volume"`, `"unavailable network location"`, `"Archive is encrypted"`, `"compression method that is not supported"`, `"CCDSharp: Conversion error"` |
 
-**Design intent**: the exclusion list only contains messages that describe **user-data or environmental conditions** (corrupt files, full disks, missing volumes, rate limits) — conditions the application handles gracefully and that would otherwise flood the bug database. Genuine code defects (exceptions, unexpected failures) still reach the API. Every exclusion is covered by unit tests (`BugReportServiceTests`).
+**Design intent**: the exclusion list only contains messages that describe **user-data or environmental conditions** (corrupt files, full disks, missing volumes, rate limits) — conditions the application handles gracefully and that would otherwise flood the bug database. Genuine code defects (exceptions, unexpected failures) still reach the API — including **CHDSharp and PBPSharp extraction failures**, which are reported by design (with debug details such as file size, disc index/count, and numeric error codes) so the library maintainer can fix them. Every exclusion is covered by unit tests (`BugReportServiceTests`).
 
 ## 9.5 Server-Side Notes
 
