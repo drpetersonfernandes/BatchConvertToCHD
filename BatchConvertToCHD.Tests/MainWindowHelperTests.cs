@@ -174,7 +174,7 @@ public class MainWindowHelperTests : IDisposable
     [InlineData("extractraw", ".raw")]
     public void BuildChdmanExtractArgs_OtherCommands_InputOutputForce(string command, string ext)
     {
-        var output = $"D:\\out\\game{ext}";
+        var output = $@"D:\out\game{ext}";
         var args = MainWindow.BuildChdmanExtractArgs(command, @"D:\roms\game.chd", output);
 
         Assert.Contains($"{command} -i \"D:\\roms\\game.chd\"", args, StringComparison.Ordinal);

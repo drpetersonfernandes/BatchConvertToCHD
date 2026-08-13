@@ -2215,7 +2215,9 @@ internal partial class MainWindow : IDisposable
         catch (Exception ex)
         {
             if (IsDiskSpaceException(ex))
+            {
                 LogError($" Not enough disk space to extract '{Path.GetFileName(chdFile)}'. Free up disk space on the output drive and try again.");
+            }
             else
             {
                 LogError($" Failed to extract '{Path.GetFileName(chdFile)}': {GetChdExtractionErrorMessage(ex.Message)}");
@@ -3021,7 +3023,7 @@ internal partial class MainWindow : IDisposable
 
         if (isAvChd)
         {
-            LogMessage($" CHD has no CD/DVD/HDD metadata; treating it as an A/V (laserdisc) CHD.");
+            LogMessage(" CHD has no CD/DVD/HDD metadata; treating it as an A/V (laserdisc) CHD.");
             attempts.Add(("extractld", Path.Combine(targetDir, fileName + FileExtensions.Avi)));
             attempts.Add(("extractraw", Path.Combine(targetDir, fileName + FileExtensions.Raw)));
         }
@@ -3108,7 +3110,7 @@ internal partial class MainWindow : IDisposable
 
                 using (chd)
                 {
-                    return !chd.IsCd && !chd.IsDvd && !chd.IsHdd && !chd.IsGdRom;
+                    return chd is { IsCd: false, IsDvd: false, IsHdd: false, IsGdRom: false };
                 }
             }
             catch
@@ -3139,14 +3141,6 @@ internal partial class MainWindow : IDisposable
 
             var errorBuffer = new StringBuilder();
             var errorBufferLock = new Lock();
-            void CaptureOutput(string? data)
-            {
-                if (string.IsNullOrEmpty(data)) return;
-                lock (errorBufferLock)
-                {
-                    errorBuffer.AppendLine(data);
-                }
-            }
 
             process.OutputDataReceived += (_, a) => CaptureOutput(a.Data);
             process.ErrorDataReceived += (_, a) => CaptureOutput(a.Data);
@@ -3159,8 +3153,18 @@ internal partial class MainWindow : IDisposable
             if (process.ExitCode == 0)
                 return true;
 
-            Serilog.Log.Warning("chdman {Command} failed (exit {ExitCode}): {Output}", args.Split(' ')[0], process.ExitCode, errorBuffer.ToString().TrimEnd());
+            Log.Warning("chdman {Command} failed (exit {ExitCode}): {Output}", args.Split(' ')[0], process.ExitCode, errorBuffer.ToString().TrimEnd());
             return false;
+
+            void CaptureOutput(string? data)
+            {
+                if (string.IsNullOrEmpty(data)) return;
+
+                lock (errorBufferLock)
+                {
+                    errorBuffer.AppendLine(data);
+                }
+            }
         }
         catch (OperationCanceledException)
         {
@@ -3168,7 +3172,7 @@ internal partial class MainWindow : IDisposable
         }
         catch (Exception ex)
         {
-            Serilog.Log.Warning(ex, "chdman extract could not be started");
+            Log.Warning(ex, "chdman extract could not be started");
             return false;
         }
     }
