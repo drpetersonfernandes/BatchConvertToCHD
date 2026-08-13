@@ -94,18 +94,41 @@ internal static class CueBinWriter
         }
         else
         {
-            // Reference the .img file directly (copy it to the output directory with .img extension)
-            binFileName = Path.GetFileName(disc.ImgFilePath);
-            var destImgPath = Path.Combine(cueDir, binFileName);
-            if (!string.Equals(disc.ImgFilePath, destImgPath, StringComparison.OrdinalIgnoreCase))
-                File.Copy(disc.ImgFilePath, destImgPath, true);
+            // Reference the .img where it already is. A cue FILE entry is resolved against the cue's
+            // own directory, so a relative path reaches the image without duplicating it - copying a
+            // CloneCD image into temp costs another whole disc worth of disk per conversion.
+            // A rooted result means the image is on another volume, which a cue cannot express, so
+            // that is the one case where the copy is still needed.
+            binFileName = GetReferencePath(cueDir, disc.ImgFilePath);
+            if (Path.IsPathRooted(binFileName))
+            {
+                binFileName = Path.GetFileName(disc.ImgFilePath);
+                File.Copy(disc.ImgFilePath, Path.Combine(cueDir, binFileName), true);
+            }
         }
 
-        // Generate and write the CUE sheet
+        // Generate and write the CUE sheet. The encoding must not emit a BOM: chdman's cue parser
+        // does not skip one and fails with the misleading "couldn't find bin file []".
         var cueContent = GenerateCueSheet(disc, binFileName);
-        File.WriteAllText(outputCuePath, cueContent, Encoding.UTF8);
+        File.WriteAllText(outputCuePath, cueContent, new UTF8Encoding(false));
 
         return outputCuePath;
+    }
+
+    /// <summary>
+    /// Returns the path to <paramref name="imgFilePath"/> relative to <paramref name="cueDir"/>, or a
+    /// rooted path when no relative path exists (different volumes, or mismatched root forms).
+    /// </summary>
+    private static string GetReferencePath(string cueDir, string imgFilePath)
+    {
+        try
+        {
+            return Path.GetRelativePath(cueDir, imgFilePath);
+        }
+        catch (ArgumentException)
+        {
+            return imgFilePath;
+        }
     }
 
     /// <summary>

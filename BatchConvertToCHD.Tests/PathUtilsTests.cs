@@ -250,4 +250,137 @@ public class PathUtilsTests
     }
 
     #endregion
+
+    #region CreateTempDirectoryOnSameVolume
+
+    [Fact]
+    public void SameVolumeTempDirectoryIsCreatedOnTheReferenceVolume()
+    {
+        var reference = Path.Combine(Path.GetTempPath(), $"reference_{Guid.NewGuid():N}.iso");
+        File.WriteAllBytes(reference, new byte[16]);
+
+        string? created = null;
+        try
+        {
+            created = PathUtils.CreateTempDirectoryOnSameVolume(reference, "SameVolume_");
+
+            Assert.NotNull(created);
+            Assert.True(Directory.Exists(created));
+            Assert.Equal(
+                Path.GetPathRoot(Path.GetFullPath(reference)),
+                Path.GetPathRoot(Path.GetFullPath(created)),
+                StringComparer.OrdinalIgnoreCase);
+        }
+        finally
+        {
+            Cleanup(created, reference);
+        }
+    }
+
+    [Fact]
+    public void ACueInTheSameVolumeDirectoryCanReferenceTheImageRelatively()
+    {
+        // This is the property the whole helper exists for: chdman joins a cue's FILE entry to the
+        // cue's own directory, so the path from the directory to the image must not come back rooted.
+        var reference = Path.Combine(Path.GetTempPath(), $"reference_{Guid.NewGuid():N}.iso");
+        File.WriteAllBytes(reference, new byte[16]);
+
+        string? created = null;
+        try
+        {
+            created = PathUtils.CreateTempDirectoryOnSameVolume(reference, "SameVolume_");
+            Assert.NotNull(created);
+
+            var relative = Path.GetRelativePath(created, reference);
+            Assert.False(Path.IsPathRooted(relative), $"'{relative}' is rooted, so a generated cue could not reach the image");
+        }
+        finally
+        {
+            Cleanup(created, reference);
+        }
+    }
+
+    [Fact]
+    public void EveryReadyFixedVolumeGetsADirectoryOnItself()
+    {
+        // The roomiest-drive choice is wrong here: an image on a nearly full drive still needs its
+        // cue on that drive. Each fixed volume is checked, since that is where source images live.
+        foreach (var drive in DriveInfo.GetDrives().Where(static d => d is { IsReady: true, DriveType: DriveType.Fixed }))
+        {
+            var root = drive.RootDirectory.FullName;
+            var reference = Path.Combine(root, $"image_{Guid.NewGuid():N}.iso");
+
+            var created = PathUtils.CreateTempDirectoryOnSameVolume(reference, "SameVolume_");
+            if (created is null)
+            {
+                // A volume that refuses a directory is reported by returning null, which the caller
+                // handles; there is nothing to assert about it beyond that.
+                continue;
+            }
+
+            try
+            {
+                Assert.Equal(
+                    Path.GetPathRoot(root),
+                    Path.GetPathRoot(Path.GetFullPath(created)),
+                    StringComparer.OrdinalIgnoreCase);
+            }
+            finally
+            {
+                Cleanup(created, null);
+            }
+        }
+    }
+
+    [Fact]
+    public void EachCallGetsItsOwnDirectory()
+    {
+        var reference = Path.Combine(Path.GetTempPath(), $"reference_{Guid.NewGuid():N}.iso");
+
+        var first = PathUtils.CreateTempDirectoryOnSameVolume(reference, "SameVolume_");
+        var second = PathUtils.CreateTempDirectoryOnSameVolume(reference, "SameVolume_");
+
+        try
+        {
+            Assert.NotNull(first);
+            Assert.NotNull(second);
+            Assert.NotEqual(first, second, StringComparer.OrdinalIgnoreCase);
+        }
+        finally
+        {
+            Cleanup(first, null);
+            Cleanup(second, null);
+        }
+    }
+
+    [Fact]
+    public void AnUnusablePathIsReportedAsNull()
+    {
+        // The caller falls back to converting the image as-is on null, so a path with no volume has
+        // to come back null rather than throwing out of the conversion.
+        Assert.Null(PathUtils.CreateTempDirectoryOnSameVolume(string.Empty, "SameVolume_"));
+        Assert.Null(PathUtils.CreateTempDirectoryOnSameVolume("\0invalid", "SameVolume_"));
+    }
+
+    private static void Cleanup(string? directory, string? file)
+    {
+        try
+        {
+            if (directory is not null && Directory.Exists(directory))
+            {
+                Directory.Delete(directory, true);
+            }
+
+            if (file is not null && File.Exists(file))
+            {
+                File.Delete(file);
+            }
+        }
+        catch
+        {
+            /* ignore */
+        }
+    }
+
+    #endregion
 }

@@ -38,4 +38,15 @@
     <ProjectReference Include="..\PBPSharp\PBPSharp.csproj" />
   </ItemGroup>
 
+  <!--
+    ecm-sample.ecm was produced by Neill Corlett's own encoder from an image this suite rebuilds in
+    code, so decoding it and comparing proves the in-process ECM decoder agrees with the reference
+    implementation without needing that tool installed.
+  -->
+  <ItemGroup>
+    <None Include="Fixtures\**">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
 </Project>

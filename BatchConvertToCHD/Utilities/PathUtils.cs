@@ -206,6 +206,84 @@ internal static class PathUtils
         }
     }
 
+    /// <summary>
+    /// Creates a temporary directory on the same volume as <paramref name="referencePath"/> and
+    /// returns it, or null when none could be created there.
+    ///
+    /// <see cref="GetBestTempDirectory"/> deliberately picks the roomiest drive, which is right when
+    /// a whole image is being written but wrong for a generated cue: chdman resolves a cue's FILE
+    /// entry by joining it to the cue's own directory, so a cue that is not on the image's volume can
+    /// only reach it by an absolute path, and chdman concatenates that too - producing
+    /// "C:\temp\D:\game.iso" and "couldn't find bin file". A few hundred bytes of cue therefore has
+    /// to sit on the image's volume, however little free space that volume has.
+    /// </summary>
+    /// <param name="referencePath">File whose volume the directory must be on.</param>
+    /// <param name="tempDirPrefix">Prefix for the directory name.</param>
+    internal static string? CreateTempDirectoryOnSameVolume(string referencePath, string tempDirPrefix)
+    {
+        string? volumeRoot;
+        try
+        {
+            volumeRoot = Path.GetPathRoot(Path.GetFullPath(referencePath));
+        }
+        catch (Exception ex)
+        {
+            Logger.Verbose(ex, "Failed to get the volume root of {Path}", referencePath);
+            return null;
+        }
+
+        if (string.IsNullOrEmpty(volumeRoot))
+        {
+            return null;
+        }
+
+        foreach (var basePath in GetSameVolumeTempBasePaths(volumeRoot))
+        {
+            var candidate = Path.Combine(basePath, $"{tempDirPrefix}{Guid.NewGuid():N}");
+            try
+            {
+                Directory.CreateDirectory(candidate);
+                return candidate;
+            }
+            catch (Exception ex)
+            {
+                Logger.Verbose(ex, "Failed to create a same-volume temp directory at {Path}", candidate);
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Places to try for a temp directory on <paramref name="volumeRoot"/>, best first. The system
+    /// temp directory is preferred when it happens to be on that volume, because it needs no special
+    /// permissions; otherwise the same drive-root folder <see cref="GetBestTempDirectory"/> uses, so
+    /// startup cleanup already knows to look there.
+    /// </summary>
+    private static IEnumerable<string> GetSameVolumeTempBasePaths(string volumeRoot)
+    {
+        var systemTemp = Path.GetTempPath();
+        string? systemTempRoot = null;
+        try
+        {
+            systemTempRoot = Path.GetPathRoot(systemTemp);
+        }
+        catch (Exception ex)
+        {
+            Logger.Verbose(ex, "Failed to get the volume root of the system temp directory");
+        }
+
+        if (!string.IsNullOrEmpty(systemTempRoot) &&
+            string.Equals(systemTempRoot, volumeRoot, StringComparison.OrdinalIgnoreCase))
+        {
+            yield return systemTemp;
+        }
+
+        yield return Path.Combine(
+            volumeRoot.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar) + Path.DirectorySeparatorChar,
+            "BatchConvertToCHD_Temp");
+    }
+
     private static bool IsRootDirectoryWritable(string rootPath)
     {
         var testDir = Path.Combine(rootPath, $"writetest_{Guid.NewGuid():N}");

@@ -15,7 +15,10 @@ All classes live in `BatchConvertToCHD/Utilities/` (and `Models/` where noted).
 | `GetSafeRelativePath(relativeTo, path)` | `Path.GetRelativePath` when both paths share a root; otherwise `"."` (same folder). Used to preserve the directory structure in outputs. |
 | `GetBestTempDirectory(inputFilePath, outputFolderPath, tempDirPrefix, requiredBytes)` | Selects the best temp root: candidates = input-file root, output-folder root, system temp root, and every ready fixed drive. Requires ≥ 1 GiB free; when `requiredBytes > 0` prefers a drive with enough free space (most free among those); probes writability (create+delete a `writetest_<guid>` dir); falls back to system temp with an informational log. Base path is `{root}\BatchConvertToCHD_Temp` unless it equals the system temp root. Final: `{base}\{tempDirPrefix}{guid}`. |
 | `GetPossibleTempBasePaths()` | System temp plus every existing `X:\BatchConvertToCHD_Temp` on fixed drives — used by startup cleanup. |
+| `CreateTempDirectoryOnSameVolume(referencePath, tempDirPrefix)` | Creates and returns a temp directory **on the same volume as `referencePath`**, or `null` when none can be created there. Prefers the system temp directory when it already happens to be on that volume (no special permissions needed), otherwise `{root}\BatchConvertToCHD_Temp` — the same layout `GetBestTempDirectory` uses, so startup cleanup already finds it. |
 | `ValidateAndNormalizePath(path, pathName, onLog, onError)` | `GetFullPath` + existence check with friendly errors. |
+
+> **`GetBestTempDirectory` vs `CreateTempDirectoryOnSameVolume`.** The first picks the roomiest drive, which is what you want when a whole disc image is about to be written. The second pins the directory to one volume, which is what a **generated cue** needs: chdman joins a cue's `FILE` entry to the cue's own directory and cannot follow an absolute path, so a cue on the wrong volume simply cannot reach its image (see [Conversion Pipeline §5.8](05-conversion-pipeline.md#58-generated-cues-and-the-same-volume-constraint)). Using the roomiest-drive helper for cue staging silently disabled the generated-cue feature whenever the source drive was not the emptiest drive.
 
 ---
 
@@ -86,7 +89,7 @@ Generates cue files for **bin-only archives** (no descriptor in the archive).
 
 `internal static class IsoSectorValidator` (`IsoSectorValidator.cs:14`)
 
-- `StandardSectorSizes = [2352, 2048, 2336, 2324]` — raw CD, DVD/data, Mode 2 XA, Mode 2 Form 1.
+- `StandardSectorSizes = [2352, 2048, 2336, 2324, 2448, 2368]` — raw CD, DVD/data, Mode 2 XA, Mode 2 Form 1, and the two subchannel-bearing layouts Alcohol images use (2352 + 96, 2352 + 16).
 - `GetSectorSizeWarning(path)` — `null` for `.cue`/`.gdi`/`.toc` descriptors and for missing/unreadable files; otherwise warns when the size isn't divisible by any standard size. Used as an early warning (conversion still proceeds; the hard check happens after chdman fails).
 
 ---
@@ -135,21 +138,124 @@ All constants are lowercase; every lookup is case-insensitive (`StringComparer.O
 | `Img` | `.img` | `Rar` | `.rar` |
 | `Gdi` | `.gdi` | `Cso` | `.cso` |
 | `Toc` | `.toc` | `Pbp` | `.pbp` |
-| `Raw` | `.raw` | `Bin` | `.bin` |
-| `Ccd` | `.ccd` | `Sub` | `.sub` |
-| `Chd` | `.chd` | | |
+| `Raw` | `.raw` | `Isz` | `.isz` |
+| `Ccd` | `.ccd` | `Bin` | `.bin` |
+| `Mds` | `.mds` | `Sub` | `.sub` |
+| `Ecm` | `.ecm` | `Chd` | `.chd` |
+| `SplitFirstNumbered` | `.001` | `SplitFirstAlcohol` | `.i00` |
 
 Sets (with `...Set` case-insensitive twins):
 
-- `AllSupportedInputExtensionsForConversion` = `[.cue, .iso, .img, .gdi, .toc, .raw, .ccd, .zip, .7z, .rar, .cso, .pbp]`
+- `AllSupportedInputExtensionsForConversion` = `[.cue, .iso, .img, .gdi, .toc, .raw, .ccd, .bin, .mds, .ecm, .isz, .001, .i00, .zip, .7z, .rar, .cso, .pbp]`
 - `ArchiveExtensions` = `[.zip, .7z, .rar]`
-- `PrimaryTargetExtensions` (extraction targets from archives) = `[.cue, .iso, .img, .gdi, .toc, .raw, .ccd]`
+- `PrimaryTargetExtensions` (extraction targets from archives) = `[.cue, .iso, .img, .gdi, .toc, .raw, .ccd, .mds, .isz]`
 
-Note: `.bin` and `.sub` are sidecar formats (not standalone inputs), `.chd` is an output; the `.cdt` sibling of CCD sets is referenced literally in `MainWindow.xaml.cs:1753/3165` (no constant).
+Notes:
+
+- `.sub` is a sidecar format and `.chd` is an output, so neither is an input. `.bin` **is** a standalone input now — a bare `.bin` gets a generated cue — but `InputFileFilter` drops it from the batch when a sibling descriptor already covers it.
+- Only the **first** volume of a split set is registered (`.001`, `.i00`); later parts are found from it, so a set is offered once rather than once per piece.
+- A `.mdf` is deliberately absent: the `.mds` descriptor drives Alcohol conversion, so an orphaned `.mdf` is skipped.
+- The `.cdt` sibling of CCD sets is referenced literally in `MainWindow.xaml.cs` (no constant).
+
+> **An extension missing from `AllSupportedInputExtensionsForConversion` is invisible.** This set gates the folder scan, so content-based handling for an unregistered extension can never run. `.isz` demonstrated the failure mode: the "genuinely compressed ISZ is not supported" message existed but was unreachable for actual `.isz` files, because they were never offered in the first place.
 
 ---
 
-## 8.9 Models
+## 8.9 Content Identification
+
+### DiscImageSignature & DiscImageKind (`DiscImageSignature.cs`, `DiscImageKind.cs`)
+
+`internal static class DiscImageSignature` — identifies what a file actually is from its leading bytes, regardless of its name.
+
+- `Detect(path)` → `DiscImageKind`: `Unknown`, `RawCd`, `AlcoholDescriptor`, `Rar`, `Zip`, `SevenZip`, `Isz`, `Ecm`, `Cso`, `Pbp`, `Chd`.
+- `IsArchive(kind)` — true for `Rar`/`Zip`/`SevenZip`, used to tell a real archive from a disc image wearing an archive extension.
+- `Describe(kind)` — a human phrase ("a raw CD disc image", "a ZIP archive") used in log messages when the content contradicts the name.
+
+### RawCdImageDetector (`RawCdImageDetector.cs`)
+
+Recognises raw 2352-byte CD sectors and stages a cue for them.
+
+- `RawSectorSize = 2352`. The 12-byte sync mark (`00` + ten `FF` + `00`) and the mode byte at offset 15 are private details.
+- `IsCandidateExtension(extension)` — whether an extension is one raw CD dumps get mislabelled with (`.iso`, `.img`, `.bin`).
+- `DetectTrackMode(path)` — checks the sync mark, reads the mode byte, and confirms the file is a whole number of 2352-byte sectors; returns `MODE1/2352`, `MODE2/2352` or `null` (a cooked 2048-byte image, a DVD image, or an unknown layout).
+- `TryWriteCueAsync(imagePath, trackMode, workDir, token)` — writes a cue in `workDir` that references the image **in place** via a relative path, returning `null` when the image cannot be reached relatively (different volume). BOM-free UTF-8, as always.
+
+### SplitImageJoiner (`SplitImageJoiner.cs`)
+
+- `TryGetVolumeSet(firstVolumePath)` — finds a numbered volume set (`.001`/`.002`…, `.i00`/`.i01`…) in order, or `null`.
+- `GetTotalBytes(set)` / `JoinAsync(set, destination, token)` — concatenates the parts into one image and returns the byte count, so the caller can check it against a sector boundary.
+
+### TrackBinCueBuilder (`TrackBinCueBuilder.cs`)
+
+- `TryGetTrackSet(binFiles)` — recognises a `(Track 1)`, `(Track 2)`, … bin set and orders it.
+- `WriteCueAsync(set, dataTrackMode, token)` — writes a multi-FILE cue so a split-track disc keeps its CDDA instead of converting as a single data track.
+
+> **Pregaps cannot be recovered from file names.** Each track is declared at the start of its own file, so an audio track whose pregap lived at the end of the previous track can start up to two seconds early. Nothing is lost, and the log states the assumption.
+
+### InputFileFilter (`InputFileFilter.cs`)
+
+- `RemoveCompanionDataFilesAsync(paths, onLog, token)` — drops a raw `.bin`/`.img`/`.iso`/`.raw` when a descriptor in the **same directory** covers it, matched by base name and then by the descriptor's text. Applied at the folder scan, at batch start, and in the archive loop, so a cue/bin or CloneCD set converts once through its descriptor instead of once per file with both attempts aimed at the same output name.
+
+---
+
+## 8.10 ISZ Support (`Utilities/Isz/`)
+
+Decompresses UltraISO `.isz` images. Written against EZB Systems' ISZ File Format Specification 1.00.
+
+| Type | Role |
+|------|------|
+| `IszHeader` | The packed 48-byte header, every field read at its documented offset. `ImageSizeBytes` (= `TotalSectors × SectorSize`, computed in 64-bit so dual-layer DVDs don't overflow), `IsEncrypted`, `IsSegmented`, `EncryptionDescription`, `Summary`, and `GetUnusableReason()` which refuses encryption, a zero-sector or zero-chunk header, an implausible chunk size, an unreadable pointer width and a missing chunk table. |
+| `IszChunkType` | The four storage kinds: `Zero`, `Stored`, `ZLib`, `BZip2` (spec names `ADI_ZERO`, `ADI_DATA`, `ADI_ZLIB`, `ADI_BZ2`). |
+| `IszSegment` | One segment-table entry: size, chunk count, first chunk number, chunk offset, left-over bytes. `IsTerminator` marks the zero-size entry that ends the table. |
+| `IszDecoder` | `TryReadHeaderAsync`, `GetDecodedFileName`, `GetSegmentPath`, `ReadChunkEntry` and `DecodeAsync`. |
+| `IszDecodeResult` | `Success`, `OutputPath`, `SectorSize`, `FailureReason`. |
+
+Behaviour worth knowing:
+
+- A chunk table entry is a little-endian integer `PointerLength` bytes wide whose **top two bits are the storage kind**; the rest is the stored length. `ReadChunkEntry` is exposed for testing precisely because that bit-packing is easy to get subtly wrong.
+- Segment naming follows the spec: segment 1 is `game.isz`, segment 2 is `game.i01`, segment *n* is `game.i(n-1)`.
+- Multi-segment images are read as one logical stream over a region per file, so a chunk straddling a boundary needs no special case. `left_size` is read but not used to drive reading — it would only be a redundant cross-check.
+- The spec caps a stored chunk at the chunk size, so a larger one is treated as a damaged table rather than read into a bigger buffer. Real writers keep a chunk verbatim (`ADI_DATA`) when compressing it would not shrink it, which is why incompressible content never produces an oversized chunk.
+
+---
+
+## 8.11 ECM Support (`Utilities/Ecm/`)
+
+Decodes ECM (Error Code Modeler) files in-process — no external tool.
+
+| Type | Role |
+|------|------|
+| `CdSectorEccEdc` | Regenerates a raw sector's error detection and correction fields: `ComputeEdc`, `WriteSyncAndMode`, `GenerateMode1`, `GenerateMode2Form1`, `GenerateMode2Form2`. `SectorSize = 2352`, `Mode2DataSize = 2336`. |
+| `EcmImageDecoder` | `Signature` (`"ECM\0"`), `GetDecodedFileName`, `DecodeAsync`. Parses the block stream and writes the restored image. |
+| `EcmDecodeResult` | `Success`, `OutputPath`, `BytesWritten`, `FailureReason`. |
+
+The format: after the 4-byte signature comes a sequence of blocks, each introduced by a variable-length number whose low two bits give the kind — literal bytes, Mode 1, Mode 2 Form 1, Mode 2 Form 2 — and whose remaining bits give the count. A 4-byte checksum of the whole restored image closes the file.
+
+- **Mode 1 parity covers the sector address; Mode 2 Form 1 parity does not** — Form 1 parity is computed with the address zeroed so it stays valid when the sector is read without its header, which is what lets ECM store Mode 2 sectors as 2336 bytes and emit the 16-byte sync and header as a literal run. Swapping those two behaviours yields an image that reads fine and never matches a known-good dump.
+- The variable-length count is 5 bits plus 7 per continuation byte. A fifth continuation byte would shift by 33, which in C# wraps to 1 and would silently corrupt the count, so it is rejected as corrupt.
+- The trailing checksum is **always** validated — it is the only end-to-end check that the regenerated parity and the recovered data are right.
+- Decoding runs as one blocking job off the UI thread (`Task.Run`), because the format is a byte-at-a-time state machine over the whole image.
+
+> **Why this is safe to hand-write.** Getting Reed-Solomon parity subtly wrong produces data that reads correctly while the image's hash never matches a known-good dump — which is why an earlier version drove Neill Corlett's external UNECM binary instead. The decoder is now verified byte for byte against that tool using a committed fixture the tool itself produced; see [Testing](11-testing.md).
+
+---
+
+## 8.12 Alcohol 120% Support (`Utilities/Mds/`)
+
+| Type | Role |
+|------|------|
+| `MdsParser` | Parses the `.mds` descriptor: signature, session table, track table; locates the `.mdf`; rejects descriptors whose session count is implausible. |
+| `MdsDisc` | The parsed model. `RawSectorSize = 2352`, `RawPlusSubchannelSize = 2448`, `CookedSectorSize = 2048`; `IsDvdImage`, `IsPlainRawCd`, `NeedsSubchannelStrip`, `AllTracksDescribable`. |
+| `MdsTrack` | One track: number, mode, sector size, start LBA, and `CueTrackType` (`null` when the mode cannot be expressed in a cue). |
+| `MdsInputPreparer` | `PrepareAsync` → `Result(CuePath, DvdImagePath, FailureReason)`, plus `StripSubchannelAsync`, `WriteCueAsync` and `FormatMsf`. |
+
+The three shapes it handles, and the reasoning, are in [Conversion Pipeline §5.7](05-conversion-pipeline.md#57-recovered-image-formats).
+
+The `.mds` layout is not published; it was recovered by inspection and is documented here so the parser can be re-derived: signature `MEDIA DESCRIPTOR` at `0x00`; `u16` session count at `0x14`; `u32` session-block offset at `0x50`; session blocks are 24 bytes with the track count at `+0x0A` and a `u32` track-block offset at `+0x14`; track blocks are 80 bytes with the mode at `+0x00`, POINT at `+0x04`, a `u16` sector size at `+0x10` and a `u32` start LBA at `+0x24`. Mode bytes: `0xA9` audio, `0xAA` Mode 1, `0xEC` Mode 2, `0xE2` Mode 2 Form 1, `0xE3` Mode 2 Form 2. A POINT outside 1–99 is lead-in or lead-out.
+
+---
+
+## 8.13 Models
 
 ### FileItem (`Models/FileItem.cs`)
 

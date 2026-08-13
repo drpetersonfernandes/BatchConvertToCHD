@@ -36,7 +36,26 @@
 *   **MP3 Audio Track Support**: Cue sheets with MP3 audio tracks — `cue/bin/mp3` and `cue/iso/mp3` sets (common in Neo Geo CD and older PS1 rips) — are automatically decoded to WAV before conversion, because chdman cannot read MP3 tracks. The decoded WAVs are normalized to chdman's exact requirements (44.1 kHz, stereo, 16-bit PCM), with a built-in decoder fallback for systems without Media Foundation.
 *   **bin-only Archives**: Archives that contain only `.bin` files (no `.cue`/`.iso` descriptor) now get an auto-generated cue and convert automatically (MODE2/2352 with automatic MODE1/2352 fallback).
 
+### 🔎 Content-Based Format Detection
+A file's extension is the least reliable thing about it. Every input is identified by its leading bytes before the extension is trusted, which turns several "corrupt file" failures into successful conversions.
+
+*   **Raw CD Dumps With the Wrong Name**: A 2352-bytes-per-sector CD dump saved as `.iso`, `.img`, `.bin` or even `.isz` is recognised from its sector sync mark and mode byte, and converted as the CD it is with a generated cue. Previously these went to `createdvd` or `createhd` and failed on `Data size ... is not divisible by sector size`.
+*   **Disc Images Wearing an Archive Extension**: A `.rar` or `.zip` that is really a plain disc image, or a byte-split set that was never an archive, is detected and converted instead of being reported as corrupt.
+*   **Bare `.bin` Files**: A raw `.bin` with no descriptor is accepted as an input and given a generated cue. When a sibling `.cue`/`.ccd`/`.mds` already covers it, the `.bin` is dropped from the batch so the disc converts once, through its descriptor.
+*   **Honest Reporting**: A truncated download, a file with the wrong extension and a genuinely unsupported format read differently in the log, each naming what was found and what to do about it.
+
+### 💿 Awkward Format Support
+*   **Alcohol 120%**: `.mds`/`.mdf` sets convert directly. The descriptor's track table is parsed to build a matching cue, images storing 2448 or 2368 bytes per sector have their subchannel tail stripped first (chdman cannot read those), and a `.mdf` that is really an ISO is converted as a DVD image.
+*   **ISZ Decompression**: UltraISO `.isz` images are decompressed in-process (zlib, bzip2, stored and zero chunks), including images split across `.i01`, `.i02` and further segments. Segments are matched by volume serial number, a missing one is named, and an encrypted image says so rather than failing obscurely. Written against the EZB Systems ISZ File Format Specification 1.00.
+*   **Split Volume Sets**: Images split into `.001`/`.002` or `.i00`/`.i01` pieces are rejoined before conversion, and a set with a missing part is reported as such instead of being handed to chdman half-complete. Only the first volume appears in the file list, so a set is offered once rather than once per piece.
+*   **ECM Decoding**: `.ecm` files are decoded in-process, with no external tool to install. ECM works by discarding each sector's EDC checksum and Reed-Solomon parity, so decoding means regenerating them; the implementation is verified byte for byte against Neill Corlett's original encoder and decoder, and the checksum ECM stores for the whole image is validated at the end, so a damaged file is reported rather than turned into a plausible-looking one.
+*   **Split-Track Discs**: A `(Track 1)`, `(Track 2)`, ... bin set gets a multi-track cue, so discs with CDDA audio keep their audio tracks instead of converting as a single data track.
+*   **Broken Cue Descriptors**: A cue whose `FILE` line names something that is not there is resolved against what is actually on disk, by name beside the cue, by swapping the extension, and for a single-file cue by elimination. Audio tracks and multi-file cues are left alone, because guessing there could silently drop a track.
+
 ### ✅ Integrity, Safety & Verification
+*   **A Good CHD Is Never Destroyed**: Conversions are written to a staging file and moved into place only after success. Because chdman truncates its output file before it can fail, a second input that maps to the same output name can no longer wipe out the working CHD produced by the first.
+*   **Output Collision Warnings**: The output `.chd` name comes from the input's base name, so `Game.cue`, `Game.zip` and `Game.ccd` in one folder all target `Game.chd`. Inputs that would collide are reported at the start of the batch, before any time is spent on them.
+*   **Disk Space Preflight**: Free space on the output drive is checked immediately before chdman starts. Clearly insufficient space skips the file with both figures named, rather than discovering the problem an hour into a large conversion.
 *   **Safe Deletion**: Source files (and their dependencies like `.bin`, `.sub`, etc.) are only deleted if the conversion/extraction is confirmed successful.
 *   **Batch Verification**: Validate the checksums and structural integrity of existing CHD files using the [CHDSharp](https://www.nuget.org/packages/CHDSharp) library.
 *   **Automated Organization**: Optionally move verified or failed files into dedicated subfolders (`Success`/`Failed`) while ignoring these special folders during subsequent scans.
@@ -61,26 +80,33 @@
 
 ## 📂 Supported Formats
 
-| Category             | Formats                                                    |
-|:---------------------|:-----------------------------------------------------------|
-| **Standard Images**  | `.iso`, `.cue` (+`.bin`), `.img`, `.ccd` (+`.img`), `.raw`, `.toc` |
-| **Console Specific** | `.gdi` (Dreamcast), `.pbp` (PlayStation)                   |
-| **Compressed**       | `.cso` (Compressed ISO)                                    |
-| **Archives**         | `.zip`, `.7z`, `.rar`                                      |
-| **Output**           | `.chd` (Compressed Hunks of Data)                          |
+| Category             | Formats                                                                          |
+|:---------------------|:---------------------------------------------------------------------------------|
+| **Standard Images**  | `.iso`, `.cue` (+`.bin`), `.img`, `.ccd` (+`.img`), `.raw`, `.toc`, bare `.bin`   |
+| **Console Specific** | `.gdi` (Dreamcast), `.pbp` (PlayStation)                                          |
+| **Compressed**       | `.cso` (Compressed ISO), `.isz` (UltraISO), `.ecm` (Error Code Modeler)           |
+| **Alcohol 120%**     | `.mds` (+`.mdf`), including 2448-byte subchannel sectors                           |
+| **Split Sets**       | `.001`/`.002`..., `.i00`/`.i01`... (add the first volume; the rest are found)       |
+| **Archives**         | `.zip`, `.7z`, `.rar`                                                             |
+| **Output**           | `.chd` (Compressed Hunks of Data)                                                 |
+
+Only the descriptor or first volume of a multi-file set is listed for conversion. The `.mdf` behind a `.mds`, the `.bin` behind a `.cue`, and the later parts of a split set are found automatically, so each disc is converted once.
 
 ---
 
 ## 🛠️ Technical Logic
 
-The application implements priority-based logic to ensure compatibility:
+The application implements priority-based logic to ensure compatibility. Content is inspected first, and the extension only decides the outcome for files whose content did not settle it:
 
-1.  **DVD Images (`.iso`)**: Defaults to `createdvd`.
-2.  **Multi-track Images (`.cue`, `.gdi`, `.toc`)**: Defaults to `createcd`.
-3.  **Hard Disk Images (`.img`)**: Defaults to `createhd` unless an accompanying `.cue` file is detected, in which case `createcd` is used.
-4.  **Raw Data (`.raw`)**: Defaults to `createraw`.
-5.  **PlayStation PBP (`.pbp`)**: Extracts to CUE/BIN using PBPSharp, then converts to CHD using `createcd`.
-6.  **CloneCD (`.ccd`)**: Converts to CUE/BIN using CCDSharp, then converts to CHD using `createcd`.
+1.  **Content Inspection**: The leading bytes are read. A raw CD image, an Alcohol descriptor, an ISZ, an ECM, an archive or an existing CHD is routed on what it is, whatever it is called. A raw CD image gets a generated cue and goes to `createcd`.
+2.  **Split Volume Sets**: Numbered pieces are rejoined into a single image, which is then classified as above.
+3.  **Compressed Containers**: `.isz`, `.ecm` and `.cso` are all decompressed in-process, and the restored image is classified as above.
+4.  **Descriptors**: `.cue`, `.gdi` and `.toc` go to `createcd` after cue normalization. `.ccd` becomes a cue via CCDSharp, `.mds` via the Alcohol parser, and `.pbp` is extracted to CUE/BIN via PBPSharp.
+5.  **DVD Images (`.iso`)**: Defaults to `createdvd`, once content inspection has ruled out a mislabelled raw CD dump.
+6.  **Hard Disk Images (`.img`)**: Defaults to `createhd` unless an accompanying `.cue` file is detected, in which case `createcd` is used.
+7.  **Raw Data (`.raw`)**: Defaults to `createraw`.
+
+Generated cue sheets reference the disc image where it already lies rather than copying it, because chdman resolves a cue's `FILE` entry against the cue's own directory. That also means such a cue has to be written on the same volume as the image, since chdman cannot follow an absolute `FILE` path.
 
 *Note: Users can manually override these settings via the UI to force specific modes (except for PBP which always extracts first).*
 
@@ -93,14 +119,15 @@ The application implements priority-based logic to ensure compatibility:
 *   **Bundled Dependencies**:
     *   `chdman.exe` / `chdman_arm64.exe` (MAME Project — conversion only)
     *   `7za.exe` / `7za_arm64.exe` (7-Zip fallback extraction)
+*   **No Other Dependencies**: every format above is handled inside the application. There is nothing else to download, and both x64 and ARM64 get the same feature set.
 *   **Library Dependencies**:
     * [WPF-UI](https://github.com/lepoco/wpfui) (v4.3.0) — Modern Fluent Design theming and controls
     * [CHDSharp](https://www.nuget.org/packages/CHDSharp) (v1.2.0) — Pure C# CHD reading, verification, and extraction
     * [CSOSharp](https://) (v1.0.0) — Pure C# CSO/CISO decompression (deflate + LZ4)
     * [PBPSharp](https://) (v1.0.0) — Pure C# PBP extraction and SFO parsing
     * [CCDSharp](https://) (v1.0.0) — Pure C# CloneCD (.ccd/.img/.sub) parsing and conversion
-    * [SharpCompress](https://github.com/adamhathcock/sharpcompress) (v0.50.1) — Archive extraction support
-    * [NAudio](https://github.com/naudio/NAudio) (v2.2.1) — MP3 audio track decoding (Media Foundation)
+    * [SharpCompress](https://github.com/adamhathcock/sharpcompress) (v0.50.3) — Archive extraction, and bzip2 decompression for ISZ images
+    * [NAudio](https://github.com/naudio/NAudio) (v2.3.0) — MP3 audio track decoding (Media Foundation)
     * [Serilog](https://serilog.net/) (v4.4.0) — Structured diagnostic logging
 
 ---
@@ -190,7 +217,9 @@ This project is licensed under the **GNU General Public License v3.0**. See the 
 *   [CSOSharp](https://) by Peterson Fernandes — Pure C# CSO/CISO decompression library.
 *   [PBPSharp](https://) by Peterson Fernandes — Pure C# PlayStation PBP extraction library.
 *   [CCDSharp](https://) by Peterson Fernandes — Pure C# CloneCD disc image parsing and conversion library.
-*   [SharpCompress](https://github.com/adamhathcock/sharpcompress) for archive handling.
+*   [SharpCompress](https://github.com/adamhathcock/sharpcompress) for archive handling and bzip2 decompression.
+*   [EZB Systems](https://www.ezbsystems.com/) for publishing the [ISZ File Format Specification](https://www.ezbsystems.com/isz/iszspec.txt), which the ISZ decompressor is written against.
+*   Neill Corlett for ECM. His GPL-2.0-or-later reference implementation defines the format the in-process `.ecm` decoder implements, and was used to verify it byte for byte.
 *   [NAudio](https://github.com/naudio/NAudio) by Mark Heath — MP3 decoding via Windows Media Foundation.
 *   [Serilog](https://serilog.net/) for structured logging.
 *   [Igor Pavlov](https://www.7-zip.org/) for `7za.exe` (7-Zip command-line tool).

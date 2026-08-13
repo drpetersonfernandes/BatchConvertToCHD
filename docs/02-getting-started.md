@@ -8,6 +8,7 @@
 - **Bundled executables** (shipped with the app, must stay next to `BatchConvertToCHD.exe`):
   - `chdman.exe` / `chdman_arm64.exe` — MAME CHD tool (conversion only)
   - `7za.exe` / `7za_arm64.exe` — 7-Zip fallback extractor
+- **Nothing else to install** — CSO, ISZ, ECM, Alcohol `.mds`/`.mdf` and split volume sets are all handled inside the application, so x64 and ARM64 get the same feature set.
 
 ### Build (developers)
 - .NET SDK **10.0.x** (`global.json` pins `10.0.0` with `rollForward: latestMajor`)
@@ -60,7 +61,7 @@ The solution contains five projects:
 |---------|---------|---------|
 | CHDSharp | 1.2.0 | Pure C# CHD reading, verification, extraction |
 | WPF-UI | 4.3.0 | Fluent Design theming and controls |
-| SharpCompress | 0.50.x | Archive extraction (7z/rar) |
+| SharpCompress | 0.50.x | Archive extraction (7z/rar), and bzip2 decompression for ISZ chunks |
 | NAudio | 2.3.0 | MP3 decoding via Media Foundation |
 | Serilog | 4.4.0 | Structured logging |
 | Serilog.Sinks.File | 7.0.0 | Rolling file logs |

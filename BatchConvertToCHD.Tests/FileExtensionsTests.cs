@@ -21,6 +21,7 @@ public class FileExtensionsTests
     [InlineData(".rar", nameof(FileExtensions.Rar))]
     [InlineData(".cso", nameof(FileExtensions.Cso))]
     [InlineData(".pbp", nameof(FileExtensions.Pbp))]
+    [InlineData(".isz", nameof(FileExtensions.Isz))]
     [InlineData(".chd", nameof(FileExtensions.Chd))]
     public void ConstantHasCorrectValue(string expected, string constantName)
     {
@@ -73,7 +74,7 @@ public class FileExtensionsTests
     [Fact]
     public void PrimaryTargetExtensionsArrayHasExpectedEntries()
     {
-        var expected = new[] { ".cue", ".iso", ".img", ".gdi", ".toc", ".raw", ".ccd" };
+        var expected = new[] { ".cue", ".iso", ".img", ".gdi", ".toc", ".raw", ".ccd", ".mds", ".isz" };
         Assert.Equal(expected, FileExtensions.PrimaryTargetExtensions);
     }
 
@@ -97,6 +98,9 @@ public class FileExtensionsTests
     [InlineData(".RAW", true)]
     [InlineData(".ccd", true)]
     [InlineData(".CCD", true)]
+    // An archived ISZ is decompressed by the conversion loop, so it counts as a primary target.
+    [InlineData(".isz", true)]
+    [InlineData(".ISZ", true)]
     [InlineData(".zip", false)]
     [InlineData(".chd", false)]
     [InlineData(".cso", false)]
@@ -112,7 +116,7 @@ public class FileExtensionsTests
     [Fact]
     public void AllSupportedInputExtensionsForConversionArrayHasExpectedEntries()
     {
-        var expected = new[] { ".cue", ".iso", ".img", ".gdi", ".toc", ".raw", ".ccd", ".zip", ".7z", ".rar", ".cso", ".pbp" };
+        var expected = new[] { ".cue", ".iso", ".img", ".gdi", ".toc", ".raw", ".ccd", ".bin", ".mds", ".ecm", ".isz", ".001", ".i00", ".zip", ".7z", ".rar", ".cso", ".pbp" };
         Assert.Equal(expected, FileExtensions.AllSupportedInputExtensionsForConversion);
     }
 
@@ -141,9 +145,28 @@ public class FileExtensionsTests
     [InlineData(".pbp", true)]
     [InlineData(".ccd", true)]
     [InlineData(".CCD", true)]
+    // A bare .bin with no cue is a convertible disc: a cue is generated for it at conversion time,
+    // and when a sibling descriptor covers it InputFileFilter drops it from the batch.
+    [InlineData(".bin", true)]
+    [InlineData(".BIN", true)]
+    // .mds is the Alcohol descriptor and drives the conversion; the .mdf it points at is data only.
+    [InlineData(".mds", true)]
+    [InlineData(".MDS", true)]
+    [InlineData(".mdf", false)]
+    // ECM is decoded by an external tool when one is installed, so it is worth listing.
+    [InlineData(".ecm", true)]
+    // ISZ is decompressed in-process, and the extension is also used for plain images that were
+    // simply renamed, so it has to be scanned for either case to be reached at all.
+    [InlineData(".isz", true)]
+    [InlineData(".ISZ", true)]
+    // Only the first volume of a split set is an input; later parts are found from it.
+    [InlineData(".001", true)]
+    [InlineData(".i00", true)]
+    [InlineData(".I00", true)]
+    [InlineData(".002", false)]
+    [InlineData(".i01", false)]
     [InlineData(".chd", false)]
     [InlineData(".sub", false)]
-    [InlineData(".bin", false)]
     [InlineData("", false)]
     public void AllSupportedInputExtensionsForConversionSetContainsExpectedValues(string ext, bool expected)
     {

@@ -7,3 +7,14 @@ riderModule.iml
 [Bb]atch[Cc]onvertTo[Cc][Hh][Dd]/[Rr]eferences/
 *.DotSettings.user
 *.user
+
+# Working notes, helper scripts and the disc images used to test them. Disc-sized
+# files live here, so this must never reach a commit.
+/.ai/
+
+# ECM decoding is built in, so this third-party binary is not a dependency. It is only useful for
+# regenerating the ECM test fixture, and must not be committed if someone drops a copy in.
+[Bb]atch[Cc]onvertTo[Cc][Hh][Dd]/unecm.exe
+
+# Conversion staging files, in case one is ever left behind in the tree.
+*.chdtmp
