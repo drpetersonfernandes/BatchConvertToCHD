@@ -218,6 +218,17 @@ public partial class App
                  oomEx.StackTrace?.Contains("HwndTarget", StringComparison.Ordinal) == true):
                 e.Handled = true;
                 return;
+            // Suppress WPF-internal FileNotFoundException raised when a ToolTip/Popup tries to
+            // show and the OS accessibility bridge (MSAA->UIA) cannot be loaded. This is an
+            // OS-level condition (broken/missing UIAutomationCore.dll, third-party accessibility
+            // or security software), not a defect in this application: the tooltip simply never
+            // appears. Reported repeatedly (14x) with identical PopupSecurityHelper stacks.
+            case FileNotFoundException fnfEx when
+                (fnfEx.StackTrace?.Contains("PopupSecurityHelper", StringComparison.Ordinal) == true ||
+                 fnfEx.StackTrace?.Contains("ForceMsaaToUiaBridge", StringComparison.Ordinal) == true):
+                Log.Debug(fnfEx, "WPF ToolTip/Popup accessibility bridge unavailable; suppressing");
+                e.Handled = true;
+                return;
             default:
                 Log.Error(e.Exception, "Application.DispatcherUnhandledException");
                 ReportException(e.Exception, "Application.DispatcherUnhandledException");

@@ -102,4 +102,56 @@ public class MainWindowHelperTests : IDisposable
         Assert.Equal(string.Empty, MainWindow.SelectChdmanErrorLine(string.Empty));
         Assert.Equal(string.Empty, MainWindow.SelectChdmanErrorLine(" \r\n \n "));
     }
+
+    [Fact]
+    public void SelectChdmanErrorLine_SkipsFatalErrorSummaryAndReturnsRealCause()
+    {
+        // chdman prints the actual cause before its "Fatal error occurred: N" exit summary.
+        const string errorText = "Compressing, 0.0% complete... (ratio=100.0%)\r\n" +
+                                 "ERROR: Input file is not a valid CD image\r\n" +
+                                 "Fatal error occurred: 1";
+
+        var line = MainWindow.SelectChdmanErrorLine(errorText);
+
+        Assert.Equal("ERROR: Input file is not a valid CD image", line);
+    }
+
+    [Fact]
+    public void SelectChdmanErrorLine_FatalSummaryOnly_FallsBackToFatalLine()
+    {
+        const string errorText = "Compressing, 0.0% complete... (ratio=100.0%)\n" +
+                                 "Fatal error occurred: 1";
+
+        var line = MainWindow.SelectChdmanErrorLine(errorText);
+
+        Assert.Equal("Fatal error occurred: 1", line);
+    }
+
+    [Fact]
+    public void SelectChdmanErrorLine_DoesNotSkipUnhandledExceptionLine()
+    {
+        // chdman C++ runtime crash lines are real causes and must be kept.
+        const string errorText = "Unhandled exception: cannot create std::vector larger than max_size()";
+
+        var line = MainWindow.SelectChdmanErrorLine(errorText);
+
+        Assert.Equal("Unhandled exception: cannot create std::vector larger than max_size()", line);
+    }
+
+    [Fact]
+    public void GetChdExtractionErrorMessage_DecompressionFailure_AddsGuidance()
+    {
+        var message = MainWindow.GetChdExtractionErrorMessage("Failed to read hunk 0: Chderrdecompressionerror");
+
+        Assert.Contains("A/V (laserdisc)", message, StringComparison.Ordinal);
+        Assert.StartsWith("Failed to read hunk 0: Chderrdecompressionerror", message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void GetChdExtractionErrorMessage_OtherFailures_AreUnchanged()
+    {
+        const string message = "No files extracted.";
+
+        Assert.Equal(message, MainWindow.GetChdExtractionErrorMessage(message));
+    }
 }

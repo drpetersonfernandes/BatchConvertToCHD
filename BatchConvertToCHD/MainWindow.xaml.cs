@@ -2214,7 +2214,7 @@ internal partial class MainWindow : IDisposable
             if (IsDiskSpaceException(ex))
                 LogError($" Not enough disk space to extract '{Path.GetFileName(chdFile)}'. Free up disk space on the output drive and try again.");
             else
-                LogError($" Failed to extract '{Path.GetFileName(chdFile)}': {ex.Message}");
+                LogError($" Failed to extract '{Path.GetFileName(chdFile)}': {GetChdExtractionErrorMessage(ex.Message)}");
 
             if (extractCommand is "extractdvd" or "extracthd")
             {
@@ -2306,6 +2306,41 @@ internal partial class MainWindow : IDisposable
             }
             else
             {
+                // Extraction failed: clean up leftover files best-effort. A single-shot delete
+                // per file is intentional — the retrying delete (~45 s/file) would stall the
+                // batch for files that are still locked; whatever cannot be removed now is
+                // reported below.
+                var cleanedCount = 0;
+                try
+                {
+                    if (Directory.Exists(tempExtractDir))
+                    {
+                        foreach (var leftover in Directory.GetFiles(tempExtractDir, "*.*", SearchOption.AllDirectories))
+                        {
+                            try
+                            {
+                                File.Delete(leftover);
+                                cleanedCount++;
+                            }
+                            catch
+                            {
+                                // ignored; reported below if it truly remains
+                            }
+                        }
+
+                        Directory.Delete(tempExtractDir, true);
+                    }
+                }
+                catch
+                {
+                    // ignored
+                }
+
+                if (cleanedCount > 0)
+                {
+                    Log.Debug("Cleaned up {Count} leftover file(s) from failed extraction of {File}", cleanedCount, Path.GetFileName(chdFile));
+                }
+
                 try
                 {
                     var remaining = Directory.Exists(tempExtractDir) ? Directory.GetFiles(tempExtractDir, "*.*", SearchOption.AllDirectories) : [];
@@ -2856,6 +2891,8 @@ internal partial class MainWindow : IDisposable
     /// not progress output. chdman streams progress ("Compressing, 0.0% complete... (ratio=100.0%)")
     /// to stderr, so the first line of the error buffer is often a progress line rather than the
     /// actual error; the real error (e.g. "couldn't find bin file [...]") comes last.
+    /// The final "Fatal error occurred: N" line is chdman's exit summary and is skipped as well,
+    /// because the actual cause is always printed on the line(s) before it.
     /// </summary>
     internal static string SelectChdmanErrorLine(string errorText)
     {
@@ -2872,7 +2909,8 @@ internal partial class MainWindow : IDisposable
                 line.Contains("Converting,", StringComparison.OrdinalIgnoreCase) ||
                 line.Contains("Output bytes", StringComparison.OrdinalIgnoreCase) ||
                 line.Contains("Compression ratio", StringComparison.OrdinalIgnoreCase) ||
-                line.Contains("ratio=", StringComparison.OrdinalIgnoreCase))
+                line.Contains("ratio=", StringComparison.OrdinalIgnoreCase) ||
+                line.StartsWith("Fatal error occurred", StringComparison.OrdinalIgnoreCase))
             {
                 continue;
             }
@@ -2881,6 +2919,27 @@ internal partial class MainWindow : IDisposable
         }
 
         return lines.Count > 0 ? lines[^1] : string.Empty;
+    }
+
+    /// <summary>
+    /// Maps CHDSharp extraction exception messages to user-friendly text. Decompression failures
+    /// ("Failed to read hunk N", Chderrdecompressionerror) occur when a CHD is corrupt or uses the
+    /// A/V (laserdisc) codec variant that the built-in reader cannot decode; neither the built-in
+    /// reader nor chdman extractcd can turn an A/V CHD into a CD/DVD image, so the message says so
+    /// instead of showing a cryptic codec error.
+    /// </summary>
+    internal static string GetChdExtractionErrorMessage(string? message)
+    {
+        message ??= string.Empty;
+
+        if (message.Contains("Chderrdecompressionerror", StringComparison.OrdinalIgnoreCase) ||
+            message.Contains("Failed to read hunk", StringComparison.OrdinalIgnoreCase))
+        {
+            return message +
+                   " The CHD file may be corrupt, or it may be an A/V (laserdisc) CHD, whose audio/video data cannot be converted to a CD/DVD image by the built-in reader or chdman.";
+        }
+
+        return message;
     }
 
     /// <summary>

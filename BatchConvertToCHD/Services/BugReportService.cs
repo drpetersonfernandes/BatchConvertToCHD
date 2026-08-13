@@ -39,6 +39,15 @@ internal class BugReportService
         "Invalid or corrupt data",
         "Cannot open file",
         "Partial extraction:",
+        // CHDSharp cannot decode A/V (laserdisc) CHDs and corrupt CHDs fail hunks; the
+        // extraction path already shows the user an explanatory message. These patterns
+        // trade a small chance of hiding a future CHDSharp regression for the 13 identical
+        // noise reports this cluster produced.
+        "Failed to read hunk",
+        "Fatal error occurred",
+        "cannot create std::vector",
+        "Failed to open PBP file",
+        "Failed to extract disc",
         "CRITICAL ERROR: The following required component is missing",
         "referenced files are missing",
         "could not be resolved",
