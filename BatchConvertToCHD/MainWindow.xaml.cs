@@ -1354,6 +1354,8 @@ internal partial class MainWindow : IDisposable
 
     private async Task PerformBatchExtractionAsync(string inputFolder, string outputFolder, bool deleteOriginal, string[] selectedFiles, CancellationToken token)
     {
+        var chdmanPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, AppConfig.ChdmanExeName);
+
         _totalFilesProcessed = selectedFiles.Length;
         UpdateStatsDisplay();
         LogMessage($"Found {_totalFilesProcessed} CHD files to extract.");
@@ -1374,7 +1376,7 @@ internal partial class MainWindow : IDisposable
 
             UpdateProgressDisplay(processedCount, _totalFilesProcessed, Path.GetFileName(file), "Extracting");
 
-            var success = await ExtractChdAsync(file, inputFolder, outputFolder, deleteOriginal, token);
+            var success = await ExtractChdAsync(chdmanPath, file, inputFolder, outputFolder, deleteOriginal, token);
             if (success)
             {
                 Interlocked.Increment(ref _processedOkCount);
@@ -1668,7 +1670,8 @@ internal partial class MainWindow : IDisposable
             else
             {
                 var errorDetail = string.IsNullOrWhiteSpace(result.Error) ? string.Empty : $" - {result.Error}";
-                LogError($" Failed to extract PBP file: {originalName}{errorDetail}");
+                var sizeDetail = pbpSize > 0 ? $" ({pbpSize:N0} bytes)" : string.Empty;
+                LogError($" Failed to extract PBP file: {originalName}{sizeDetail}{errorDetail}");
             }
 
             return false;
@@ -2120,7 +2123,7 @@ internal partial class MainWindow : IDisposable
         }
     }
 
-    private async Task<bool> ExtractChdAsync(string chdFile, string inputFolder, string outputFolder, bool deleteOriginal, CancellationToken token)
+    private async Task<bool> ExtractChdAsync(string chdmanPath, string chdFile, string inputFolder, string outputFolder, bool deleteOriginal, CancellationToken token)
     {
         var fileName = Path.GetFileNameWithoutExtension(chdFile);
 
@@ -2214,9 +2217,41 @@ internal partial class MainWindow : IDisposable
             if (IsDiskSpaceException(ex))
                 LogError($" Not enough disk space to extract '{Path.GetFileName(chdFile)}'. Free up disk space on the output drive and try again.");
             else
+            {
                 LogError($" Failed to extract '{Path.GetFileName(chdFile)}': {GetChdExtractionErrorMessage(ex.Message)}");
 
-            if (extractCommand is "extractdvd" or "extracthd")
+                // CHDSharp could not decode this CHD (corrupt file, A/V laserdisc CHD, or a
+                // library limitation). Fall back to chdman, which supports every CHD variant
+                // (extractcd/dvd/hd, plus extractld/extractraw for laserdisc CHDs). The
+                // CHDSharp failure above is still reported as a bug — the CHDSharp
+                // maintainer wants extraction failures to reach the bug API.
+                try
+                {
+                    var chdmanExtracted = await TryExtractWithChdmanAsync(chdmanPath, chdFile, targetDir, fileName, extractCommand, outputExt, token).ConfigureAwait(false);
+                    if (chdmanExtracted)
+                    {
+                        LogMessage($" Extracted '{Path.GetFileName(chdFile)}' using chdman fallback (built-in reader failed).");
+                        success = true;
+                    }
+                    else
+                    {
+                        LogError($" chdman could not extract '{Path.GetFileName(chdFile)}' either. The file may be corrupt or use an unsupported codec.");
+                    }
+                }
+                catch (OperationCanceledException)
+                {
+                    // Cancelled mid-fallback: still clean up partial direct-write output
+                    // before propagating the cancellation.
+                    if (extractCommand is "extractdvd" or "extracthd")
+                    {
+                        TryBestEffortDelete(outputFile);
+                    }
+
+                    throw;
+                }
+            }
+
+            if (!success && extractCommand is "extractdvd" or "extracthd")
             {
                 await TryDeleteFileAsync(outputFile, "partially extracted file", CancellationToken.None);
             }
@@ -2924,9 +2959,8 @@ internal partial class MainWindow : IDisposable
     /// <summary>
     /// Maps CHDSharp extraction exception messages to user-friendly text. Decompression failures
     /// ("Failed to read hunk N", Chderrdecompressionerror) occur when a CHD is corrupt or uses the
-    /// A/V (laserdisc) codec variant that the built-in reader cannot decode; neither the built-in
-    /// reader nor chdman extractcd can turn an A/V CHD into a CD/DVD image, so the message says so
-    /// instead of showing a cryptic codec error.
+    /// A/V (laserdisc) codec variant that the built-in reader cannot decode; the message says so
+    /// instead of showing a cryptic codec error, and the extraction pipeline then retries with chdman.
     /// </summary>
     internal static string GetChdExtractionErrorMessage(string? message)
     {
@@ -2936,10 +2970,207 @@ internal partial class MainWindow : IDisposable
             message.Contains("Failed to read hunk", StringComparison.OrdinalIgnoreCase))
         {
             return message +
-                   " The CHD file may be corrupt, or it may be an A/V (laserdisc) CHD, whose audio/video data cannot be converted to a CD/DVD image by the built-in reader or chdman.";
+                   " The CHD file may be corrupt, or it may be an A/V (laserdisc) CHD, which the built-in reader cannot decode. Retrying with chdman...";
         }
 
         return message;
+    }
+
+    /// <summary>
+    /// Builds the chdman argument string for an extraction command, matching the app's existing
+    /// chdman arg style (short -i/-o flags, -f to force overwrite). extractcd also pins the bin
+    /// output name (-ob) so the app knows exactly where the data file lands.
+    /// </summary>
+    internal static string BuildChdmanExtractArgs(string command, string inputFile, string outputPath)
+    {
+        return string.Equals(command, "extractcd", StringComparison.Ordinal)
+            ? $"extractcd -i \"{inputFile}\" -o \"{outputPath}\" -ob \"{Path.ChangeExtension(outputPath, FileExtensions.Bin)}\" -f"
+            : $"{command} -i \"{inputFile}\" -o \"{outputPath}\" -f";
+    }
+
+    /// <summary>
+    /// Attempts to extract a CHD with chdman after the built-in CHDSharp reader failed.
+    /// A/V (laserdisc) CHDs — which have no CD/DVD/HDD metadata — are extracted with
+    /// <c>extractld</c> (AVI, MAME 0.285+); if that command is unavailable, <c>extractraw</c>
+    /// (raw dump) is tried. Returns true when chdman produced the output file(s).
+    /// </summary>
+    private async Task<bool> TryExtractWithChdmanAsync(string chdmanPath, string chdFile, string targetDir, string fileName, string extractCommand, string outputExt, CancellationToken token)
+    {
+        if (string.IsNullOrEmpty(chdmanPath) || !File.Exists(chdmanPath))
+        {
+            LogWarning(" chdman.exe not found; skipping fallback extraction.");
+            return false;
+        }
+
+        // Laserdisc CHDs have no CD/DVD/HDD metadata, so the selected extract command
+        // (extractcd/dvd/hd) cannot handle them. Try the user's format first, then — when
+        // the CHD is A/V — extractld (AVI, MAME 0.285+) and extractraw (raw dump).
+        var isAvChd = await IsAvChdAsync(chdFile, token).ConfigureAwait(false);
+
+        var attempts = new List<(string Command, string OutputPath)>
+        {
+            // chdman extractcd always writes a CUE sheet (plus BIN), even when the app's
+            // auto-detection would have produced a .gdi descriptor for GD-ROM CHDs.
+            (
+                extractCommand,
+                string.Equals(extractCommand, "extractcd", StringComparison.Ordinal)
+                    ? Path.Combine(targetDir, fileName + FileExtensions.Cue)
+                    : Path.Combine(targetDir, fileName + outputExt)
+            )
+        };
+
+        if (isAvChd)
+        {
+            LogMessage($" CHD has no CD/DVD/HDD metadata; treating it as an A/V (laserdisc) CHD.");
+            attempts.Add(("extractld", Path.Combine(targetDir, fileName + FileExtensions.Avi)));
+            attempts.Add(("extractraw", Path.Combine(targetDir, fileName + FileExtensions.Raw)));
+        }
+
+        foreach (var (command, outputPath) in attempts)
+        {
+            LogMessage($" [CHDMAN fallback] {command} {Path.GetFileName(chdFile)}");
+
+            try
+            {
+                if (await RunChdmanExtractAsync(chdmanPath, BuildChdmanExtractArgs(command, chdFile, outputPath), token).ConfigureAwait(false))
+                {
+                    if (string.Equals(command, "extractcd", StringComparison.Ordinal))
+                    {
+                        LogMessage(string.Equals(outputExt, FileExtensions.Gdi, StringComparison.Ordinal)
+                            ? $" Extracted: {Path.GetFileName(outputPath)} and {Path.GetFileName(Path.ChangeExtension(outputPath, FileExtensions.Bin))} (chdman fallback writes CUE/BIN; the GDI descriptor requires the built-in reader)"
+                            : $" Extracted: {Path.GetFileName(outputPath)} and {Path.GetFileName(Path.ChangeExtension(outputPath, FileExtensions.Bin))}");
+                    }
+                    else
+                    {
+                        LogMessage($" Extracted: {Path.GetFileName(outputPath)}");
+                    }
+
+                    return true;
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                // chdman ran with -f, so a cancelled run may have left truncated output behind.
+                TryBestEffortDelete(outputPath);
+                if (string.Equals(command, "extractcd", StringComparison.Ordinal))
+                {
+                    TryBestEffortDelete(Path.ChangeExtension(outputPath, FileExtensions.Bin));
+                }
+
+                throw;
+            }
+
+            // chdman ran with -f, so a failed attempt may have left truncated output behind.
+            // Plain single-shot deletes only: the retrying delete would kill every chdman
+            // process by name on lock, and our chdman has already exited.
+            TryBestEffortDelete(outputPath);
+            if (string.Equals(command, "extractcd", StringComparison.Ordinal))
+            {
+                TryBestEffortDelete(Path.ChangeExtension(outputPath, FileExtensions.Bin));
+            }
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// Silently deletes a file if it exists. Used to clean up partial chdman fallback output.
+    /// </summary>
+    private static void TryBestEffortDelete(string path)
+    {
+        try
+        {
+            if (File.Exists(path))
+            {
+                File.Delete(path);
+            }
+        }
+        catch
+        {
+            // ignored — partial output may remain; the error log above already tells the user
+        }
+    }
+
+    /// <summary>
+    /// Best-effort check for A/V (laserdisc) CHDs: the CHD header opens but carries no
+    /// CD/DVD/HDD metadata. Header parsing never decodes hunks, so this works even for
+    /// CHDs whose data CHDSharp cannot decompress. Any failure classifies as not-A/V.
+    /// </summary>
+    private static Task<bool> IsAvChdAsync(string chdFile, CancellationToken token)
+    {
+        return Task.Run(() =>
+        {
+            try
+            {
+                var err = ChdFile.Open(chdFile, out var chd);
+                if (err != ChdError.Chderrnone || chd == null)
+                    return false;
+
+                using (chd)
+                {
+                    return !chd.IsCd && !chd.IsDvd && !chd.IsHdd && !chd.IsGdRom;
+                }
+            }
+            catch
+            {
+                return false;
+            }
+        }, token);
+    }
+
+    /// <summary>
+    /// Runs a chdman extraction command and returns whether it exited successfully.
+    /// </summary>
+    private static async Task<bool> RunChdmanExtractAsync(string chdmanPath, string args, CancellationToken token)
+    {
+        try
+        {
+            using var process = new Process();
+            process.StartInfo = new ProcessStartInfo
+            {
+                FileName = chdmanPath,
+                Arguments = args,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true,
+                ErrorDialog = false
+            };
+
+            var errorBuffer = new StringBuilder();
+            var errorBufferLock = new Lock();
+            void CaptureOutput(string? data)
+            {
+                if (string.IsNullOrEmpty(data)) return;
+                lock (errorBufferLock)
+                {
+                    errorBuffer.AppendLine(data);
+                }
+            }
+
+            process.OutputDataReceived += (_, a) => CaptureOutput(a.Data);
+            process.ErrorDataReceived += (_, a) => CaptureOutput(a.Data);
+
+            process.Start();
+            process.BeginOutputReadLine();
+            process.BeginErrorReadLine();
+            await process.WaitForExitAsync(token).ConfigureAwait(false);
+
+            if (process.ExitCode == 0)
+                return true;
+
+            Serilog.Log.Warning("chdman {Command} failed (exit {ExitCode}): {Output}", args.Split(' ')[0], process.ExitCode, errorBuffer.ToString().TrimEnd());
+            return false;
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            Serilog.Log.Warning(ex, "chdman extract could not be started");
+            return false;
+        }
     }
 
     /// <summary>
@@ -2984,7 +3215,7 @@ internal partial class MainWindow : IDisposable
             {
                 var error = PbpFile.Open(inputFile, out var pbpFile);
                 if (error != PbpError.None || pbpFile == null)
-                    return (Success: false, CuePaths: new List<string>(), Error: $"Failed to open PBP file: {error}", ErrorCode: error);
+                    return (Success: false, CuePaths: new List<string>(), Error: $"Failed to open PBP file: {error} (code {(int)error})", ErrorCode: error);
 
                 using (pbpFile)
                 {
@@ -3000,7 +3231,7 @@ internal partial class MainWindow : IDisposable
 
                         var extractError = t.ExtractToBinCue(binPath, cuePath, null, token);
                         if (extractError != PbpError.None)
-                            return (Success: false, CuePaths: new List<string>(), Error: $"Failed to extract disc {t.Index}: {extractError}", ErrorCode: extractError);
+                            return (Success: false, CuePaths: new List<string>(), Error: $"Failed to extract disc {t.Index} of {pbpFile.Discs.Count}: {extractError} (code {(int)extractError})", ErrorCode: extractError);
 
                         cuePaths.Add(cuePath);
                     }

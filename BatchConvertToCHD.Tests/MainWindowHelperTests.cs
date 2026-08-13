@@ -144,6 +144,7 @@ public class MainWindowHelperTests : IDisposable
         var message = MainWindow.GetChdExtractionErrorMessage("Failed to read hunk 0: Chderrdecompressionerror");
 
         Assert.Contains("A/V (laserdisc)", message, StringComparison.Ordinal);
+        Assert.Contains("Retrying with chdman", message, StringComparison.Ordinal);
         Assert.StartsWith("Failed to read hunk 0: Chderrdecompressionerror", message, StringComparison.Ordinal);
     }
 
@@ -153,5 +154,32 @@ public class MainWindowHelperTests : IDisposable
         const string message = "No files extracted.";
 
         Assert.Equal(message, MainWindow.GetChdExtractionErrorMessage(message));
+    }
+
+    [Fact]
+    public void BuildChdmanExtractArgs_ExtractCd_PinsBinAndForces()
+    {
+        var args = MainWindow.BuildChdmanExtractArgs("extractcd", @"D:\roms\game.chd", @"D:\out\game.cue");
+
+        Assert.Contains("extractcd -i \"D:\\roms\\game.chd\"", args, StringComparison.Ordinal);
+        Assert.Contains("-o \"D:\\out\\game.cue\"", args, StringComparison.Ordinal);
+        Assert.Contains("-ob \"D:\\out\\game.bin\"", args, StringComparison.Ordinal);
+        Assert.EndsWith("-f", args, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("extractdvd", ".iso")]
+    [InlineData("extracthd", ".img")]
+    [InlineData("extractld", ".avi")]
+    [InlineData("extractraw", ".raw")]
+    public void BuildChdmanExtractArgs_OtherCommands_InputOutputForce(string command, string ext)
+    {
+        var output = $"D:\\out\\game{ext}";
+        var args = MainWindow.BuildChdmanExtractArgs(command, @"D:\roms\game.chd", output);
+
+        Assert.Contains($"{command} -i \"D:\\roms\\game.chd\"", args, StringComparison.Ordinal);
+        Assert.Contains($"-o \"{output}\"", args, StringComparison.Ordinal);
+        Assert.DoesNotContain("-ob", args, StringComparison.Ordinal);
+        Assert.EndsWith("-f", args, StringComparison.Ordinal);
     }
 }
