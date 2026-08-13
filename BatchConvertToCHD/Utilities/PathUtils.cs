@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.IO;
 using System.Text;
 using Serilog;
@@ -203,6 +204,82 @@ internal static class PathUtils
             {
                 Logger.Verbose(ex, "Failed to get path root for drive candidate {Path}", path);
             }
+        }
+    }
+
+    /// <summary>
+    /// Returns a path under <paramref name="parentDirectory"/> named after <paramref name="baseName"/>
+    /// that nothing currently occupies, adding " (2)", " (3)" and so on until one is free. The
+    /// directory is not created.
+    ///
+    /// Used to give an extraction somewhere to land when files of the same name are already present,
+    /// so existing files are kept without the user having to choose anything.
+    /// </summary>
+    /// <param name="parentDirectory">Directory the new subdirectory will sit in.</param>
+    /// <param name="baseName">Preferred name, sanitised before use.</param>
+    internal static string ReserveFreeSubdirectory(string parentDirectory, string baseName)
+    {
+        var safeName = SanitizeFileName(baseName);
+        if (safeName.Length == 0)
+        {
+            safeName = Guid.NewGuid().ToString("N");
+        }
+
+        var candidate = Path.Combine(parentDirectory, safeName);
+        if (!Directory.Exists(candidate) && !File.Exists(candidate))
+        {
+            return candidate;
+        }
+
+        // A bounded search: a folder holding this many same-named discs is pathological, and looping
+        // forever would be worse than falling back to a name that cannot collide.
+        for (var suffix = 2; suffix <= 999; suffix++)
+        {
+            candidate = Path.Combine(parentDirectory, $"{safeName} ({suffix.ToString(CultureInfo.InvariantCulture)})");
+            if (!Directory.Exists(candidate) && !File.Exists(candidate))
+            {
+                return candidate;
+            }
+        }
+
+        return Path.Combine(parentDirectory, $"{safeName}_{Guid.NewGuid():N}");
+    }
+
+    /// <summary>
+    /// True when <paramref name="candidate"/> is the same directory as <paramref name="root"/>, or is
+    /// nested inside it. Used to tell the user when results will land among their source files.
+    ///
+    /// Comparing the normalized full paths matters: "D:\Games" and "D:\Games\" and "D:\Games\..\Games"
+    /// are the same folder, and a plain string equality test on the raw text would miss that. The
+    /// separator is appended before the prefix test so "D:\Games2" is not read as being inside
+    /// "D:\Games".
+    /// </summary>
+    /// <param name="root">The directory to test against.</param>
+    /// <param name="candidate">The directory that may be the same or nested.</param>
+    internal static bool IsSameOrInsideDirectory(string? root, string? candidate)
+    {
+        if (string.IsNullOrWhiteSpace(root) || string.IsNullOrWhiteSpace(candidate))
+        {
+            return false;
+        }
+
+        try
+        {
+            var separators = new[] { Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar };
+            var rootFull = Path.GetFullPath(root).TrimEnd(separators);
+            var candidateFull = Path.GetFullPath(candidate).TrimEnd(separators);
+
+            if (string.Equals(rootFull, candidateFull, StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+
+            return candidateFull.StartsWith(rootFull + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase);
+        }
+        catch (Exception ex)
+        {
+            Logger.Verbose(ex, "Failed to compare {Root} and {Candidate}", root, candidate);
+            return false;
         }
     }
 

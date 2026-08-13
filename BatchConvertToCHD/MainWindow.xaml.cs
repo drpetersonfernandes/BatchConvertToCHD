@@ -725,18 +725,16 @@ internal partial class MainWindow : IDisposable
                 return;
             }
 
-            if (inputFolder.Equals(outputFolder, StringComparison.OrdinalIgnoreCase))
-            {
-                ShowError("Input and output folders must be different.");
-                return;
-            }
-
             var selectedFiles = _extractionFiles.Where(static f => f.IsSelected).Select(static f => f.FullPath).ToArray();
             if (selectedFiles.Length == 0)
             {
                 ShowError("No files selected for extraction.");
                 return;
             }
+
+            // Extracting into the source folder is allowed and needs no warning: an extraction whose
+            // output would replace existing files of the same name is diverted into a subfolder
+            // instead (see ExtractChdAsync), so nothing is overwritten and nothing is asked.
 
             RenewCancellationTokenSource();
 
@@ -1058,10 +1056,13 @@ internal partial class MainWindow : IDisposable
                 return;
             }
 
-            if (inputFolder.Equals(outputFolder, StringComparison.OrdinalIgnoreCase))
+            // Converting in place is allowed. The output name is always "<base>.chd" and .chd is not
+            // a conversion input, so a source file can never be the target; and since the conversion
+            // stages to .chdtmp and only moves into place on success, an existing CHD of the same
+            // name survives a failed run.
+            if (PathUtils.IsSameOrInsideDirectory(inputFolder, outputFolder))
             {
-                ShowError("Input and output folders must be different.");
-                return;
+                LogMessage(" The output folder is inside the source folder, so CHDs will be written alongside the originals.");
             }
 
             RenewCancellationTokenSource();
@@ -3012,14 +3013,17 @@ internal partial class MainWindow : IDisposable
 
         var outputFile = Path.Combine(targetDir, fileName + outputExt);
 
-        // For DVD/HDD extraction: delete existing output file before writing
-        if (extractCommand is "extractdvd" or "extracthd")
+        // An extracted file takes the CHD's own base name, so extracting into a folder that already
+        // holds a set of that name - most often the folder the CHD was made in - would replace it.
+        // Rather than overwrite, or ask, the disc goes into a subfolder of its own name. Nothing is
+        // lost and no decision is required; the log says where it went.
+        if (extractCommand is "extractdvd" or "extracthd" && File.Exists(outputFile))
         {
-            if (File.Exists(outputFile))
-            {
-                LogMessage($"Overwriting: {fileName}{outputExt} already exists in output folder.");
-                await TryDeleteFileAsync(outputFile, "existing output file", CancellationToken.None);
-            }
+            var isolatedDir = PathUtils.ReserveFreeSubdirectory(targetDir, fileName);
+            Directory.CreateDirectory(isolatedDir);
+            outputFile = Path.Combine(isolatedDir, fileName + outputExt);
+
+            LogMessage($" {fileName}{outputExt} already exists here; extracting into \"{Path.GetFileName(isolatedDir)}\" so the existing file is kept.");
         }
 
         var success = false;
@@ -3114,12 +3118,26 @@ internal partial class MainWindow : IDisposable
                 throw new InvalidOperationException($"No files extracted from '{Path.GetFileName(chdFile)}'.");
             }
 
-            // Move files from temp to target directory, overwriting existing. Retry transient
-            // lock failures (antivirus/indexer) so a locked file doesn't abort the whole disc.
+            // A multi-track extraction writes a descriptor plus its track files, all named after the
+            // CHD, so extracting into a folder that already holds that set would replace it. When any
+            // of them would clash the whole set goes into a subfolder of its own name instead: the
+            // descriptor's FILE entries are relative and the tracks travel with it, so the set stays
+            // valid without rewriting anything.
+            var destinationDir = targetDir;
+            if (extractedFiles.Any(f => File.Exists(Path.Combine(targetDir, Path.GetFileName(f)))))
+            {
+                destinationDir = PathUtils.ReserveFreeSubdirectory(targetDir, baseFileName);
+                Directory.CreateDirectory(destinationDir);
+
+                LogMessage($" Files named after this disc already exist here; extracting into \"{Path.GetFileName(destinationDir)}\" so they are kept.");
+            }
+
+            // Move files from temp to the destination. Retry transient lock failures
+            // (antivirus/indexer) so a locked file doesn't abort the whole disc.
             foreach (var srcPath in extractedFiles)
             {
                 token.ThrowIfCancellationRequested();
-                var destPath = Path.Combine(targetDir, Path.GetFileName(srcPath));
+                var destPath = Path.Combine(destinationDir, Path.GetFileName(srcPath));
                 if (File.Exists(destPath))
                 {
                     var deleted = await RetryingFileOperations.TryDeleteAsync(destPath, token).ConfigureAwait(false);

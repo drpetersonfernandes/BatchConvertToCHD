@@ -4,6 +4,9 @@ namespace BatchConvertToCHD.Tests;
 
 public class PathUtilsTests
 {
+    /// <summary>Scratch space for the tests that need real directories on disk.</summary>
+    private static readonly string _reserveTempDir = Path.Combine(Path.GetTempPath(), $"PathUtilsTests_{Guid.NewGuid():N}");
+
     [Theory]
     [InlineData("game.iso", "game.iso")]
     [InlineData("file:name.txt", "file_name.txt")]
@@ -351,6 +354,88 @@ public class PathUtilsTests
             Cleanup(first, null);
             Cleanup(second, null);
         }
+    }
+
+    [Fact]
+    public void AFreeSubdirectoryNameIsTheDiscNameWhenNothingOccupiesIt()
+    {
+        var parent = Path.Combine(_reserveTempDir, Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(parent);
+
+        var reserved = PathUtils.ReserveFreeSubdirectory(parent, "Breath of Fire IV");
+
+        Assert.Equal(Path.Combine(parent, "Breath of Fire IV"), reserved);
+        // Reserving does not create it; the caller decides whether it is needed.
+        Assert.False(Directory.Exists(reserved));
+    }
+
+    [Fact]
+    public void AFreeSubdirectoryNameStepsAsideForAnExistingDirectory()
+    {
+        var parent = Path.Combine(_reserveTempDir, Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(Path.Combine(parent, "Game"));
+        Directory.CreateDirectory(Path.Combine(parent, "Game (2)"));
+
+        var reserved = PathUtils.ReserveFreeSubdirectory(parent, "Game");
+
+        Assert.Equal(Path.Combine(parent, "Game (3)"), reserved);
+    }
+
+    [Fact]
+    public void AFreeSubdirectoryNameStepsAsideForAnExistingFileOfThatName()
+    {
+        // A file called "Game" with no extension would block the directory just as a folder would.
+        var parent = Path.Combine(_reserveTempDir, Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(parent);
+        File.WriteAllBytes(Path.Combine(parent, "Game"), new byte[4]);
+
+        var reserved = PathUtils.ReserveFreeSubdirectory(parent, "Game");
+
+        Assert.Equal(Path.Combine(parent, "Game (2)"), reserved);
+    }
+
+    [Fact]
+    public void AFreeSubdirectoryNameIsSanitised()
+    {
+        var parent = Path.Combine(_reserveTempDir, Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(parent);
+
+        var reserved = PathUtils.ReserveFreeSubdirectory(parent, "Game: Special?Edition");
+
+        Assert.Equal(Path.Combine(parent, "Game_ Special_Edition"), reserved);
+        Assert.DoesNotContain(':', Path.GetFileName(reserved));
+        Assert.DoesNotContain('?', Path.GetFileName(reserved));
+    }
+
+    [Theory]
+    // Same folder, including the forms that differ only as text.
+    [InlineData(@"D:\Games", @"D:\Games", true)]
+    [InlineData(@"D:\Games", @"D:\Games\", true)]
+    [InlineData(@"D:\Games\", @"D:\Games", true)]
+    [InlineData(@"D:\Games", @"d:\games", true)]
+    [InlineData(@"D:\Games", @"D:\Games\..\Games", true)]
+    // Nested, which the old equality check let through and which carries the same exposure.
+    [InlineData(@"D:\Games", @"D:\Games\CHD", true)]
+    [InlineData(@"D:\Games", @"D:\Games\CHD\Sub", true)]
+    // Genuinely separate, including the prefix trap.
+    [InlineData(@"D:\Games", @"D:\Games2", false)]
+    [InlineData(@"D:\Games", @"D:\Other", false)]
+    [InlineData(@"D:\Games\CHD", @"D:\Games", false)]
+    [InlineData(@"D:\Games", @"C:\Games", false)]
+    public void SameOrNestedDirectoriesAreDetected(string root, string candidate, bool expected)
+    {
+        Assert.Equal(expected, PathUtils.IsSameOrInsideDirectory(root, candidate));
+    }
+
+    [Fact]
+    public void UnusableDirectoryComparisonsAreFalseRatherThanThrowing()
+    {
+        // The caller only uses this to decide whether to log a note, so it must never throw.
+        Assert.False(PathUtils.IsSameOrInsideDirectory(null, @"D:\Games"));
+        Assert.False(PathUtils.IsSameOrInsideDirectory(@"D:\Games", null));
+        Assert.False(PathUtils.IsSameOrInsideDirectory(string.Empty, string.Empty));
+        Assert.False(PathUtils.IsSameOrInsideDirectory("   ", @"D:\Games"));
+        Assert.False(PathUtils.IsSameOrInsideDirectory("\0invalid", @"D:\Games"));
     }
 
     [Fact]

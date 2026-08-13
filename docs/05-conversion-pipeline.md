@@ -50,6 +50,16 @@ The order matters:
 
 Missing input file: logs "File not found, skipping:" and asks `FileWatcherService.GetContextForMissingFile` for a diagnostic (deleted / renamed / created-then-gone / outside watch / drive disconnected).
 
+### Converting in place
+
+The source and output folders may be the same, and the output may sit inside the source tree. Three properties make that safe for conversion:
+
+- The output name is always `<base>.chd`, and `.chd` is not a conversion input, so a **source file can never be the target**.
+- Conversions stage to `.chdtmp` and move into place only on success (§5.3), so an existing CHD of the same name survives a failed run.
+- Content inspection recognises an existing CHD and skips it (`"this file is already a CHD"`), so outputs cannot be reprocessed on a later run.
+
+`PathUtils.IsSameOrInsideDirectory` detects the situation and the log notes it once. Extraction is the tab where in-place needs care, because its output shares the source's base name — see [Extraction & Verification](06-extraction-and-verification.md).
+
 ### Batch preflight
 
 Before the per-file loop, `WarnAboutOutputCollisions` reports inputs that would map to the same output `.chd` (the name comes from the input's base name alone, so `Game.cue`, `Game.zip` and `Game.ccd` in one folder all target `Game.chd`). This is a warning, not a block — but combined with the staging file in §5.3 it means the second conversion can no longer destroy the first one's output.
