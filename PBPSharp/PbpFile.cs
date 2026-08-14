@@ -1,3 +1,4 @@
+using System.Buffers.Binary;
 using System.Text;
 using PBPSharp.Models;
 
@@ -139,19 +140,19 @@ public sealed class PbpFile : IDisposable
         if (stream.Read(headerBytes) != PbpHeader.HeaderSize)
             return PbpError.InvalidHeader;
 
-        var magic = BitConverter.ToUInt32(headerBytes[..4]);
+        var magic = BinaryPrimitives.ReadUInt32LittleEndian(headerBytes[..4]);
         if (magic != PbpHeader.MagicValue)
             return PbpError.InvalidHeader;
 
-        var version = BitConverter.ToUInt32(headerBytes[4..8]);
-        var sfoOffset = BitConverter.ToInt32(headerBytes[8..12]);
-        var icon0Offset = BitConverter.ToInt32(headerBytes[12..16]);
-        var icon1Offset = BitConverter.ToInt32(headerBytes[16..20]);
-        var pic0Offset = BitConverter.ToInt32(headerBytes[20..24]);
-        var pic1Offset = BitConverter.ToInt32(headerBytes[24..28]);
-        var snd0Offset = BitConverter.ToInt32(headerBytes[28..32]);
-        var dataPspOffset = BitConverter.ToInt32(headerBytes[32..36]);
-        var dataPsarOffset = BitConverter.ToInt32(headerBytes[36..40]);
+        var version = BinaryPrimitives.ReadUInt32LittleEndian(headerBytes[4..8]);
+        var sfoOffset = BinaryPrimitives.ReadInt32LittleEndian(headerBytes[8..12]);
+        var icon0Offset = BinaryPrimitives.ReadInt32LittleEndian(headerBytes[12..16]);
+        var icon1Offset = BinaryPrimitives.ReadInt32LittleEndian(headerBytes[16..20]);
+        var pic0Offset = BinaryPrimitives.ReadInt32LittleEndian(headerBytes[20..24]);
+        var pic1Offset = BinaryPrimitives.ReadInt32LittleEndian(headerBytes[24..28]);
+        var snd0Offset = BinaryPrimitives.ReadInt32LittleEndian(headerBytes[28..32]);
+        var dataPspOffset = BinaryPrimitives.ReadInt32LittleEndian(headerBytes[32..36]);
+        var dataPsarOffset = BinaryPrimitives.ReadInt32LittleEndian(headerBytes[36..40]);
 
         header = new PbpHeader(version, sfoOffset, icon0Offset, icon1Offset, pic0Offset, pic1Offset, snd0Offset, dataPspOffset, dataPsarOffset);
         return PbpError.None;
@@ -185,15 +186,15 @@ public sealed class PbpFile : IDisposable
             stream.ReadExactly(dirBuffer, 0, 16);
 
             // Layout: KeyOffset(2) + Format(2) + Length(4) + MaxLength(4) + DataOffset(4)
-            var keyOffset = BitConverter.ToUInt16(dirBuffer, 0);
+            var keyOffset = BinaryPrimitives.ReadUInt16LittleEndian(dirBuffer.AsSpan(0, 2));
             var entry = new SfoEntry
             {
-                Format = BitConverter.ToUInt16(dirBuffer, 2),
-                Length = BitConverter.ToUInt32(dirBuffer, 4),
-                MaxLength = BitConverter.ToUInt32(dirBuffer, 8)
+                Format = BinaryPrimitives.ReadUInt16LittleEndian(dirBuffer.AsSpan(2, 2)),
+                Length = BinaryPrimitives.ReadUInt32LittleEndian(dirBuffer.AsSpan(4, 4)),
+                MaxLength = BinaryPrimitives.ReadUInt32LittleEndian(dirBuffer.AsSpan(8, 4))
             };
 
-            var dataOffset = BitConverter.ToUInt32(dirBuffer, 12);
+            var dataOffset = BinaryPrimitives.ReadUInt32LittleEndian(dirBuffer.AsSpan(12, 4));
 
             stream.Seek(header.SfoOffset + sfoData.KeyTableOffset + keyOffset, SeekOrigin.Begin);
             entry.Key = ReadNullTerminatedString(stream, 128);

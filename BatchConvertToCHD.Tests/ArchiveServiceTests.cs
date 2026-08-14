@@ -149,11 +149,10 @@ public class ArchiveServiceTests : IDisposable
     }
 
     [Fact]
-    public void DisposeDoesNotThrow()
+    public void CanCreateService()
     {
         var service = new ArchiveService("7za.exe", false);
-        var exception = Record.Exception(service.Dispose);
-        Assert.Null(exception);
+        Assert.NotNull(service);
     }
 
     [Fact]

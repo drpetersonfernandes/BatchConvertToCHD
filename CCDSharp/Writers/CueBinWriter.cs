@@ -11,6 +11,8 @@ namespace CCDSharp.Writers;
 /// </summary>
 internal static class CueBinWriter
 {
+    private const int MaxCopyRetries = 4;
+
     /// <summary>
     /// Generates a CUE sheet string from a parsed DiscImage.
     /// </summary>
@@ -90,7 +92,7 @@ internal static class CueBinWriter
             // Copy .img to .bin next to the .cue file
             binFileName = Path.GetFileNameWithoutExtension(outputCuePath) + ".bin";
             var binPath = Path.Combine(cueDir, binFileName);
-            File.Copy(disc.ImgFilePath, binPath, true);
+            CopyWithRetry(disc.ImgFilePath, binPath);
         }
         else
         {
@@ -103,7 +105,7 @@ internal static class CueBinWriter
             if (Path.IsPathRooted(binFileName))
             {
                 binFileName = Path.GetFileName(disc.ImgFilePath);
-                File.Copy(disc.ImgFilePath, Path.Combine(cueDir, binFileName), true);
+                CopyWithRetry(disc.ImgFilePath, Path.Combine(cueDir, binFileName));
             }
         }
 
@@ -141,5 +143,22 @@ internal static class CueBinWriter
     {
         var cueContent = GenerateCueSheet(disc, binFileName);
         cueWriter.Write(cueContent);
+    }
+
+    private static void CopyWithRetry(string source, string dest)
+    {
+        const int maxAttempts = 4;
+        for (var attempt = 0; attempt < maxAttempts; attempt++)
+        {
+            try
+            {
+                File.Copy(source, dest, true);
+                return;
+            }
+            catch (IOException) when (attempt < maxAttempts - 1)
+            {
+                Thread.Sleep(300 * (attempt + 1));
+            }
+        }
     }
 }

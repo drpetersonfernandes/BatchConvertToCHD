@@ -9,6 +9,7 @@ namespace BatchConvertToCHD.Services;
 /// <see cref="LogEventLevel.Warning"/> are silently ignored. Messages matching
 /// known informational patterns are excluded via <see cref="BugReportService.IsExcludedFromBugReport"/>.
 /// Uses an interlocked flag to prevent concurrent API flood when many warnings fire rapidly.
+/// A 10-second send timeout prevents the throttle flag from being held indefinitely.
 /// </summary>
 internal class BugReportApiSink : ILogEventSink
 {
@@ -44,11 +45,21 @@ internal class BugReportApiSink : ILogEventSink
 
         if (Interlocked.CompareExchange(ref _isSending, 1, 0) == 0)
         {
+            // Use a 10-second timeout so a hung HTTP call doesn't permanently block
+            // subsequent bug reports. The flag is always reset in the continuation.
             _ = _bugReportService.SendBugReportAsync(message, ex)
                 .ContinueWith(static _ =>
                 {
                     Interlocked.Exchange(ref _isSending, 0);
                 }, TaskContinuationOptions.ExecuteSynchronously);
+
+            // Safety net: clear the flag after 12 seconds even if SendBugReportAsync
+            // never completes (e.g. TCP connection hang). Task.Delay is deliberately
+            // not awaited — it runs as an independent fire-and-forget timer.
+            _ = Task.Delay(TimeSpan.FromSeconds(12)).ContinueWith(static _ =>
+            {
+                Volatile.Write(ref _isSending, 0);
+            }, TaskContinuationOptions.ExecuteSynchronously);
         }
     }
 }

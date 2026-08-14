@@ -248,11 +248,16 @@ public partial class App
     {
         try
         {
-            // Notify the developer using the shared service instance
-            // Block synchronously — critical for AppDomain.UnhandledException where the OS
-            // terminates the process immediately after this handler returns. Using async void
-            // would fire off the HTTP request and return before it completes, losing the report.
-            Task.Run(() => _bugReportService?.SendBugReportAsync($"Unhandled Exception from {source}", exception)).GetAwaiter().GetResult();
+            if (string.Equals(source, "AppDomain.UnhandledException", StringComparison.Ordinal))
+            {
+                // Block synchronously — the process is about to terminate.
+                Task.Run(() => _bugReportService?.SendBugReportAsync($"Unhandled Exception from {source}", exception)).GetAwaiter().GetResult();
+            }
+            else
+            {
+                // Fire-and-forget for dispatcher/task exceptions — blocking would freeze the UI.
+                _ = Task.Run(() => _bugReportService?.SendBugReportAsync($"Unhandled Exception from {source}", exception));
+            }
         }
         catch
         {

@@ -1,4 +1,5 @@
 using System.Buffers;
+using System.Buffers.Binary;
 using System.IO.Compression;
 using CSOSharp.Models;
 using K4os.Compression.LZ4;
@@ -112,13 +113,13 @@ public sealed class CsoFile : IDisposable
         if (stream.Read(headerBytes) != CsoHeader.ExpectedHeaderSize)
             return CsoError.InvalidHeader;
 
-        var magic = BitConverter.ToUInt32(headerBytes[..4]);
+        var magic = BinaryPrimitives.ReadUInt32LittleEndian(headerBytes[..4]);
         if (magic != CsoHeader.MagicValue)
             return CsoError.InvalidHeader;
 
-        var headerSize = BitConverter.ToUInt32(headerBytes[4..8]);
-        var uncompressedSize = BitConverter.ToUInt64(headerBytes[8..16]);
-        var blockSize = BitConverter.ToUInt32(headerBytes[16..20]);
+        var headerSize = BinaryPrimitives.ReadUInt32LittleEndian(headerBytes[4..8]);
+        var uncompressedSize = BinaryPrimitives.ReadUInt64LittleEndian(headerBytes[8..16]);
+        var blockSize = BinaryPrimitives.ReadUInt32LittleEndian(headerBytes[16..20]);
         var version = headerBytes[20];
         var indexOffsetShift = headerBytes[21];
 
@@ -146,7 +147,7 @@ public sealed class CsoFile : IDisposable
             if (stream.Read(indexBytes) != 4)
                 return CsoError.CorruptIndex;
 
-            indexTable[i] = BitConverter.ToUInt32(indexBytes);
+            indexTable[i] = BinaryPrimitives.ReadUInt32LittleEndian(indexBytes);
         }
 
         return CsoError.None;

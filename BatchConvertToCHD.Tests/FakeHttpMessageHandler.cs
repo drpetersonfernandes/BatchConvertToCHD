@@ -4,7 +4,7 @@ namespace BatchConvertToCHD.Tests;
 
 public class FakeHttpMessageHandler : HttpMessageHandler
 {
-    private readonly Func<HttpRequestMessage, HttpResponseMessage> _handler;
+    private readonly Func<HttpRequestMessage, HttpResponseMessage>? _handler;
     private readonly Func<HttpRequestMessage, Task<HttpResponseMessage>>? _asyncHandler;
 
     public FakeHttpMessageHandler(Func<HttpRequestMessage, HttpResponseMessage> handler)
@@ -28,7 +28,6 @@ public class FakeHttpMessageHandler : HttpMessageHandler
     private FakeHttpMessageHandler(Func<HttpRequestMessage, Task<HttpResponseMessage>> asyncHandler)
     {
         _asyncHandler = asyncHandler;
-        _handler = _ => new HttpResponseMessage(HttpStatusCode.OK);
     }
 
     protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
@@ -36,6 +35,6 @@ public class FakeHttpMessageHandler : HttpMessageHandler
         if (_asyncHandler != null)
             return _asyncHandler(request);
 
-        return Task.FromResult(_handler(request));
+        return Task.FromResult(_handler!(request));
     }
 }

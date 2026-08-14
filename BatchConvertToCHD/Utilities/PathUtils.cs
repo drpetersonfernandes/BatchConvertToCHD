@@ -42,10 +42,10 @@ internal static class PathUtils
         while (sb.Length > 0 && sb[^1] == '.')
         {
             sb.Length--;
-            if (sb.Length > 0)
-                sb.Append('_');
-            break;
         }
+
+        if (sb.Length > 0 && name[^1] == '.')
+            sb.Append('_');
 
         var sanitizedName = sb.ToString();
 

@@ -864,14 +864,21 @@ internal partial class MainWindow : IDisposable
 
             // Add items in chunks to avoid freezing the UI thread if there are thousands of files
             const int chunkSize = 100;
-            for (var i = 0; i < files.Count; i += chunkSize)
+            try
             {
-                var chunk = files.Skip(i).Take(chunkSize).ToList();
-                await Application.Current.Dispatcher.InvokeAsync(() =>
+                for (var i = 0; i < files.Count; i += chunkSize)
                 {
-                    foreach (var item in chunk) _conversionFiles.Add(item);
-                    TotalFilesValue.Text = _conversionFiles.Count.ToString(CultureInfo.InvariantCulture);
-                }, System.Windows.Threading.DispatcherPriority.Background, _cts.Token);
+                    var chunk = files.Skip(i).Take(chunkSize).ToList();
+                    await Application.Current.Dispatcher.InvokeAsync(() =>
+                    {
+                        foreach (var item in chunk) _conversionFiles.Add(item);
+                        TotalFilesValue.Text = _conversionFiles.Count.ToString(CultureInfo.InvariantCulture);
+                    }, System.Windows.Threading.DispatcherPriority.Background, _cts.Token);
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                // Cancellation during chunked load is expected; partial results remain visible
             }
         }, _cts.Token);
     }
@@ -920,14 +927,21 @@ internal partial class MainWindow : IDisposable
 
             // Add items in chunks to avoid freezing the UI thread
             const int chunkSize = 100;
-            for (var i = 0; i < files.Count; i += chunkSize)
+            try
             {
-                var chunk = files.Skip(i).Take(chunkSize).ToList();
-                await Application.Current.Dispatcher.InvokeAsync(() =>
+                for (var i = 0; i < files.Count; i += chunkSize)
                 {
-                    foreach (var item in chunk) _verificationFiles.Add(item);
-                    TotalFilesValue.Text = _verificationFiles.Count.ToString(CultureInfo.InvariantCulture);
-                }, System.Windows.Threading.DispatcherPriority.Background, _cts.Token);
+                    var chunk = files.Skip(i).Take(chunkSize).ToList();
+                    await Application.Current.Dispatcher.InvokeAsync(() =>
+                    {
+                        foreach (var item in chunk) _verificationFiles.Add(item);
+                        TotalFilesValue.Text = _verificationFiles.Count.ToString(CultureInfo.InvariantCulture);
+                    }, System.Windows.Threading.DispatcherPriority.Background, _cts.Token);
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                // Cancellation during chunked load is expected; partial results remain visible
             }
         }, _cts.Token);
     }
@@ -976,14 +990,21 @@ internal partial class MainWindow : IDisposable
 
             // Add items in chunks to avoid freezing the UI thread
             const int chunkSize = 100;
-            for (var i = 0; i < files.Count; i += chunkSize)
+            try
             {
-                var chunk = files.Skip(i).Take(chunkSize).ToList();
-                await Application.Current.Dispatcher.InvokeAsync(() =>
+                for (var i = 0; i < files.Count; i += chunkSize)
                 {
-                    foreach (var item in chunk) _extractionFiles.Add(item);
-                    TotalFilesValue.Text = _extractionFiles.Count.ToString(CultureInfo.InvariantCulture);
-                }, System.Windows.Threading.DispatcherPriority.Background, _cts.Token);
+                    var chunk = files.Skip(i).Take(chunkSize).ToList();
+                    await Application.Current.Dispatcher.InvokeAsync(() =>
+                    {
+                        foreach (var item in chunk) _extractionFiles.Add(item);
+                        TotalFilesValue.Text = _extractionFiles.Count.ToString(CultureInfo.InvariantCulture);
+                    }, System.Windows.Threading.DispatcherPriority.Background, _cts.Token);
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                // Cancellation during chunked load is expected; partial results remain visible
             }
         }, _cts.Token);
     }
@@ -1459,8 +1480,14 @@ internal partial class MainWindow : IDisposable
                 if (!Directory.Exists(resolvedOutputDir)) Directory.CreateDirectory(resolvedOutputDir);
 
                 UpdateWriteSpeedDisplay(0);
+                if (resolved.PathToConvert is null)
+                {
+                    LogWarning($" {originalName}: resolved path is null; skipping.");
+                    return false;
+                }
+
                 var resolvedSuccess = await ConvertToChdAsync(
-                    chdmanPath, resolved.PathToConvert!, outputChd, cores, forceCd, resolved.ForceDvd || forceDvd, timeoutMinutes, token);
+                    chdmanPath, resolved.PathToConvert, outputChd, cores, forceCd, resolved.ForceDvd || forceDvd, timeoutMinutes, token);
 
                 return await HandleConversionResultAsync(resolvedSuccess, inputFile, originalName, ext, inputFolder, outputChd, deleteOriginal, token);
             }
@@ -3383,7 +3410,7 @@ internal partial class MainWindow : IDisposable
         return (work.WorkCuePath, work.WorkDir);
     }
 
-    private async Task<bool> ConvertToChdAsync(string chdmanPath, string inputFile, string outputFile, int cores, bool forceCd, bool forceDvd, int? timeoutMinutes, CancellationToken token)
+    private async Task<bool> ConvertToChdAsync(string chdmanPath, string inputFile, string outputFile, int cores, bool forceCd, bool forceDvd, int? timeoutMinutes, CancellationToken token, int recursionDepth = 0)
     {
         if (!File.Exists(chdmanPath))
         {
@@ -3463,7 +3490,7 @@ internal partial class MainWindow : IDisposable
                 asciiTempDir = work.WorkDir;
                 asciiInputFile = work.WorkCuePath;
                 inputFile = asciiInputFile;
-                args = args.Replace(originalInputFile, inputFile);
+                args = args.Replace($"\"{originalInputFile}\"", $"\"{inputFile}\"");
             }
             else if (await CueHasMp3TracksAsync(originalInputFile, token))
             {
@@ -3483,14 +3510,14 @@ internal partial class MainWindow : IDisposable
             File.Copy(inputFile, asciiInputFile);
             inputFile = asciiInputFile;
             outputFile = asciiOutputFile;
-            args = args.Replace(originalInputFile, inputFile).Replace(originalOutputFile, outputFile);
+            args = args.Replace($"\"{originalInputFile}\"", $"\"{inputFile}\"").Replace($"\"{originalOutputFile}\"", $"\"{outputFile}\"");
         }
         else if (asciiTempDir != null && pathNeedsAsciiOut)
         {
             // Work directory already prepared for the input; only the output name is non-ASCII.
             asciiOutputFile = Path.Combine(asciiTempDir, Guid.NewGuid().ToString("N") + FileExtensions.Chd);
             outputFile = asciiOutputFile;
-            args = args.Replace(originalOutputFile, outputFile);
+            args = args.Replace($"\"{originalOutputFile}\"", $"\"{outputFile}\"");
         }
 
         // Otherwise write to a staging file beside the destination and only move it into place once
@@ -3509,7 +3536,7 @@ internal partial class MainWindow : IDisposable
                     stagingDir,
                     Path.GetFileNameWithoutExtension(originalOutputFile) + "." + Guid.NewGuid().ToString("N")[..8] + StagingExtension);
                 outputFile = asciiOutputFile;
-                args = args.Replace(originalOutputFile, outputFile);
+                args = args.Replace($"\"{originalOutputFile}\"", $"\"{outputFile}\"");
             }
         }
 
@@ -3668,8 +3695,15 @@ internal partial class MainWindow : IDisposable
                 if (errorText.Contains("Unrecognized track type", StringComparison.OrdinalIgnoreCase) &&
                     string.Equals(command, "createcd", StringComparison.Ordinal) && !forceCd)
                 {
-                    LogMessage($" Retrying with createdvd (unrecognized track type) for {Path.GetFileName(originalInputFile)}...");
-                    return await ConvertToChdAsync(chdmanPath, originalInputFile, originalOutputFile, cores, false, true, timeoutMinutes, token);
+                    if (recursionDepth >= 1)
+                    {
+                        LogError($" Retry limit reached for {Path.GetFileName(originalInputFile)}; giving up.");
+                    }
+                    else
+                    {
+                        LogMessage($" Retrying with createdvd (unrecognized track type) for {Path.GetFileName(originalInputFile)}...");
+                        return await ConvertToChdAsync(chdmanPath, originalInputFile, originalOutputFile, cores, false, true, timeoutMinutes, token, recursionDepth + 1);
+                    }
                 }
 
                 if (File.Exists(outputFile))
@@ -4685,9 +4719,11 @@ internal partial class MainWindow : IDisposable
 
     private static void SafeFireAndForget(Task task)
     {
-        if (task.IsCompleted) return;
-
-        _ = task.ContinueWith(static t => Log.Debug(t.Exception?.Flatten(), "Fire-and-forget task failed"), TaskContinuationOptions.OnlyOnFaulted);
+        _ = task.ContinueWith(static t =>
+        {
+            if (t.Exception is not null)
+                Log.Debug(t.Exception.Flatten(), "Fire-and-forget task failed");
+        }, TaskContinuationOptions.OnlyOnFaulted);
     }
 
     private static async Task ReportBugAsync(string msg, Exception? ex = null)
@@ -4753,8 +4789,17 @@ internal partial class MainWindow : IDisposable
     {
         if (_hwndSource != null)
         {
-            var handle = new WindowInteropHelper(this).Handle;
-            UnregisterHotKey(handle, HotkeyId);
+            try
+            {
+                var handle = new WindowInteropHelper(this).Handle;
+                if (handle != IntPtr.Zero)
+                    UnregisterHotKey(handle, HotkeyId);
+            }
+            catch (InvalidOperationException)
+            {
+                // Window handle already destroyed; skip hotkey cleanup
+            }
+
             _hwndSource.RemoveHook(WndProc);
             _hwndSource = null;
         }
@@ -4764,12 +4809,10 @@ internal partial class MainWindow : IDisposable
             _cts.Cancel();
             _cts.Dispose();
             _cts = new CancellationTokenSource();
-            _cts.Cancel();
         }
 
         _writeBytesCounter?.Dispose();
         _readBytesCounter?.Dispose();
-        _archiveService.Dispose();
         _fileWatcher.Dispose();
         _operationTimer.Stop();
 

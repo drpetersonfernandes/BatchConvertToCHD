@@ -83,38 +83,68 @@ internal class ScreenshotService
                 return null;
 
             var windowDc = GetWindowDC(hWnd);
-            var compatibleDc = CreateCompatibleDC(windowDc);
-            var bitmap = CreateCompatibleBitmap(windowDc, width, height);
-            var oldBitmap = SelectObject(compatibleDc, bitmap);
+            if (windowDc == IntPtr.Zero)
+                return null;
 
             try
             {
-                BitBlt(compatibleDc, 0, 0, width, height, windowDc, 0, 0, SrcCopy);
+                var compatibleDc = CreateCompatibleDC(windowDc);
+                if (compatibleDc == IntPtr.Zero)
+                    return null;
 
-                var bitmapSource = Imaging.CreateBitmapSourceFromHBitmap(
-                    bitmap, IntPtr.Zero, Int32Rect.Empty, BitmapSizeOptions.FromEmptyOptions());
+                try
+                {
+                    var bitmap = CreateCompatibleBitmap(windowDc, width, height);
+                    if (bitmap == IntPtr.Zero)
+                        return null;
 
-                var screenshotDir = Path.Combine(
-                    Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                    AppConfig.ApplicationName,
-                    "screenshots");
-                Directory.CreateDirectory(screenshotDir);
+                    try
+                    {
+                        var oldBitmap = SelectObject(compatibleDc, bitmap);
 
-                var timestamp = DateTime.Now.ToString("yyyy-MM-dd_HH-mm-ss-fff", CultureInfo.InvariantCulture);
-                var filePath = Path.Combine(screenshotDir, $"screenshot_{timestamp}.png");
+                        try
+                        {
+                            BitBlt(compatibleDc, 0, 0, width, height, windowDc, 0, 0, SrcCopy);
 
-                using var fileStream = new FileStream(filePath, FileMode.Create);
-                var encoder = new PngBitmapEncoder();
-                encoder.Frames.Add(BitmapFrame.Create(bitmapSource));
-                encoder.Save(fileStream);
+                            var bitmapSource = Imaging.CreateBitmapSourceFromHBitmap(
+                                bitmap, IntPtr.Zero, Int32Rect.Empty, BitmapSizeOptions.FromEmptyOptions());
 
-                return filePath;
+                            var screenshotDir = Path.Combine(
+                                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                                AppConfig.ApplicationName,
+                                "screenshots");
+                            Directory.CreateDirectory(screenshotDir);
+
+                            var timestamp = DateTime.Now.ToString("yyyy-MM-dd_HH-mm-ss-fff", CultureInfo.InvariantCulture);
+                            var filePath = Path.Combine(screenshotDir, $"screenshot_{timestamp}.png");
+
+                            using var fileStream = new FileStream(filePath, FileMode.Create);
+                            var encoder = new PngBitmapEncoder();
+                            encoder.Frames.Add(BitmapFrame.Create(bitmapSource));
+                            encoder.Save(fileStream);
+
+                            return filePath;
+                        }
+                        finally
+                        {
+                            if (oldBitmap != IntPtr.Zero)
+                                SelectObject(compatibleDc, oldBitmap);
+                        }
+                    }
+                    finally
+                    {
+                        if (bitmap != IntPtr.Zero)
+                            DeleteObject(bitmap);
+                    }
+                }
+                finally
+                {
+                    if (compatibleDc != IntPtr.Zero)
+                        DeleteDC(compatibleDc);
+                }
             }
             finally
             {
-                SelectObject(compatibleDc, oldBitmap);
-                DeleteObject(bitmap);
-                DeleteDC(compatibleDc);
                 ReleaseDC(hWnd, windowDc);
             }
         }

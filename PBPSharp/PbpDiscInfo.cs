@@ -1,4 +1,5 @@
 using System.Buffers;
+using System.Buffers.Binary;
 using System.IO.Compression;
 using System.Text;
 using PBPSharp.Models;
@@ -142,8 +143,8 @@ public sealed class PbpDiscInfo
         {
             if (_stream.Read(indexBytes, 0, 32) != 32) break;
 
-            var offset = BitConverter.ToUInt32(indexBytes, 0);
-            var length = BitConverter.ToInt32(indexBytes, 4);
+            var offset = BinaryPrimitives.ReadUInt32LittleEndian(indexBytes.AsSpan(0, 4));
+            var length = BinaryPrimitives.ReadInt32LittleEndian(indexBytes.AsSpan(4, 4));
 
             thisOffset = (uint)_stream.Position;
 

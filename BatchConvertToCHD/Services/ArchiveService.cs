@@ -20,7 +20,7 @@ namespace BatchConvertToCHD.Services;
 /// 7z and RAR (via SharpCompress with 7za fallback).
 /// Implements <see cref="IDisposable"/> for deterministic cleanup.
 /// </summary>
-internal class ArchiveService : IDisposable
+internal class ArchiveService
 {
     private readonly string _sevenZipExePath;
     private readonly bool _isSevenZipAvailable;
@@ -625,12 +625,5 @@ internal class ArchiveService : IDisposable
         }
 
         return new FileInfo(archivePath).Length;
-    }
-
-    /// <summary>
-    /// Releases resources used by the <see cref="ArchiveService"/>.
-    /// </summary>
-    public void Dispose()
-    {
     }
 }
