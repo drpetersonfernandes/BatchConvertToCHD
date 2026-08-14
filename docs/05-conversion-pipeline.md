@@ -121,11 +121,12 @@ command = forceCd || hasCue || (!forceDvd && !isIso && !isImg && !isRaw) ? "crea
 ### Exit-code handling
 
 - Success = exit code 0 and no cancellation.
-- **createdvd fallback**: if the error output contains "Unrecognized track type" and the command was `createcd` without user-forced CD, the app recurses with `forceDvd=true` (`:2694–2699`).
+- **createdvd fallback**: if the error output contains "Unrecognized track type" and the command was `createcd` without user-forced CD, the app recurses with `forceDvd=true` (`:2694–2699`). A recursion depth guard limits this to one retry; exceeding it logs `Retry limit reached` instead of recursing further.
 - **Valid-output tolerance**: a non-zero exit that still produced a >0-byte output file is treated as success (`:2701–2716`).
 - **Sector-size hard check** (`:2761–2794`): for non-descriptor inputs, if the file size is not divisible by any of 2352/2048/2336/2324, the conversion fails with "file size ... is not divisible by any standard sector size ... The file may be corrupt or truncated."
 - **Disk-space detection** (`IsDiskSpaceError`, `:3281`): keywords "not enough space", "not enough disk space", "disk full", "no space left", "insufficient disk space".
 - **Error line selection** (`SelectChdmanErrorLine`, `:2860`): scans the stderr buffer from the **last** line upward, skipping progress lines (`% complete`, `Compressing,`, `Converting,`, `Output bytes`, `Compression ratio`, `ratio=`) and the `Fatal error occurred: N` exit summary, and returns the last real error line. This fixed the class of bugs where the first line of stderr was a progress line ("Compressing, 0.0% complete... (ratio=100.0%)"). When the only output is a fatal error summary, a descriptive message is returned instead of the cryptic exit code.
+- **Path substitution via quoted matching** (`:3474,3494,3501,3520`): argument paths are replaced using `$"\"{originalPath}\""` quoted-pattern matching instead of bare `string.Replace`, preventing a path that is a substring of another argument from causing corruption.
 - **"couldn't find bin file" diagnostics**: when the selected error line contains that phrase, a capped, sorted directory listing of the input folder is logged (`GetDirectoryDiagnostics`, `:2890`).
 
 ## 5.4 Cue Normalization & Work Directories

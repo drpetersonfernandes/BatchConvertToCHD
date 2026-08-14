@@ -66,6 +66,7 @@ A file's extension is the least reliable thing about it. Every input is identifi
 *   **File System Monitoring**: Automatically monitors the input folder for file changes (deletions, renames, creations) during batch processing and provides diagnostic context when a file goes missing mid-operation.
 *   **Corrupt Image Detection**: Warns early when a disc image's size does not match any standard sector layout, so you can spot truncated or corrupt files before the conversion runs.
 *   **Resilient File Deletion**: Source-file deletion retries with backoff for up to ~45 seconds (handles transient antivirus/file-explorer locks) and automatically clears the read-only attribute when needed.
+*   **Resilient File Copy**: CloneCD `.img` → `.bin` copies retry with backoff (4 attempts), preventing transient locking failures during conversion.
 *   **Clear Error Messages**: Precise, actionable messages for data-side failures — missing volumes in multi-part RAR archives, disconnected network drives, and locked files — instead of generic errors.
 
 ### 📊 Performance & UI
@@ -76,7 +77,7 @@ A file's extension is the least reliable thing about it. Every input is identifi
 
 ### 🔄 Updates & Stability
 *   **Automatic Update Checks**: Notifies you immediately if a newer version is available on GitHub at startup.
-*   **Automated Bug Reporting**: Built-in error reporting system helps improve the application by automatically sending crash reports (no personal data collected). Known OS-level issues (e.g. WPF tooltip accessibility-bridge failures) and user-data conditions (corrupt files, chdman's own failures, stats API rate limits) are filtered out automatically, while genuine application defects — including CHDSharp/PBPSharp extraction failures (with debug details) — still reach the developer.
+*   **Automated Bug Reporting**: Built-in error reporting system helps improve the application by automatically sending crash reports (no personal data collected). Known OS-level issues (e.g. WPF tooltip accessibility-bridge failures) and user-data conditions (corrupt files, chdman's own failures, stats API rate limits) are filtered out automatically, while genuine application defects — including CHDSharp/PBPSharp extraction failures (with debug details) — still reach the developer. A safety timer prevents the report throttle from hanging indefinitely on network issues.
 
 ---
 

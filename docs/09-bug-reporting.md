@@ -27,7 +27,7 @@ Serilog Logger                             (App.xaml.cs:56–78)
 
 Additionally, **unhandled exceptions** are reported directly (not via the sink):
 
-- `AppDomain.CurrentDomain.UnhandledException` → `Log.Fatal` + synchronous `ReportException` (the process is about to terminate, so the report must complete inline — `App.xaml.cs:236–250`).
+- `AppDomain.CurrentDomain.UnhandledException` → `Log.Fatal` + synchronous `ReportException` (the process is about to terminate, so the report must complete inline — `App.xaml.cs:236–250`). For dispatcher and task-scheduler exceptions the report is fire-and-forget to avoid blocking the UI thread.
 - `DispatcherUnhandledException` → `Log.Error` + `ReportException`; a small allowlist of known-benign exceptions is suppressed (`App.xaml.cs:207–233`): WPF rendering errors (`GlyphTypeface` URI errors, PresentationCore OOM in `DUCE.Channel`/`HwndTarget`) and the WPF-internal `FileNotFoundException` from `PopupSecurityHelper.ForceMsaaToUiaBridge` (ToolTip/Popup opening when the OS accessibility bridge cannot be loaded — the tooltip simply never appears). These are suppressed at the handler level and never reach the log sink.
 - `TaskScheduler.UnobservedTaskException` → `Log.Error` + `ReportException`, then `SetObserved()`.
 - **Stats-rate-limit handling**: `StatsService.RecordUsageAsync` returns early on HTTP 429 (Too Many Requests) and logs at Debug level, so these transient conditions never reach the warning-level sink.
@@ -49,7 +49,7 @@ Environment Details includes: date/time, app name + version, OS version, archite
 
 ## 9.3 Flood Control & Failure Semantics
 
-- Only **one** bug report is in flight at a time (`BugReportApiSink` interlocked flag); bursts of warnings are coalesced.
+- Only **one** bug report is in flight at a time (`BugReportApiSink` interlocked flag); bursts of warnings are coalesced. A 12-second safety timer clears the flag even if the HTTP call hangs, preventing indefinite throttling.
 - Sending is fire-and-forget from the sink; failures are logged at `Debug` and never surface to the user.
 - Cancellation tokens are respected; `OperationCanceledException` is rethrown only when the caller's token is cancelled.
 

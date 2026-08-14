@@ -116,3 +116,6 @@ Generated cue sheets reference the disc image where it already lies rather than 
 - Added content-based format detection, so inputs are routed by their leading bytes rather than their extension.
 - Added Alcohol 120% (`.mds`/`.mdf`), split volume sets, in-process ISZ decompression and in-process ECM decoding, removing the last external-tool dependency.
 - Made conversion output non-destructive by staging to `.chdtmp` and moving into place only on success.
+- Added raw-audio-track detection in cue files, auto-applying `-us 2352` to chdman arguments.
+- Added retry logic to CloneCD bin-file copies and overflow-safe arithmetic in PBP TOC parsing.
+- Normalised endianness across CSO/PBP parsers (replaced endianness-dependent `BitConverter` with explicit `BinaryPrimitives.ReadUInt32LittleEndian`).
