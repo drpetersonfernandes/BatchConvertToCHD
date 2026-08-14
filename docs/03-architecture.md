@@ -33,13 +33,31 @@ CSharp_BatchConvertToCHD.sln
 │       ├── CueFileLineTransform.cs / CueFileReference.cs / CueNormalizationResult.cs
 │       ├── CueNormalizer.cs               → encoding detection + canonicalization
 │       ├── CueWorkDirectory.cs(.Result)   → self-contained ASCII cue work dirs
+│       ├── DiscImageKind.cs               → what a file turned out to be
+│       ├── DiscImageSignature.cs          → magic-byte content identification
 │       ├── FileExtensions.cs              → all extension constants and sets
 │       ├── GameFileParser.cs              → cue/gdi/toc referenced-file resolution
 │       ├── IMp3Decoder.cs / Mp3ToWavDecoder.cs
+│       ├── InputFileFilter.cs             → drops raw images a descriptor already covers
 │       ├── IsoSectorValidator.cs          → sector-size alignment checks
 │       ├── PathUtils.cs                   → temp dirs, path sanitizing, relative paths
-│       └── RetryingFileOperations.cs      → retry-with-backoff delete/move
-├── BatchConvertToCHD.Tests/               (xUnit, ~570 tests)
+│       ├── RawCdImageDetector.cs          → raw 2352 sector sniffing + cue staging
+│       ├── RetryingFileOperations.cs      → retry-with-backoff delete/move
+│       ├── SplitImageJoiner.cs            → rejoins .001/.002 and .i00/.i01 sets
+│       ├── TrackBinCueBuilder.cs          → multi-FILE cue for "(Track N)" bin sets
+│       ├── Ecm/                           → in-process ECM decoding
+│       │   ├── CdSectorEccEdc.cs          → regenerates sector EDC + Reed-Solomon parity
+│       │   ├── EcmImageDecoder.cs         → ECM block-stream decoder
+│       │   └── EcmDecodeResult.cs
+│       ├── Isz/                           → in-process ISZ decompression
+│       │   ├── IszHeader.cs               → the packed 48-byte header
+│       │   ├── IszDecoder.cs              → chunk table + zlib/bzip2/stored/zero chunks
+│       │   ├── IszSegment.cs / IszChunkType.cs / IszDecodeResult.cs
+│       └── Mds/                           → Alcohol 120% support
+│           ├── MdsParser.cs               → .mds session/track table parsing
+│           ├── MdsInputPreparer.cs        → cue / subchannel strip / DVD decision
+│           └── MdsDisc.cs / MdsTrack.cs
+├── BatchConvertToCHD.Tests/               (xUnit, 751 tests; Fixtures/ holds ecm-sample.ecm)
 ├── CCDSharp/                              (CloneCD .ccd/.img/.sub parsing; net10.0;net8.0)
 ├── CSOSharp/                              (CSO/CISO decompression; net10.0;net8.0)
 ├── PBPSharp/                              (PBP/SFO parsing; net10.0;net8.0)
@@ -62,6 +80,8 @@ CSharp_BatchConvertToCHD.sln
 - The app references `CCDSharp`, `CSOSharp`, `PBPSharp` as project references (`BatchConvertToCHD.csproj:58–60`).
 - All three libraries multi-target `net10.0;net8.0`, are packable, and expose internals to `BatchConvertToCHD.Tests` via `InternalsVisibleTo`.
 - `BatchConvertToCHD.Tests` references the app (internals visible) plus `CSOSharp` and `PBPSharp` — but **not** `CCDSharp` (there are no CCDSharp unit tests today; see [Testing](11-testing.md)).
+
+> **Why ISZ, ECM and Alcohol support are not libraries.** CCDSharp, CSOSharp and PBPSharp are separate packable projects, but `Utilities/Isz`, `Utilities/Ecm` and `Utilities/Mds` live inside the app. The deciding factor is testability: the test project references the app and sees its internals, but does not reference `CCDSharp`, so a new library project would need solution and csproj wiring before a single test could run against it. Nothing about these three needs to be redistributable on its own.
 
 ---
 
@@ -119,21 +139,29 @@ User clicks Start Conversion
             ├─ validate chdman access + compatibility
             ├─ optional sort by size (smaller first)
             ├─ CheckDiskSpace (free space warnings)
-            └─ per file: ProcessSingleFileForConversionAsync  (:1395)
+            ├─ InputFileFilter + WarnAboutOutputCollisions (batch preflight)
+            └─ per file: ProcessSingleFileForConversionAsync
                  ├─ missing file? → FileWatcherService diagnostics
-                 ├─ route by extension:
-                 │    .cso   → ProcessCsoFileForConversionAsync   (:1510)
-                 │    archive→ ProcessArchiveFileForConversionAsync (:1539)
-                 │    .pbp   → ProcessPbpFileForConversionAsync   (:1642)
-                 │    .ccd   → ProcessCcdFileForConversionAsync   (:1702)
-                 │    other  → direct conversion
-                 ├─ ValidateDependentFilesAsync (cue/gdi/toc)     (:1779)
-                 ├─ TryDirectConversionAsync                      (:1844)
-                 │    └─ ConvertToChdAsync                        (:2456)
-                 ├─ fallback: TryRetryConversionViaTempCopyAsync  (:1863)
-                 └─ HandleConversionResultAsync                   (:1980)
+                 ├─ TryResolveByContentAsync  ← content before extension
+                 │    ├─ split volume set → SplitImageJoiner → classify
+                 │    ├─ Isz  → ResolveIszAsync   (Utilities/Isz)  → classify
+                 │    ├─ Ecm  → ResolveEcmAsync   (Utilities/Ecm)  → classify
+                 │    ├─ Chd  → skip ("already a CHD")
+                 │    └─ container extension, plain image inside → generated cue
+                 ├─ else route by extension:
+                 │    .cso   → ProcessCsoFileForConversionAsync
+                 │    archive→ ProcessArchiveFileForConversionAsync
+                 │    .pbp   → ProcessPbpFileForConversionAsync
+                 │    .ccd   → ProcessCcdFileForConversionAsync
+                 │    .mds   → ProcessMdsFileForConversionAsync   (Utilities/Mds)
+                 │    other  → TryStageCueForRawImageAsync → direct conversion
+                 ├─ ValidateDependentFilesAsync (cue/gdi/toc)
+                 ├─ TryDirectConversionAsync
+                 │    └─ ConvertToChdAsync  → writes <name>.<hex>.chdtmp, moves on success
+                 ├─ fallback: TryRetryConversionViaTempCopyAsync
+                 └─ HandleConversionResultAsync
                       ├─ success → optionally delete originals + prune empty dirs
-                      └─ failure → delete partial CHD, keep source
+                      └─ failure → leave the destination alone, keep source
 ```
 
 ## 3.4 Runtime Data Flow — Extraction & Verification

@@ -165,19 +165,32 @@ internal class ArchiveService : IDisposable
 
                 if (binFiles.Count > 0)
                 {
-                    var largestBin = binFiles.OrderByDescending(f => new FileInfo(f).Length).First();
-                    if (binFiles.Count > 1)
+                    // A "(Track N)" set describes a whole disc across several files. Building a
+                    // multi-track cue keeps the CDDA audio, which converting one bin cannot.
+                    var trackSet = TrackBinCueBuilder.TryGetTrackSet(binFiles);
+                    if (trackSet is not null)
                     {
-                        onLog($"WARNING: Archive contains {binFiles.Count} .bin files but no descriptor (.cue/.iso/.img). Converting the largest one ({Path.GetFileName(largestBin)}) as a single data track; multi-track sets need their .cue file to convert fully.");
+                        var trackCuePath = await TrackBinCueBuilder.WriteCueAsync(trackSet, BinCueGenerator.Mode2, token).ConfigureAwait(false);
+                        onLog($"No descriptor found; generated a {trackSet.Count}-track cue for {Path.GetFileName(trackSet[0].Path)} (data track MODE2/2352, remaining tracks AUDIO).");
+                        onLog("         Track pregaps are not recorded in the file names, so each track is taken to start at the beginning of its own file; audio track starts may be up to two seconds out.");
+                        foundFiles = [trackCuePath];
                     }
+                    else
+                    {
+                        var largestBin = binFiles.OrderByDescending(f => new FileInfo(f).Length).First();
+                        if (binFiles.Count > 1)
+                        {
+                            onLog($"WARNING: Archive contains {binFiles.Count} .bin files but no descriptor (.cue/.iso/.img) and no recognisable track numbering. Converting the largest one ({Path.GetFileName(largestBin)}) as a single data track; any other tracks will be missing.");
+                        }
 
-                    var cuePath = BinCueGenerator.GetAutoCuePath(largestBin);
-                    await File.WriteAllTextAsync(
-                        cuePath,
-                        BinCueGenerator.BuildCueContent(Path.GetFileName(largestBin), BinCueGenerator.Mode2),
-                        token).ConfigureAwait(false);
-                    onLog($"No descriptor (.cue/.iso/.img) found; generated cue for {Path.GetFileName(largestBin)} (MODE2/2352).");
-                    foundFiles = [cuePath];
+                        var cuePath = BinCueGenerator.GetAutoCuePath(largestBin);
+                        await File.WriteAllTextAsync(
+                            cuePath,
+                            BinCueGenerator.BuildCueContent(Path.GetFileName(largestBin), BinCueGenerator.Mode2),
+                            token).ConfigureAwait(false);
+                        onLog($"No descriptor (.cue/.iso/.img) found; generated cue for {Path.GetFileName(largestBin)} (MODE2/2352).");
+                        foundFiles = [cuePath];
+                    }
                 }
             }
 

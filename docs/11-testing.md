@@ -1,6 +1,8 @@
 # 11. Testing
 
-The solution contains a single test project, `BatchConvertToCHD.Tests` (xUnit, `net10.0-windows`), with **~580 passing tests** across 32 test files (plus the shared `FakeHttpMessageHandler` helper).
+The solution contains a single test project, `BatchConvertToCHD.Tests` (xUnit, `net10.0-windows`), with **751 tests** across 43 test classes, plus the shared `FakeHttpMessageHandler` and `IszImageBuilder` helpers.
+
+> **Expected result on a clean machine: 734 passed, 17 failed.** The 17 failures are a fixture problem, not a regression — see [§11.5](#115-the-17-expected-failures). A change that leaves exactly those 17 failing has broken nothing.
 
 ## 11.1 Running the Tests
 
@@ -18,7 +20,9 @@ Requirements: the tests are run on Windows (the app project is `net10.0-windows`
 - Filesystem-dependent tests create a GUID temp directory per test class (`Path.GetTempPath() + $"{ClassName}_{Guid:N}"`) and clean it up in `Dispose`.
 - HTTP-dependent tests inject an `HttpClient` backed by `FakeHttpMessageHandler` (the only shared helper): a `Func<HttpRequestMessage, HttpResponseMessage>` or a convenience `(HttpStatusCode, string content, string contentType)` constructor, plus a static `WithAsyncHandler` helper.
 - Internals are tested because `BatchConvertToCHD.csproj` grants `InternalsVisibleTo("BatchConvertToCHD.Tests")`.
-- **Integration tests** are tagged `[Trait("Category", "Integration")]` and read real sample files from fixed absolute directories (`D:\Emulators\...`). They **early-return when the samples are absent**, so on machines without the sample folders they are effectively skipped (reported as passed).
+- **Integration tests** are tagged `[Trait("Category", "Integration")]` and read real sample files from fixed absolute directories (`D:\Emulators\...`). Most **early-return when the samples are absent**, so on machines without the sample folders they are effectively skipped (reported as passed). `PbpFileIntegrationTests` is the exception — see [§11.5](#115-the-17-expected-failures).
+- **Committed fixtures** live in `BatchConvertToCHD.Tests/Fixtures/` and are copied to the output directory by the csproj. There is one today, `ecm-sample.ecm`; it exists so the ECM decoder can be verified against the reference implementation's own output without that tool being installed.
+- **Format fixtures are built in code** rather than committed where the format allows it: `IszImageBuilder` writes spec-conformant ISZ files, and `MdsTests`/`RawCdImageDetectorTests`/`SplitImageJoinerTests` synthesise their descriptors and sector data. This keeps the repository free of disc-sized binaries.
 
 ## 11.3 Coverage by File
 
@@ -42,11 +46,29 @@ Requirements: the tests are run on Windows (the app project is `net10.0-windows`
 | `GitHubReleaseTests.cs` | Model defaults, JSON (de)serialization |
 | `IsoSectorValidatorTests.cs` | Sector-size alignment warnings; descriptors/empty/missing not validated |
 | `MainWindowHelperTests.cs` | `StripUtf8BomIfPresentAsync`, `SelectChdmanErrorLine` (skips progress lines, picks last real error) |
-| `PathUtilsTests.cs` | `SanitizeFileName`, `GetSafeTempFileName`, path validation, relative paths, best-temp-directory selection |
+| `PathUtilsTests.cs` | `SanitizeFileName`, `GetSafeTempFileName`, path validation, relative paths, best-temp-directory selection, and `CreateTempDirectoryOnSameVolume` — including the property that actually matters: a cue written in the returned directory can reach the image by a **non-rooted** relative path, checked for every ready fixed volume |
 | `PbpExtractionResultTests.cs` | Result-model defaults/setters |
 | `RetryingFileOperationsTests.cs` | `TryDeleteAsync`/`TryMoveAsync` with real file locks (`FileShare.None`), read-only attribute clearing, retry-then-give-up, success-after-lock-release, missing-source/missing-destination semantics |
 | `StatsServiceTests.cs` | POST method/URL/Bearer header/body, no-throw on 429/401/400/500/network errors |
 | `UpdateServiceTests.cs` | Version parsing/normalization theories, new/older/minor/major comparisons, draft/prerelease skip, rate-limit and 5xx handling (no bug report), bug-report paths, invalid tags |
+
+### Format detection and recovery tests
+
+| File | Focus |
+|------|-------|
+| `DiscImageSignatureTests.cs` | Magic-byte identification of every `DiscImageKind`, `IsArchive` grouping, `Describe` phrasing, unknown/short/missing files |
+| `RawCdImageDetectorTests.cs` | Sync-mark and mode-byte sniffing (MODE1/MODE2), rejection of cooked 2048-byte images and non-sector-aligned files, candidate extensions, generated cue content, and the cross-volume refusal that returns `null` |
+| `InputFileFilterTests.cs` | A raw image is dropped when a sibling descriptor covers it (by base name and by cue text), kept when nothing covers it, and matching is directory-scoped and case-insensitive |
+| `SplitImageJoinerTests.cs` | `.001`/`.002` and `.i00`/`.i01` set discovery and ordering, gaps, single-file non-sets, byte totals, and join output equality |
+| `TrackBinCueBuilderTests.cs` | `(Track N)` set recognition and ordering, multi-FILE cue content, data track mode vs. AUDIO tracks, non-track-set rejection |
+| `MdsTests.cs` | `.mds` header/session/track parsing, mode-to-cue-track mapping, sector-size classification (2352 / 2448 / 2368 / 2048), implausible session counts, `.mdf` lookup, subchannel stripping, MSF formatting, and the three `MdsInputPreparer` shapes |
+| `IszHeaderTests.cs` | **Every header field read at its documented offset** (the test that catches an offset mistake), 64-bit image-size arithmetic for dual-layer sizes, signature and short-input rejection, and each refusal in `GetUnusableReason` including all four encryption modes |
+| `IszDecoderTests.cs` | Chunk-entry bit-packing for 2/3/4-byte pointers, segment naming, round trips for zlib / bzip2 / stored / all-zero and mixed chunk types, trailing partial chunks, two-segment images with a chunk straddling the boundary, and the refusals: not-an-ISZ, encrypted, truncated file, truncated chunk table, corrupt compressed data, missing segment, and a segment from a different image |
+| `CdSectorEccEdcTests.cs` | Sync/mode layout, EDC accumulation equivalence whole vs. in pieces, and the parity distinction that matters: **Mode 1 parity covers the address, Mode 2 Form 1 parity does not** and restores it afterwards; Form 2 gets an EDC and no parity |
+| `EcmImageDecoderTests.cs` | Decoding the committed reference fixture to an expected SHA1, a guard asserting the fixture still contains all four block kinds, repeatability, output naming, and the refusals: no signature, truncated, wrong trailing checksum, corrupt data, missing file |
+| `CueNormalizerFallbackTests.cs` | `FILE`-line fallbacks: bare name beside the cue, extension swap, single-FILE match by elimination — and that audio tracks and multi-FILE cues are deliberately **not** guessed |
+
+> **How the ECM decoder is verified.** `EcmImageDecoderTests.BuildReferenceImage()` rebuilds, in code, the 12-sector image (4 Mode 1, 4 Mode 2 Form 1, 4 Mode 2 Form 2) that `Fixtures/ecm-sample.ecm` was encoded from by Neill Corlett's own encoder. Decoding the fixture and comparing proves both the block parsing and the regenerated EDC/parity match the reference implementation. The fixture was produced in a run that also confirmed the reverse direction: the real encoder reported stripping the parity from all twelve sectors — which it only does for sectors whose parity it agrees with — and the real decoder produced the identical SHA1. Regenerating the fixture requires that tool and is documented in the repository's working notes; the guard test exists so a regeneration from a simpler image cannot quietly stop exercising the Mode 2 branches.
 
 ### Library tests (CSOSharp / PBPSharp)
 
@@ -70,4 +92,28 @@ Requirements: the tests are run on Windows (the app project is `net10.0-windows`
 2. For filesystem tests, mirror the GUID-temp-dir + `IDisposable` pattern.
 3. For HTTP tests, use `FakeHttpMessageHandler` and pass the `HttpClient` to the internal constructor overloads (`StatsService`, `BugReportService`, `UpdateService`, `AppHttpClient`).
 4. For chdman-dependent tests, early-return when `chdman.exe` is absent from `AppContext.BaseDirectory`.
-5. Run the full suite before pushing; a green run is expected to stay at 0 failures.
+5. Prefer building binary fixtures in code (see `IszImageBuilder`) over committing them. Commit one only when the format cannot be generated trustworthily in-repo, as with `ecm-sample.ecm`.
+6. When a fixture asserts agreement with an outside implementation, add a **guard test** that the fixture still covers the cases it is meant to. A fixture can be regenerated more simply and silently stop testing anything.
+7. Run the full suite before pushing. A good run is **734 passed / 17 failed**, with the failures being exactly the ones in §11.5.
+
+### Analyzer constraints worth knowing
+
+The test project runs `Meziantou.Analyzer` too, and a few rules bite:
+
+- One top-level type per file (nested types are fine).
+- An `internal` type cannot appear in a public xUnit `[Theory]` signature (CS0051) — use a `[Fact]`.
+- `StringBuilder.AppendLine($"...")` trips MA0011; pass an `IFormatProvider` or build the string first.
+- `Assert.SkipUnless` is xUnit v3; this project is on 2.9.3, so conditional tests early-return instead.
+
+---
+
+## 11.5 The 17 Expected Failures
+
+On a machine without the integration sample folders, these 17 fail rather than skip. They are pre-existing and unrelated to the conversion pipeline:
+
+| Count | Tests | Why |
+|-------|-------|-----|
+| 15 | `PbpFileIntegrationTests.*` | They need a real `.pbp` sample that is not in the repository. Unlike the CSO integration tests, they assert on the discovered-sample collection before checking whether it is empty, so an absent sample surfaces as `Assert.NotEmpty() Failure: Collection was empty` instead of an early return. |
+| 2 | `CueWorkDirectoryTests.PrepareAsyncKeepsWaveAndAiffTracksAsIs`, `CueWorkDirectoryTests.PrepareAsyncZeroPaddingMismatchCreatesWorkDirWithResolvedName` | Stale expectations. Both expect copied track files (`track01.bin`, `track02.wav`, …) in the work directory, but the BOM-only fast path added later references bins **in place** and returns only `game.cue`. The behaviour is correct; the assertions predate it. |
+
+Both groups are worth fixing — the PBP ones by adopting the CSO tests' early-return pattern, the CueWorkDirectory ones by updating the expectations to the in-place fast path — but neither indicates a defect in the application.

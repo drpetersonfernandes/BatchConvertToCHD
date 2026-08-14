@@ -10,8 +10,13 @@ namespace BatchConvertToCHD.Utilities;
 /// </summary>
 internal static class IsoSectorValidator
 {
-    /// <summary>Standard CD/DVD sector sizes used to validate disc image alignment.</summary>
-    internal static readonly long[] StandardSectorSizes = [2352, 2048, 2336, 2324];
+    /// <summary>
+    /// Standard CD/DVD sector sizes used to validate disc image alignment.
+    /// 2448 and 2368 are raw CD sectors carrying subchannel data (2352 + 96, and 2352 + 16), which
+    /// Alcohol and CloneCD rips routinely use; without them such images are wrongly reported as
+    /// possibly corrupt.
+    /// </summary>
+    internal static readonly long[] StandardSectorSizes = [2352, 2048, 2336, 2324, 2448, 2368];
 
     /// <summary>
     /// Returns a user-facing warning when <paramref name="imagePath"/> has a size that is not
@@ -40,7 +45,7 @@ internal static class IsoSectorValidator
 
         if (fileSize > 0 && StandardSectorSizes.All(sectorSize => fileSize % sectorSize != 0))
         {
-            return $"file size ({fileSize:N0} bytes) is not divisible by any standard sector size (2048/2324/2336/2352). The file may be corrupt or truncated.";
+            return $"file size ({fileSize:N0} bytes) is not divisible by any standard sector size (2048/2324/2336/2352/2368/2448). The file may be corrupt or truncated.";
         }
 
         return null;

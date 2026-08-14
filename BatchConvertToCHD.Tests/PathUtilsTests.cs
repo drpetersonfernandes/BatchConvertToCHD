@@ -4,6 +4,9 @@ namespace BatchConvertToCHD.Tests;
 
 public class PathUtilsTests
 {
+    /// <summary>Scratch space for the tests that need real directories on disk.</summary>
+    private static readonly string _reserveTempDir = Path.Combine(Path.GetTempPath(), $"PathUtilsTests_{Guid.NewGuid():N}");
+
     [Theory]
     [InlineData("game.iso", "game.iso")]
     [InlineData("file:name.txt", "file_name.txt")]
@@ -247,6 +250,221 @@ public class PathUtilsTests
     {
         var paths = PathUtils.GetPossibleTempBasePaths().ToList();
         Assert.Equal(paths.Count, paths.Distinct(StringComparer.OrdinalIgnoreCase).Count());
+    }
+
+    #endregion
+
+    #region CreateTempDirectoryOnSameVolume
+
+    [Fact]
+    public void SameVolumeTempDirectoryIsCreatedOnTheReferenceVolume()
+    {
+        var reference = Path.Combine(Path.GetTempPath(), $"reference_{Guid.NewGuid():N}.iso");
+        File.WriteAllBytes(reference, new byte[16]);
+
+        string? created = null;
+        try
+        {
+            created = PathUtils.CreateTempDirectoryOnSameVolume(reference, "SameVolume_");
+
+            Assert.NotNull(created);
+            Assert.True(Directory.Exists(created));
+            Assert.Equal(
+                Path.GetPathRoot(Path.GetFullPath(reference)),
+                Path.GetPathRoot(Path.GetFullPath(created)),
+                StringComparer.OrdinalIgnoreCase);
+        }
+        finally
+        {
+            Cleanup(created, reference);
+        }
+    }
+
+    [Fact]
+    public void ACueInTheSameVolumeDirectoryCanReferenceTheImageRelatively()
+    {
+        // This is the property the whole helper exists for: chdman joins a cue's FILE entry to the
+        // cue's own directory, so the path from the directory to the image must not come back rooted.
+        var reference = Path.Combine(Path.GetTempPath(), $"reference_{Guid.NewGuid():N}.iso");
+        File.WriteAllBytes(reference, new byte[16]);
+
+        string? created = null;
+        try
+        {
+            created = PathUtils.CreateTempDirectoryOnSameVolume(reference, "SameVolume_");
+            Assert.NotNull(created);
+
+            var relative = Path.GetRelativePath(created, reference);
+            Assert.False(Path.IsPathRooted(relative), $"'{relative}' is rooted, so a generated cue could not reach the image");
+        }
+        finally
+        {
+            Cleanup(created, reference);
+        }
+    }
+
+    [Fact]
+    public void EveryReadyFixedVolumeGetsADirectoryOnItself()
+    {
+        // The roomiest-drive choice is wrong here: an image on a nearly full drive still needs its
+        // cue on that drive. Each fixed volume is checked, since that is where source images live.
+        foreach (var drive in DriveInfo.GetDrives().Where(static d => d is { IsReady: true, DriveType: DriveType.Fixed }))
+        {
+            var root = drive.RootDirectory.FullName;
+            var reference = Path.Combine(root, $"image_{Guid.NewGuid():N}.iso");
+
+            var created = PathUtils.CreateTempDirectoryOnSameVolume(reference, "SameVolume_");
+            if (created is null)
+            {
+                // A volume that refuses a directory is reported by returning null, which the caller
+                // handles; there is nothing to assert about it beyond that.
+                continue;
+            }
+
+            try
+            {
+                Assert.Equal(
+                    Path.GetPathRoot(root),
+                    Path.GetPathRoot(Path.GetFullPath(created)),
+                    StringComparer.OrdinalIgnoreCase);
+            }
+            finally
+            {
+                Cleanup(created, null);
+            }
+        }
+    }
+
+    [Fact]
+    public void EachCallGetsItsOwnDirectory()
+    {
+        var reference = Path.Combine(Path.GetTempPath(), $"reference_{Guid.NewGuid():N}.iso");
+
+        var first = PathUtils.CreateTempDirectoryOnSameVolume(reference, "SameVolume_");
+        var second = PathUtils.CreateTempDirectoryOnSameVolume(reference, "SameVolume_");
+
+        try
+        {
+            Assert.NotNull(first);
+            Assert.NotNull(second);
+            Assert.NotEqual(first, second, StringComparer.OrdinalIgnoreCase);
+        }
+        finally
+        {
+            Cleanup(first, null);
+            Cleanup(second, null);
+        }
+    }
+
+    [Fact]
+    public void AFreeSubdirectoryNameIsTheDiscNameWhenNothingOccupiesIt()
+    {
+        var parent = Path.Combine(_reserveTempDir, Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(parent);
+
+        var reserved = PathUtils.ReserveFreeSubdirectory(parent, "Breath of Fire IV");
+
+        Assert.Equal(Path.Combine(parent, "Breath of Fire IV"), reserved);
+        // Reserving does not create it; the caller decides whether it is needed.
+        Assert.False(Directory.Exists(reserved));
+    }
+
+    [Fact]
+    public void AFreeSubdirectoryNameStepsAsideForAnExistingDirectory()
+    {
+        var parent = Path.Combine(_reserveTempDir, Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(Path.Combine(parent, "Game"));
+        Directory.CreateDirectory(Path.Combine(parent, "Game (2)"));
+
+        var reserved = PathUtils.ReserveFreeSubdirectory(parent, "Game");
+
+        Assert.Equal(Path.Combine(parent, "Game (3)"), reserved);
+    }
+
+    [Fact]
+    public void AFreeSubdirectoryNameStepsAsideForAnExistingFileOfThatName()
+    {
+        // A file called "Game" with no extension would block the directory just as a folder would.
+        var parent = Path.Combine(_reserveTempDir, Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(parent);
+        File.WriteAllBytes(Path.Combine(parent, "Game"), new byte[4]);
+
+        var reserved = PathUtils.ReserveFreeSubdirectory(parent, "Game");
+
+        Assert.Equal(Path.Combine(parent, "Game (2)"), reserved);
+    }
+
+    [Fact]
+    public void AFreeSubdirectoryNameIsSanitised()
+    {
+        var parent = Path.Combine(_reserveTempDir, Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(parent);
+
+        var reserved = PathUtils.ReserveFreeSubdirectory(parent, "Game: Special?Edition");
+
+        Assert.Equal(Path.Combine(parent, "Game_ Special_Edition"), reserved);
+        Assert.DoesNotContain(':', Path.GetFileName(reserved));
+        Assert.DoesNotContain('?', Path.GetFileName(reserved));
+    }
+
+    [Theory]
+    // Same folder, including the forms that differ only as text.
+    [InlineData(@"D:\Games", @"D:\Games", true)]
+    [InlineData(@"D:\Games", @"D:\Games\", true)]
+    [InlineData(@"D:\Games\", @"D:\Games", true)]
+    [InlineData(@"D:\Games", @"d:\games", true)]
+    [InlineData(@"D:\Games", @"D:\Games\..\Games", true)]
+    // Nested, which the old equality check let through and which carries the same exposure.
+    [InlineData(@"D:\Games", @"D:\Games\CHD", true)]
+    [InlineData(@"D:\Games", @"D:\Games\CHD\Sub", true)]
+    // Genuinely separate, including the prefix trap.
+    [InlineData(@"D:\Games", @"D:\Games2", false)]
+    [InlineData(@"D:\Games", @"D:\Other", false)]
+    [InlineData(@"D:\Games\CHD", @"D:\Games", false)]
+    [InlineData(@"D:\Games", @"C:\Games", false)]
+    public void SameOrNestedDirectoriesAreDetected(string root, string candidate, bool expected)
+    {
+        Assert.Equal(expected, PathUtils.IsSameOrInsideDirectory(root, candidate));
+    }
+
+    [Fact]
+    public void UnusableDirectoryComparisonsAreFalseRatherThanThrowing()
+    {
+        // The caller only uses this to decide whether to log a note, so it must never throw.
+        Assert.False(PathUtils.IsSameOrInsideDirectory(null, @"D:\Games"));
+        Assert.False(PathUtils.IsSameOrInsideDirectory(@"D:\Games", null));
+        Assert.False(PathUtils.IsSameOrInsideDirectory(string.Empty, string.Empty));
+        Assert.False(PathUtils.IsSameOrInsideDirectory("   ", @"D:\Games"));
+        Assert.False(PathUtils.IsSameOrInsideDirectory("\0invalid", @"D:\Games"));
+    }
+
+    [Fact]
+    public void AnUnusablePathIsReportedAsNull()
+    {
+        // The caller falls back to converting the image as-is on null, so a path with no volume has
+        // to come back null rather than throwing out of the conversion.
+        Assert.Null(PathUtils.CreateTempDirectoryOnSameVolume(string.Empty, "SameVolume_"));
+        Assert.Null(PathUtils.CreateTempDirectoryOnSameVolume("\0invalid", "SameVolume_"));
+    }
+
+    private static void Cleanup(string? directory, string? file)
+    {
+        try
+        {
+            if (directory is not null && Directory.Exists(directory))
+            {
+                Directory.Delete(directory, true);
+            }
+
+            if (file is not null && File.Exists(file))
+            {
+                File.Delete(file);
+            }
+        }
+        catch
+        {
+            /* ignore */
+        }
     }
 
     #endregion

@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.IO;
 using System.Text;
 using Serilog;
@@ -204,6 +205,160 @@ internal static class PathUtils
                 Logger.Verbose(ex, "Failed to get path root for drive candidate {Path}", path);
             }
         }
+    }
+
+    /// <summary>
+    /// Returns a path under <paramref name="parentDirectory"/> named after <paramref name="baseName"/>
+    /// that nothing currently occupies, adding " (2)", " (3)" and so on until one is free. The
+    /// directory is not created.
+    ///
+    /// Used to give an extraction somewhere to land when files of the same name are already present,
+    /// so existing files are kept without the user having to choose anything.
+    /// </summary>
+    /// <param name="parentDirectory">Directory the new subdirectory will sit in.</param>
+    /// <param name="baseName">Preferred name, sanitised before use.</param>
+    internal static string ReserveFreeSubdirectory(string parentDirectory, string baseName)
+    {
+        var safeName = SanitizeFileName(baseName);
+        if (safeName.Length == 0)
+        {
+            safeName = Guid.NewGuid().ToString("N");
+        }
+
+        var candidate = Path.Combine(parentDirectory, safeName);
+        if (!Directory.Exists(candidate) && !File.Exists(candidate))
+        {
+            return candidate;
+        }
+
+        // A bounded search: a folder holding this many same-named discs is pathological, and looping
+        // forever would be worse than falling back to a name that cannot collide.
+        for (var suffix = 2; suffix <= 999; suffix++)
+        {
+            candidate = Path.Combine(parentDirectory, $"{safeName} ({suffix.ToString(CultureInfo.InvariantCulture)})");
+            if (!Directory.Exists(candidate) && !File.Exists(candidate))
+            {
+                return candidate;
+            }
+        }
+
+        return Path.Combine(parentDirectory, $"{safeName}_{Guid.NewGuid():N}");
+    }
+
+    /// <summary>
+    /// True when <paramref name="candidate"/> is the same directory as <paramref name="root"/>, or is
+    /// nested inside it. Used to tell the user when results will land among their source files.
+    ///
+    /// Comparing the normalized full paths matters: "D:\Games" and "D:\Games\" and "D:\Games\..\Games"
+    /// are the same folder, and a plain string equality test on the raw text would miss that. The
+    /// separator is appended before the prefix test so "D:\Games2" is not read as being inside
+    /// "D:\Games".
+    /// </summary>
+    /// <param name="root">The directory to test against.</param>
+    /// <param name="candidate">The directory that may be the same or nested.</param>
+    internal static bool IsSameOrInsideDirectory(string? root, string? candidate)
+    {
+        if (string.IsNullOrWhiteSpace(root) || string.IsNullOrWhiteSpace(candidate))
+        {
+            return false;
+        }
+
+        try
+        {
+            var separators = new[] { Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar };
+            var rootFull = Path.GetFullPath(root).TrimEnd(separators);
+            var candidateFull = Path.GetFullPath(candidate).TrimEnd(separators);
+
+            if (string.Equals(rootFull, candidateFull, StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+
+            return candidateFull.StartsWith(rootFull + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase);
+        }
+        catch (Exception ex)
+        {
+            Logger.Verbose(ex, "Failed to compare {Root} and {Candidate}", root, candidate);
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Creates a temporary directory on the same volume as <paramref name="referencePath"/> and
+    /// returns it, or null when none could be created there.
+    ///
+    /// <see cref="GetBestTempDirectory"/> deliberately picks the roomiest drive, which is right when
+    /// a whole image is being written but wrong for a generated cue: chdman resolves a cue's FILE
+    /// entry by joining it to the cue's own directory, so a cue that is not on the image's volume can
+    /// only reach it by an absolute path, and chdman concatenates that too - producing
+    /// "C:\temp\D:\game.iso" and "couldn't find bin file". A few hundred bytes of cue therefore has
+    /// to sit on the image's volume, however little free space that volume has.
+    /// </summary>
+    /// <param name="referencePath">File whose volume the directory must be on.</param>
+    /// <param name="tempDirPrefix">Prefix for the directory name.</param>
+    internal static string? CreateTempDirectoryOnSameVolume(string referencePath, string tempDirPrefix)
+    {
+        string? volumeRoot;
+        try
+        {
+            volumeRoot = Path.GetPathRoot(Path.GetFullPath(referencePath));
+        }
+        catch (Exception ex)
+        {
+            Logger.Verbose(ex, "Failed to get the volume root of {Path}", referencePath);
+            return null;
+        }
+
+        if (string.IsNullOrEmpty(volumeRoot))
+        {
+            return null;
+        }
+
+        foreach (var basePath in GetSameVolumeTempBasePaths(volumeRoot))
+        {
+            var candidate = Path.Combine(basePath, $"{tempDirPrefix}{Guid.NewGuid():N}");
+            try
+            {
+                Directory.CreateDirectory(candidate);
+                return candidate;
+            }
+            catch (Exception ex)
+            {
+                Logger.Verbose(ex, "Failed to create a same-volume temp directory at {Path}", candidate);
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Places to try for a temp directory on <paramref name="volumeRoot"/>, best first. The system
+    /// temp directory is preferred when it happens to be on that volume, because it needs no special
+    /// permissions; otherwise the same drive-root folder <see cref="GetBestTempDirectory"/> uses, so
+    /// startup cleanup already knows to look there.
+    /// </summary>
+    private static IEnumerable<string> GetSameVolumeTempBasePaths(string volumeRoot)
+    {
+        var systemTemp = Path.GetTempPath();
+        string? systemTempRoot = null;
+        try
+        {
+            systemTempRoot = Path.GetPathRoot(systemTemp);
+        }
+        catch (Exception ex)
+        {
+            Logger.Verbose(ex, "Failed to get the volume root of the system temp directory");
+        }
+
+        if (!string.IsNullOrEmpty(systemTempRoot) &&
+            string.Equals(systemTempRoot, volumeRoot, StringComparison.OrdinalIgnoreCase))
+        {
+            yield return systemTemp;
+        }
+
+        yield return Path.Combine(
+            volumeRoot.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar) + Path.DirectorySeparatorChar,
+            "BatchConvertToCHD_Temp");
     }
 
     private static bool IsRootDirectoryWritable(string rootPath)

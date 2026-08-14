@@ -26,7 +26,20 @@ Metadata detection scans the CHD's metadata entries (CHDSharp): `dvd` → `extra
 
 ### Output path
 
-The subfolder structure of the input is preserved under the output folder (`GetSafeRelativePath`). Existing DVD/HDD outputs are deleted before extraction ("Overwriting: ... already exists in output folder.").
+The subfolder structure of the input is preserved under the output folder (`GetSafeRelativePath`). Nothing existing is deleted to make room: an extraction whose output would land on files of the same name is diverted into a subfolder instead (see below).
+
+### Extracting into the source folder
+
+The output folder may be the same as the input folder. Extraction is the workflow where that needs care, because **the output takes the CHD's base name**: extracting `Game.chd` produces `Game.cue` plus its track files, so left alone it would replace a cue/bin set kept beside the CHD.
+
+Rather than overwrite those files, or stop to ask, the extraction is diverted. When any file it is about to write already exists, the whole set goes into a subfolder named after the disc — `Game\Game.cue`, `Game\Game (Track 1).bin` and so on — and the existing files are left untouched. `PathUtils.ReserveFreeSubdirectory` chooses the name, stepping to `Game (2)`, `Game (3)` and so on when something already occupies it.
+
+The diversion happens only when there is a real clash. Extractions with nothing in their way still land directly in the output folder, so the layout is unchanged for everyone else, and no setting controls this. One line in the log says where the files went.
+
+Two properties make it safe to do without asking:
+
+*   A descriptor's `FILE` entries are relative and the track files travel with it, so a diverted `.cue`/`.gdi` set stays valid with no rewriting.
+*   The clash is tested after extraction into the temp directory but before anything is moved, so the decision uses the real output names rather than a guess at the extension.
 
 ### Single-file extraction (DVD/HDD)
 
@@ -38,9 +51,15 @@ The subfolder structure of the input is preserved under the output folder (`GetS
 
 1. Creates `_extract_temp_<guid>` **inside the target directory**.
 2. Calls `chd.ExtractToDirectory(tempExtractDir, baseFileName)` (CHDSharp).
+<<<<<<< HEAD
+3. Picks the destination: the target dir, or a fresh subfolder named after the disc when any extracted file would clash with something already there (`ReserveFreeSubdirectory`). Then moves each extracted file into it.
+4. On success the temp dir is deleted; on failure the temp dir is **kept** and a warning logs the number of remaining files ("Partial extraction: N file(s) remain in temp directory: ...") so the user can inspect/clean up.
+5. Moves go through `RetryingFileOperations.TryMoveAsync` (retry with backoff, ~45 s) so transient locks (antivirus/indexer) don't abort the whole disc extraction; a move that still fails after retries throws and the partial-extraction path handles the rest. The `TryDeleteAsync` on the destination remains only as a guard against a file appearing between the clash test and the move — after step 3 the destination is expected to be free.
+=======
 3. Moves each extracted file into the target dir, overwriting existing files.
 4. On success the temp dir is deleted; on failure the leftover files are removed **best-effort with a single-shot delete per file** (deliberately not the ~45 s retrying delete, so a locked file cannot stall the whole batch), the temp dir is then deleted, and only what truly remains is logged as a warning ("Partial extraction: N file(s) remain in temp directory: ..."). A `Debug` log records how many leftovers were cleaned up.
 5. Moves and destination-deletes go through `RetryingFileOperations.TryMoveAsync`/`TryDeleteAsync` (retry with backoff, ~45 s) so transient locks (antivirus/indexer) don't abort the whole disc extraction; a move that still fails after retries throws and the partial-extraction path handles the rest.
+>>>>>>> 62504b8aa71f316c2dbf0d22e648ba6223160110
 
 ### CHD open failures
 

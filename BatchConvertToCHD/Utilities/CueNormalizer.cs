@@ -18,6 +18,10 @@ internal static class CueNormalizer
 
     private static readonly string[] KnownTrackTypes = ["BINARY", "WAVE", "MP3", "AIFF", "MOTOROLA", "AUDIO"];
 
+    /// <summary>Extensions a cue's data track can legitimately be stored under.</summary>
+    private static readonly HashSet<string> DataFileExtensions =
+        new([FileExtensions.Bin, FileExtensions.Img, FileExtensions.Iso, FileExtensions.Raw], StringComparer.OrdinalIgnoreCase);
+
     /// <summary>
     /// Normalizes the cue at <paramref name="cuePath"/>.
     /// </summary>
@@ -37,6 +41,10 @@ internal static class CueNormalizer
         var needsRewrite = false;
         var referencesChanged = false;
 
+        // A cue with exactly one FILE line describes one data file, which allows a last-resort match
+        // by elimination when the recorded name is unusable.
+        var isSingleFileCue = CountFileLines(lines) == 1;
+
         foreach (var line in lines)
         {
             var trimmedLine = line.Trim();
@@ -49,7 +57,7 @@ internal static class CueNormalizer
             }
 
             var trackType = GetTrackType(trimmedLine);
-            var reference = ResolveReference(directory, referencedName, trackType);
+            var reference = ResolveReference(directory, referencedName, trackType, isSingleFileCue);
             references.Add(reference);
 
             if (!reference.IsResolved)
@@ -98,40 +106,144 @@ internal static class CueNormalizer
         await File.WriteAllTextAsync(outputPath, result.CanonicalCueText, new UTF8Encoding(false), token).ConfigureAwait(false);
     }
 
-    private static CueFileReference ResolveReference(string directory, string referencedName, string? trackType)
+    private static CueFileReference ResolveReference(string directory, string referencedName, string? trackType, bool isSingleFileCue)
     {
         var fullPath = Path.Combine(directory, referencedName);
-        var fileDirectory = Path.GetDirectoryName(fullPath) ?? directory;
-        string[] files;
+        var referencedFileName = Path.GetFileName(fullPath);
+        var referencedDirectory = Path.GetDirectoryName(fullPath) ?? directory;
+
+        // Strategy 1: the reference as written, resolved wherever it points.
+        var match = FindMatch(GetFiles(referencedDirectory), referencedFileName, out var wasNameCorrected);
+
+        var cueDirectoryFiles = GetFiles(directory);
+
+        // Strategy 2: the same file name next to the cue, ignoring any directory the reference
+        // carried. Cues written elsewhere keep that machine's absolute path - real examples include
+        // "C:\DOCUMENTS AND SETTINGS\BILL\DESKTOP\..." - which resolves nowhere here even though the
+        // data file is sitting beside the cue.
+        if (match is null && !string.Equals(referencedDirectory, directory, StringComparison.OrdinalIgnoreCase))
+        {
+            match = FindMatch(cueDirectoryFiles, referencedFileName, out wasNameCorrected);
+            if (match is not null)
+            {
+                wasNameCorrected = true;
+            }
+        }
+
+        // Strategy 3: same base name, different extension. Rips get re-saved between .bin, .img and
+        // .iso without the cue being updated.
+        if (match is null)
+        {
+            match = FindExtensionSwapMatch(cueDirectoryFiles, referencedFileName);
+            wasNameCorrected = match is not null;
+        }
+
+        // Strategy 4: a cue with a single FILE line, sitting next to exactly one data file, can only
+        // mean that file - however little the recorded name resembles it ("SOULEDGE.bin",
+        // "Legend Of Legaia Iso"). Restricted to the data track so a missing WAVE or MP3 audio
+        // track is never silently answered with the disc image.
+        if (match is null && isSingleFileCue && IsBinaryTrack(trackType))
+        {
+            var dataFiles = cueDirectoryFiles
+                .Where(static f => DataFileExtensions.Contains(Path.GetExtension(f)))
+                .ToList();
+            if (dataFiles.Count == 1)
+            {
+                match = dataFiles[0];
+                wasNameCorrected = true;
+            }
+        }
+
+        if (match is null)
+        {
+            return new CueFileReference(referencedName, null, fullPath, trackType, false, directory);
+        }
+
+        // Anchor the record on the file that was actually found, so a redirected reference reports
+        // the real path rather than the one the cue asked for.
+        return new CueFileReference(
+            referencedName,
+            Path.GetRelativePath(directory, match),
+            match,
+            trackType,
+            wasNameCorrected,
+            directory);
+    }
+
+    private static int CountFileLines(string[] lines)
+    {
+        var count = 0;
+        foreach (var line in lines)
+        {
+            var trimmed = line.Trim();
+            if (trimmed.StartsWith("FILE ", StringComparison.OrdinalIgnoreCase) &&
+                GameFileParser.TryGetFileNameFromFileLine(trimmed, out var name) &&
+                name is not null)
+            {
+                count++;
+            }
+        }
+
+        return count;
+    }
+
+    private static string[] GetFiles(string directory)
+    {
         try
         {
-            files = Directory.Exists(fileDirectory) ? Directory.GetFiles(fileDirectory) : [];
+            return Directory.Exists(directory) ? Directory.GetFiles(directory) : [];
         }
         catch (Exception)
         {
-            files = [];
+            return [];
         }
+    }
 
-        string? resolved = null;
-        var wasNameCorrected = false;
-        if (files.Length > 0)
+    /// <summary>
+    /// Resolves <paramref name="fileName"/> against <paramref name="files"/> by exact name, then
+    /// case-insensitively, then tolerating zero-padding differences in a "(Track N)" suffix.
+    /// </summary>
+    private static string? FindMatch(string[] files, string fileName, out bool wasNameCorrected)
+    {
+        wasNameCorrected = false;
+        if (files.Length == 0)
         {
-            var fileName = Path.GetFileName(fullPath);
-            var match = files.FirstOrDefault(f => string.Equals(Path.GetFileName(f), fileName, StringComparison.Ordinal))
-                        ?? files.FirstOrDefault(f => string.Equals(Path.GetFileName(f), fileName, StringComparison.OrdinalIgnoreCase));
-            if (match is null)
-            {
-                match = FindPadTolerantMatch(files, fileName);
-                wasNameCorrected = match is not null;
-            }
-
-            if (match is not null)
-            {
-                resolved = Path.GetRelativePath(directory, match);
-            }
+            return null;
         }
 
-        return new CueFileReference(referencedName, resolved, fullPath, trackType, wasNameCorrected);
+        var match = files.FirstOrDefault(f => string.Equals(Path.GetFileName(f), fileName, StringComparison.Ordinal))
+                    ?? files.FirstOrDefault(f => string.Equals(Path.GetFileName(f), fileName, StringComparison.OrdinalIgnoreCase));
+        if (match is not null)
+        {
+            return match;
+        }
+
+        match = FindPadTolerantMatch(files, fileName);
+        wasNameCorrected = match is not null;
+
+        return match;
+    }
+
+    /// <summary>
+    /// Finds a file with the same base name as <paramref name="fileName"/> but a different disc
+    /// image extension.
+    /// </summary>
+    private static string? FindExtensionSwapMatch(string[] files, string fileName)
+    {
+        var baseName = Path.GetFileNameWithoutExtension(fileName);
+        if (baseName.Length == 0)
+        {
+            return null;
+        }
+
+        return files.FirstOrDefault(f =>
+            DataFileExtensions.Contains(Path.GetExtension(f)) &&
+            string.Equals(Path.GetFileNameWithoutExtension(f), baseName, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static bool IsBinaryTrack(string? trackType)
+    {
+        return trackType is null || string.Equals(trackType, "BINARY", StringComparison.Ordinal);
     }
 
     private static string? FindPadTolerantMatch(string[] files, string fileName)

@@ -12,6 +12,9 @@ using System.Collections.ObjectModel;
 using BatchConvertToCHD.Models;
 using BatchConvertToCHD.Services;
 using BatchConvertToCHD.Utilities;
+using BatchConvertToCHD.Utilities.Ecm;
+using BatchConvertToCHD.Utilities.Isz;
+using BatchConvertToCHD.Utilities.Mds;
 using CCDSharp;
 using CCDSharp.Models;
 using CHDSharp;
@@ -65,6 +68,11 @@ internal partial class MainWindow : IDisposable
 
     // Temp Directory Prefix
     private const string TempDirPrefix = "BatchConvertToCHD_Temp_";
+
+    // Extension used while a CHD is still being written. chdman ignores the output extension, and
+    // keeping it off ".chd" means a leftover staging file is never mistaken for a finished CHD by
+    // the verification and extraction tabs.
+    private const string StagingExtension = ".chdtmp";
 
     // MP3 audio track decoder (Media Foundation) for cue sheets with MP3 tracks.
     private static readonly IMp3Decoder Mp3Decoder = new Mp3ToWavDecoder();
@@ -717,18 +725,16 @@ internal partial class MainWindow : IDisposable
                 return;
             }
 
-            if (inputFolder.Equals(outputFolder, StringComparison.OrdinalIgnoreCase))
-            {
-                ShowError("Input and output folders must be different.");
-                return;
-            }
-
             var selectedFiles = _extractionFiles.Where(static f => f.IsSelected).Select(static f => f.FullPath).ToArray();
             if (selectedFiles.Length == 0)
             {
                 ShowError("No files selected for extraction.");
                 return;
             }
+
+            // Extracting into the source folder is allowed and needs no warning: an extraction whose
+            // output would replace existing files of the same name is diverted into a subfolder
+            // instead (see ExtractChdAsync), so nothing is overwritten and nothing is asked.
 
             RenewCancellationTokenSource();
 
@@ -836,8 +842,16 @@ internal partial class MainWindow : IDisposable
                 AttributesToSkip = FileAttributes.System | FileAttributes.Hidden
             };
 
-            var files = Directory.GetFiles(inputFolder, "*.*", options)
+            var paths = Directory.GetFiles(inputFolder, "*.*", options)
                 .Where(static file => FileExtensions.AllSupportedInputExtensionsForConversionSet.Contains(Path.GetExtension(file)))
+                .ToList();
+
+            // A raw image that a sibling descriptor already covers must not be offered as its own
+            // input. Both would target the same CHD name, and because the raw image has no track
+            // layout it fails in chdman - which would then delete the descriptor's good output.
+            paths = await InputFileFilter.RemoveCompanionDataFilesAsync(paths, LogMessage, _cts.Token);
+
+            var files = paths
                 .Select(f => new FileItem
                 {
                     FileName = Path.GetRelativePath(inputFolder, f),
@@ -1042,10 +1056,13 @@ internal partial class MainWindow : IDisposable
                 return;
             }
 
-            if (inputFolder.Equals(outputFolder, StringComparison.OrdinalIgnoreCase))
+            // Converting in place is allowed. The output name is always "<base>.chd" and .chd is not
+            // a conversion input, so a source file can never be the target; and since the conversion
+            // stages to .chdtmp and only moves into place on success, an existing CHD of the same
+            // name survives a failed run.
+            if (PathUtils.IsSameOrInsideDirectory(inputFolder, outputFolder))
             {
-                ShowError("Input and output folders must be different.");
-                return;
+                LogMessage(" The output folder is inside the source folder, so CHDs will be written alongside the originals.");
             }
 
             RenewCancellationTokenSource();
@@ -1312,6 +1329,12 @@ internal partial class MainWindow : IDisposable
             }).ToArray();
         }
 
+        // Second line of defence behind the folder scan: whatever route the selection arrived by,
+        // a raw image covered by a sibling descriptor is never converted on its own.
+        filesToConvert = [.. await InputFileFilter.RemoveCompanionDataFilesAsync(filesToConvert, LogMessage, token)];
+
+        WarnAboutOutputCollisions(filesToConvert, inputFolder, outputFolder);
+
         _totalFilesProcessed = filesToConvert.Length;
         UpdateStatsDisplay();
         LogMessage($"Found {_totalFilesProcessed} files to process.");
@@ -1418,13 +1441,30 @@ internal partial class MainWindow : IDisposable
         try
         {
             token.ThrowIfCancellationRequested();
-            var chdBase = Path.GetFileNameWithoutExtension(originalName);
 
-            // Maintain directory structure if searching subfolders
-            var relativePath = PathUtils.GetSafeRelativePath(inputFolder, Path.GetDirectoryName(inputFile) ?? inputFolder);
-            var targetDir = string.Equals(relativePath, ".", StringComparison.Ordinal) ? outputFolder : Path.Combine(outputFolder, relativePath);
+            outputChd = ComputeOutputChdPath(inputFile, inputFolder, outputFolder);
 
-            outputChd = Path.Combine(targetDir, PathUtils.SanitizeFileName(chdBase) + FileExtensions.Chd);
+            // Before trusting the extension, check what the file actually is. This picks up split
+            // volume sets and files whose name disagrees with their content, both of which the
+            // extension-based dispatch below would mishandle.
+            var resolved = await TryResolveByContentAsync(inputFile, originalName, outputFolder, tempDirs, token);
+            if (resolved is not null)
+            {
+                if (resolved.SkipReason is not null)
+                {
+                    LogWarning($" {originalName}: {resolved.SkipReason}");
+                    return false;
+                }
+
+                var resolvedOutputDir = Path.GetDirectoryName(outputChd) ?? outputFolder;
+                if (!Directory.Exists(resolvedOutputDir)) Directory.CreateDirectory(resolvedOutputDir);
+
+                UpdateWriteSpeedDisplay(0);
+                var resolvedSuccess = await ConvertToChdAsync(
+                    chdmanPath, resolved.PathToConvert!, outputChd, cores, forceCd, resolved.ForceDvd || forceDvd, timeoutMinutes, token);
+
+                return await HandleConversionResultAsync(resolvedSuccess, inputFile, originalName, ext, inputFolder, outputChd, deleteOriginal, token);
+            }
 
             string fileToProcess;
             if (ext.Equals(FileExtensions.Cso, StringComparison.OrdinalIgnoreCase))
@@ -1443,10 +1483,20 @@ internal partial class MainWindow : IDisposable
             {
                 return await ProcessCcdFileForConversionAsync(inputFile, originalName, inputFolder, outputFolder, tempDirs, token, chdmanPath, cores, forceCd, forceDvd, timeoutMinutes, deleteOriginal);
             }
+            else if (ext.Equals(FileExtensions.Mds, StringComparison.OrdinalIgnoreCase))
+            {
+                return await ProcessMdsFileForConversionAsync(inputFile, originalName, inputFolder, outputFolder, tempDirs, token, chdmanPath, cores, forceCd, forceDvd, timeoutMinutes, deleteOriginal);
+            }
             else
             {
                 // Try processing directly from source first to avoid unnecessary I/O
                 fileToProcess = inputFile;
+
+                var stagedCue = await TryStageCueForRawImageAsync(inputFile, originalName, tempDirs, token);
+                if (stagedCue is not null)
+                {
+                    fileToProcess = stagedCue;
+                }
             }
 
             var isDependent = await ValidateDependentFilesAsync(ext, inputFile, originalName, token);
@@ -1469,7 +1519,8 @@ internal partial class MainWindow : IDisposable
         }
         catch (OperationCanceledException)
         {
-            if (!string.IsNullOrEmpty(outputChd)) await TryDeleteFileAsync(outputChd, "incomplete CHD (cancelled)", CancellationToken.None);
+            // Nothing to clean up at the destination: conversions write to a staging file and only
+            // move into place after success, so a cancelled run never touched an existing CHD.
             throw;
         }
         catch (Exception ex)
@@ -1487,7 +1538,8 @@ internal partial class MainWindow : IDisposable
                 LogError($"Processing {originalName}: {ex.Message}", ex);
             }
 
-            if (!string.IsNullOrEmpty(outputChd)) await TryDeleteFileAsync(outputChd, "failed CHD", CancellationToken.None);
+            // The destination is deliberately left alone. A failure here says nothing about the CHD
+            // already sitting at that path, which may be a good conversion from another input.
             return false;
         }
         finally
@@ -1497,6 +1549,491 @@ internal partial class MainWindow : IDisposable
                 if (!string.IsNullOrEmpty(tempDir) && Directory.Exists(tempDir))
                     await TryDeleteDirectoryAsync(tempDir, "temp dir", CancellationToken.None);
             }
+        }
+    }
+
+    /// <summary>
+    /// Free space below this on the output drive means no conversion can succeed.
+    /// </summary>
+    private const long MinimumOutputFreeBytes = 64L * 1024 * 1024;
+
+    /// <summary>
+    /// A CHD below this fraction of its source is rare for game data, so less free space than this
+    /// is treated as certain failure rather than something to discover an hour in.
+    /// </summary>
+    private const double MinimumOutputSizeRatio = 0.10;
+
+    /// <summary>
+    /// Checks the output drive has room before chdman starts, and returns false when it clearly does
+    /// not. Free space between the certain-failure floor and the full source size is allowed through
+    /// with a warning, because compression ratios vary and a hard block would refuse conversions
+    /// that would have succeeded.
+    /// </summary>
+    /// <param name="chdmanInputPath">The file chdman will actually read.</param>
+    /// <param name="originalInputPath">The original input, used for log messages.</param>
+    /// <param name="outputPath">Destination CHD path, which determines the drive checked.</param>
+    /// <param name="token">Cancellation token.</param>
+    private async Task<bool> HasRoomForOutputAsync(string chdmanInputPath, string originalInputPath, string outputPath, CancellationToken token)
+    {
+        long sourceBytes;
+        try
+        {
+            sourceBytes = await EstimateSourceBytesAsync(chdmanInputPath, token);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            return true;
+        }
+
+        if (sourceBytes <= 0)
+        {
+            return true;
+        }
+
+        long freeBytes;
+        string driveName;
+        try
+        {
+            var root = Path.GetPathRoot(Path.GetFullPath(outputPath));
+            if (string.IsNullOrEmpty(root))
+            {
+                return true;
+            }
+
+            var drive = new DriveInfo(root);
+            if (!drive.IsReady)
+            {
+                return true;
+            }
+
+            freeBytes = drive.AvailableFreeSpace;
+            driveName = root.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        }
+        catch (Exception)
+        {
+            return true;
+        }
+
+        var name = Path.GetFileName(originalInputPath);
+
+        if (freeBytes < MinimumOutputFreeBytes || freeBytes < (long)(sourceBytes * MinimumOutputSizeRatio))
+        {
+            LogError($" Not enough disk space on {driveName} to convert {name}: {freeBytes / (1024.0 * 1024.0 * 1024.0):F1} GB free for a {sourceBytes / (1024.0 * 1024.0 * 1024.0):F1} GB source. Skipping before starting the conversion.");
+            return false;
+        }
+
+        if (freeBytes < sourceBytes)
+        {
+            LogWarning($" {name}: only {freeBytes / (1024.0 * 1024.0 * 1024.0):F1} GB free on {driveName} for a {sourceBytes / (1024.0 * 1024.0 * 1024.0):F1} GB source. Proceeding, but the conversion will fail if it does not compress enough.");
+        }
+
+        return true;
+    }
+
+    /// <summary>
+    /// Estimates the bytes chdman will read: for a descriptor, the total of the files it references;
+    /// otherwise the file's own size.
+    /// </summary>
+    private async Task<long> EstimateSourceBytesAsync(string chdmanInputPath, CancellationToken token)
+    {
+        var ext = Path.GetExtension(chdmanInputPath);
+        if (ext is FileExtensions.Cue or FileExtensions.Toc or FileExtensions.Gdi)
+        {
+            var referenced = ext switch
+            {
+                FileExtensions.Cue => await GameFileParser.GetReferencedFilesFromCueAsync(chdmanInputPath, static _ => { }, token),
+                FileExtensions.Gdi => await GameFileParser.GetReferencedFilesFromGdiAsync(chdmanInputPath, static _ => { }, token),
+                _ => await GameFileParser.GetReferencedFilesFromTocAsync(chdmanInputPath, static _ => { }, token)
+            };
+
+            long total = 0;
+            foreach (var file in referenced.Distinct(StringComparer.OrdinalIgnoreCase))
+            {
+                try
+                {
+                    total += new FileInfo(file).Length;
+                }
+                catch (Exception)
+                {
+                    /* a missing reference is reported elsewhere */
+                }
+            }
+
+            return total;
+        }
+
+        return new FileInfo(chdmanInputPath).Length;
+    }
+
+    /// <summary>
+    /// What content inspection decided about an input: something to convert, or a reason to skip.
+    /// </summary>
+    /// <param name="PathToConvert">File to hand chdman, or null when skipping.</param>
+    /// <param name="ForceDvd">True when the resolved file must be converted as a DVD image.</param>
+    /// <param name="SkipReason">User-facing explanation, or null when there is something to convert.</param>
+    private sealed record ResolvedInput(string? PathToConvert, bool ForceDvd, string? SkipReason)
+    {
+        internal static ResolvedInput Convert(string path, bool forceDvd) => new(path, forceDvd, null);
+
+        internal static ResolvedInput Skip(string reason) => new(null, false, reason);
+    }
+
+    /// <summary>
+    /// Inspects an input's leading bytes and, where the extension is misleading, works out what
+    /// should actually be converted. Returns null when the normal extension-based dispatch is
+    /// correct, which is the common case.
+    ///
+    /// Handles two families of problem: images split into numbered volumes, which have to be
+    /// rejoined before anything can read them, and files whose extension disagrees with their
+    /// content - a disc image called .rar, or an .isz that was never compressed.
+    /// </summary>
+    /// <param name="inputFile">Path of the input file.</param>
+    /// <param name="originalName">File name used in log messages.</param>
+    /// <param name="outputFolder">Conversion output folder, used to pick a temp location.</param>
+    /// <param name="tempDirs">Temp directories to clean up when the file is done.</param>
+    /// <param name="token">Cancellation token.</param>
+    private async Task<ResolvedInput?> TryResolveByContentAsync(string inputFile, string originalName, string outputFolder, List<string> tempDirs, CancellationToken token)
+    {
+        var ext = Path.GetExtension(inputFile);
+
+        // Descriptors are text and have their own handlers; there is nothing to sniff.
+        if (ext is FileExtensions.Cue or FileExtensions.Gdi or FileExtensions.Toc or FileExtensions.Ccd or FileExtensions.Mds)
+        {
+            return null;
+        }
+
+        var kind = DiscImageSignature.Detect(inputFile);
+        var extensionClaimsArchive = FileExtensions.ArchiveExtensionsSet.Contains(ext);
+        var extensionClaimsIsz = ext.Equals(FileExtensions.Isz, StringComparison.OrdinalIgnoreCase);
+
+        // An archive that really is an archive: leave it to the archive handler.
+        if (extensionClaimsArchive && DiscImageSignature.IsArchive(kind))
+        {
+            return null;
+        }
+
+        var volumeSet = SplitImageJoiner.TryGetVolumeSet(inputFile);
+        if (volumeSet is not null)
+        {
+            return await ResolveSplitVolumeSetAsync(volumeSet, originalName, outputFolder, tempDirs, token);
+        }
+
+        // Formats that need a step this build cannot perform. Say so plainly instead of letting
+        // chdman fail with a sector-size error.
+        switch (kind)
+        {
+            case DiscImageKind.Ecm:
+                return await ResolveEcmAsync(inputFile, originalName, outputFolder, tempDirs, token);
+            case DiscImageKind.Isz:
+                return await ResolveIszAsync(inputFile, originalName, outputFolder, tempDirs, token);
+            case DiscImageKind.Chd:
+                return ResolvedInput.Skip("this file is already a CHD. Copy it to the output folder rather than converting it.");
+        }
+
+        if (!extensionClaimsArchive && !extensionClaimsIsz)
+        {
+            // The extension is not lying about being a container, so the normal path applies.
+            return null;
+        }
+
+        // The extension promises a container and the content is a plain image. Routine for .isz:
+        // files get renamed to it to mean "a disc image" without UltraISO ever being involved, and
+        // chdman picks its verb from the extension and knows nothing about .isz.
+        return await ResolveMislabelledContainerAsync(
+            inputFile, originalName, extensionClaimsIsz ? IszContainerDescription : "an archive", kind, tempDirs, token);
+    }
+
+    /// <summary>
+    /// Joins a split volume set into a temp file and decides how the result should be converted.
+    /// </summary>
+    /// <param name="volumeSet">Volumes in order, first part first.</param>
+    /// <param name="originalName">File name used in log messages.</param>
+    /// <param name="outputFolder">Conversion output folder, used to pick a temp location.</param>
+    /// <param name="tempDirs">Temp directories to clean up when the file is done.</param>
+    /// <param name="token">Cancellation token.</param>
+    private async Task<ResolvedInput> ResolveSplitVolumeSetAsync(List<string> volumeSet, string originalName, string outputFolder, List<string> tempDirs, CancellationToken token)
+    {
+        var firstVolume = volumeSet[0];
+
+        // A multi-part archive is a different thing entirely and needs its own tooling.
+        var firstKind = DiscImageSignature.Detect(firstVolume);
+        if (DiscImageSignature.IsArchive(firstKind))
+        {
+            return ResolvedInput.Skip($"this is part 1 of a {volumeSet.Count}-part {DiscImageSignature.Describe(firstKind)}. Extract the set manually and convert the extracted image.");
+        }
+
+        var totalBytes = SplitImageJoiner.GetTotalBytes(volumeSet);
+        LogMessage($" {originalName} is part 1 of a {volumeSet.Count}-part split image ({totalBytes:N0} bytes total); joining the parts.");
+
+        var tempDir = PathUtils.GetBestTempDirectory(firstVolume, outputFolder, TempDirPrefix, totalBytes);
+        await Task.Run(() => Directory.CreateDirectory(tempDir), token);
+        tempDirs.Add(tempDir);
+
+        var joinedPath = Path.Combine(tempDir, Path.GetFileNameWithoutExtension(firstVolume) + FileExtensions.Bin);
+        var joinedBytes = await SplitImageJoiner.JoinAsync(volumeSet, joinedPath, token);
+
+        return await ClassifyRecoveredImageAsync(
+            joinedPath,
+            tempDir,
+            "Joined image",
+            $"the {volumeSet.Count} parts join to {joinedBytes:N0} bytes, which is not a whole number of 2352-byte CD sectors or 2048-byte data sectors. A part is missing or truncated, so the set needs re-downloading.",
+            token);
+    }
+
+    /// <summary>
+    /// Decodes an ECM-encoded image and decides how the result should be converted. Nothing external
+    /// is needed: the sector parity ECM strips out is regenerated in-process.
+    /// </summary>
+    /// <param name="inputFile">Path of the .ecm file.</param>
+    /// <param name="originalName">File name used in log messages.</param>
+    /// <param name="outputFolder">Conversion output folder, used to pick a temp location.</param>
+    /// <param name="tempDirs">Temp directories to clean up when the file is done.</param>
+    /// <param name="token">Cancellation token.</param>
+    private async Task<ResolvedInput> ResolveEcmAsync(string inputFile, string originalName, string outputFolder, List<string> tempDirs, CancellationToken token)
+    {
+        // ECM typically halves an image, so allow for the decoded size being well above the input.
+        long estimatedBytes;
+        try
+        {
+            estimatedBytes = new FileInfo(inputFile).Length * 3;
+        }
+        catch (Exception)
+        {
+            estimatedBytes = 0;
+        }
+
+        var tempDir = PathUtils.GetBestTempDirectory(inputFile, outputFolder, TempDirPrefix, estimatedBytes);
+        await Task.Run(() => Directory.CreateDirectory(tempDir), token);
+        tempDirs.Add(tempDir);
+
+        var decodedPath = Path.Combine(tempDir, EcmImageDecoder.GetDecodedFileName(inputFile));
+        LogMessage($" {originalName} is ECM-encoded; restoring the sectors it had stripped.");
+
+        var decoded = await EcmImageDecoder.DecodeAsync(inputFile, decodedPath, LogMessage, token);
+        if (!decoded.Success)
+        {
+            // A partial image would convert and look fine, so it does not survive a failure.
+            await TryDeleteFileAsync(decodedPath, "incomplete ECM decode", CancellationToken.None);
+
+            return ResolvedInput.Skip(decoded.FailureReason!);
+        }
+
+        return await ClassifyRecoveredImageAsync(
+            decoded.OutputPath!,
+            tempDir,
+            "Decoded image",
+            "the decoded image is not a whole number of 2352-byte CD sectors or 2048-byte data sectors, so the .ecm file is probably damaged.",
+            token);
+    }
+
+    /// <summary>
+    /// Decompresses an ISZ image into a temp directory and decides how the restored image should be
+    /// converted. Nothing external is needed: both ISZ compressors are already available in-process.
+    /// </summary>
+    /// <param name="inputFile">Path of the .isz file, the first segment when the image is split.</param>
+    /// <param name="originalName">File name used in log messages.</param>
+    /// <param name="outputFolder">Conversion output folder, used to pick a temp location.</param>
+    /// <param name="tempDirs">Temp directories to clean up when the file is done.</param>
+    /// <param name="token">Cancellation token.</param>
+    private async Task<ResolvedInput> ResolveIszAsync(string inputFile, string originalName, string outputFolder, List<string> tempDirs, CancellationToken token)
+    {
+        var header = await IszDecoder.TryReadHeaderAsync(inputFile, token);
+        if (header is null)
+        {
+            return ResolvedInput.Skip("the file starts with an ISZ signature but its header could not be read, so it is damaged.");
+        }
+
+        var unusable = header.GetUnusableReason();
+        if (unusable is not null)
+        {
+            return ResolvedInput.Skip(unusable);
+        }
+
+        // The restored image is the size the header declares, and it is written whole before chdman
+        // reads it, so the temp location has to hold all of it.
+        var tempDir = PathUtils.GetBestTempDirectory(inputFile, outputFolder, TempDirPrefix, header.ImageSizeBytes);
+        await Task.Run(() => Directory.CreateDirectory(tempDir), token);
+        tempDirs.Add(tempDir);
+
+        var decodedPath = Path.Combine(tempDir, IszDecoder.GetDecodedFileName(inputFile));
+        LogMessage($" {originalName} is a compressed ISZ image; decompressing it to {header.ImageSizeBytes / (1024.0 * 1024.0):F0} MB.");
+
+        var decoded = await IszDecoder.DecodeAsync(inputFile, decodedPath, LogMessage, token);
+        if (!decoded.Success)
+        {
+            // A partial image is worse than none: it would convert and look fine.
+            await TryDeleteFileAsync(decodedPath, "incomplete ISZ decompression", CancellationToken.None);
+
+            return ResolvedInput.Skip(decoded.FailureReason!);
+        }
+
+        return await ClassifyRecoveredImageAsync(
+            decoded.OutputPath!,
+            tempDir,
+            "Decompressed image",
+            "the decompressed image is not a whole number of 2352-byte CD sectors or 2048-byte data sectors, so the .isz file is probably damaged.",
+            token);
+    }
+
+    /// <summary>
+    /// Works out how an image recovered into a temp directory - joined from parts, decoded from ECM
+    /// or decompressed from ISZ - should be handed to chdman: as a CD with a generated cue, or as a
+    /// DVD image.
+    /// </summary>
+    /// <param name="imagePath">The recovered image.</param>
+    /// <param name="workDir">Directory holding it, where any cue is written.</param>
+    /// <param name="description">How to refer to the image in log messages.</param>
+    /// <param name="misalignedReason">Skip reason when the size fits no known sector layout.</param>
+    /// <param name="token">Cancellation token.</param>
+    private async Task<ResolvedInput> ClassifyRecoveredImageAsync(string imagePath, string workDir, string description, string misalignedReason, CancellationToken token)
+    {
+        var trackMode = RawCdImageDetector.DetectTrackMode(imagePath);
+        if (trackMode is not null)
+        {
+            LogMessage($" {description} holds raw CD sectors ({trackMode}); generating a cue for it.");
+            var cuePath = await RawCdImageDetector.TryWriteCueAsync(imagePath, trackMode, workDir, token);
+
+            return cuePath is not null
+                ? ResolvedInput.Convert(cuePath, false)
+                : ResolvedInput.Skip($"could not write a cue for the {description.ToLowerInvariant()}.");
+        }
+
+        if (IsCookedImageSize(imagePath))
+        {
+            LogMessage($" {description} holds {MdsDisc.CookedSectorSize}-byte sectors; converting it as a DVD image.");
+            return ResolvedInput.Convert(imagePath, true);
+        }
+
+        return ResolvedInput.Skip(misalignedReason);
+    }
+
+    /// <summary>True when the file's size is a whole number of 2048-byte sectors.</summary>
+    /// <param name="path">File to measure.</param>
+    private static bool IsCookedImageSize(string path)
+    {
+        try
+        {
+            var length = new FileInfo(path).Length;
+            return length > 0 && length % MdsDisc.CookedSectorSize == 0;
+        }
+        catch (Exception)
+        {
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Creates a temp directory and writes a cue in it that references <paramref name="imagePath"/>
+    /// where it lies. Returns the cue path, or null when the image cannot be referenced relatively.
+    /// </summary>
+    /// <param name="imagePath">Disc image to describe.</param>
+    /// <param name="originalName">File name used in log messages.</param>
+    /// <param name="trackMode">Cue track mode, e.g. "MODE2/2352".</param>
+    /// <param name="tempDirs">Temp directories to clean up when the file is done.</param>
+    /// <param name="token">Cancellation token.</param>
+    private async Task<string?> StageCueForImageAsync(string imagePath, string originalName, string trackMode, List<string> tempDirs, CancellationToken token)
+    {
+        // The cue has to be on the image's volume, not merely somewhere with space, because chdman
+        // joins a cue's FILE entry to the cue's own directory and cannot follow an absolute path.
+        var tempDir = await Task.Run(() => PathUtils.CreateTempDirectoryOnSameVolume(imagePath, TempDirPrefix), token);
+        if (tempDir is null)
+        {
+            LogWarning($" {originalName}: no writable location on the same volume for a generated cue; converting the image as-is.");
+            return null;
+        }
+
+        tempDirs.Add(tempDir);
+
+        var cuePath = await RawCdImageDetector.TryWriteCueAsync(imagePath, trackMode, tempDir, token);
+        if (cuePath is null)
+        {
+            LogWarning($" {originalName}: a generated cue could not reference the image relatively; converting the image as-is.");
+        }
+
+        return cuePath;
+    }
+
+    /// <summary>
+    /// Builds a cue for a disc image that chdman cannot interpret from its extension alone, and
+    /// returns the cue path to convert instead of the image. Returns null when the image needs no
+    /// help, in which case the original input is converted unchanged.
+    /// </summary>
+    /// <param name="inputFile">Full path of the disc image.</param>
+    /// <param name="originalName">File name used in log messages.</param>
+    /// <param name="tempDirs">Temp directories to clean up when the file is done.</param>
+    /// <param name="token">Cancellation token.</param>
+    private async Task<string?> TryStageCueForRawImageAsync(string inputFile, string originalName, List<string> tempDirs, CancellationToken token)
+    {
+        var ext = Path.GetExtension(inputFile);
+        if (!RawCdImageDetector.IsCandidateExtension(ext))
+        {
+            return null;
+        }
+
+        // A companion cue already describes this image, and ConvertToChdAsync redirects to it.
+        if (File.Exists(Path.ChangeExtension(inputFile, FileExtensions.Cue)))
+        {
+            return null;
+        }
+
+        var trackMode = RawCdImageDetector.DetectTrackMode(inputFile);
+        if (trackMode is not null)
+        {
+            LogMessage($" {originalName} holds raw {RawCdImageDetector.RawSectorSize}-byte CD sectors ({trackMode}); generating a cue so it converts as a CD.");
+        }
+        else if (ext.Equals(FileExtensions.Bin, StringComparison.OrdinalIgnoreCase))
+        {
+            // A bare .bin has no descriptor and chdman cannot read one directly, so fall back to the
+            // same single-track assumption the archive path makes. If the mode guess is wrong the
+            // alternate-mode retry settles it. Audio tracks cannot be recovered without a cue or
+            // TOC, so a multi-track disc converted this way will be missing its CDDA.
+            trackMode = BinCueGenerator.Mode2;
+            LogWarning($" {originalName} has no cue and no readable sector header; assuming a single {trackMode} data track. Any CDDA audio tracks cannot be recovered without a cue.");
+        }
+        else
+        {
+            // A cooked 2048-byte image: the existing extension-based routing is correct.
+            return null;
+        }
+
+        return await StageCueForImageAsync(inputFile, originalName, trackMode, tempDirs, token);
+    }
+
+    /// <summary>
+    /// Returns the CHD path a loose input file converts to, mirroring the input folder structure.
+    /// The batch collision preflight and the conversion itself must agree, so both call this.
+    /// </summary>
+    /// <param name="inputFile">Full path of the input file.</param>
+    /// <param name="inputFolder">Root of the conversion input folder.</param>
+    /// <param name="outputFolder">Root of the conversion output folder.</param>
+    private static string ComputeOutputChdPath(string inputFile, string inputFolder, string outputFolder)
+    {
+        var chdBase = Path.GetFileNameWithoutExtension(inputFile);
+
+        // Maintain directory structure if searching subfolders
+        var relativePath = PathUtils.GetSafeRelativePath(inputFolder, Path.GetDirectoryName(inputFile) ?? inputFolder);
+        var targetDir = string.Equals(relativePath, ".", StringComparison.Ordinal) ? outputFolder : Path.Combine(outputFolder, relativePath);
+
+        return Path.Combine(targetDir, PathUtils.SanitizeFileName(chdBase) + FileExtensions.Chd);
+    }
+
+    /// <summary>
+    /// Reports inputs that would all be written to the same CHD path. They are still converted -
+    /// the user may have intended a re-run - but whichever finishes last wins, so the ambiguity is
+    /// surfaced before a long batch rather than discovered afterwards.
+    /// </summary>
+    /// <param name="filesToConvert">The inputs about to be processed.</param>
+    /// <param name="inputFolder">Root of the conversion input folder.</param>
+    /// <param name="outputFolder">Root of the conversion output folder.</param>
+    private void WarnAboutOutputCollisions(string[] filesToConvert, string inputFolder, string outputFolder)
+    {
+        var collisions = InputFileFilter.FindOutputCollisions(
+            filesToConvert, f => ComputeOutputChdPath(f, inputFolder, outputFolder));
+
+        foreach (var collision in collisions)
+        {
+            var inputNames = string.Join(", ", collision.Select(Path.GetFileName));
+            LogWarning($" {collision.Count()} inputs target the same output file {Path.GetFileName(collision.Key)}: {inputNames}. Only the last one converted will be kept.");
         }
     }
 
@@ -1561,18 +2098,10 @@ internal partial class MainWindow : IDisposable
 
         var allSucceeded = true;
 
-        // Filter out .img files that have a companion .ccd file in the same directory
-        // to avoid converting them independently when they are part of a CCD set.
-        var ccdBaseNames = new HashSet<string>(
-            result.FilePaths
-                .Where(static f => Path.GetExtension(f).Equals(FileExtensions.Ccd, StringComparison.OrdinalIgnoreCase))
-                .Select(static f => Path.GetFileNameWithoutExtension(f)),
-            StringComparer.OrdinalIgnoreCase);
-
-        var filesToConvert = result.FilePaths
-            .Where(f => !(Path.GetExtension(f).Equals(FileExtensions.Img, StringComparison.OrdinalIgnoreCase)
-                          && ccdBaseNames.Contains(Path.GetFileNameWithoutExtension(f))))
-            .ToList();
+        // Drop raw images that a descriptor in the archive already covers, so a cue/bin or CloneCD
+        // set inside an archive converts once, through its descriptor, instead of once per file with
+        // both attempts aimed at the same output name.
+        var filesToConvert = await InputFileFilter.RemoveCompanionDataFilesAsync(result.FilePaths, LogMessage, token);
 
         foreach (var extractedFile in filesToConvert)
         {
@@ -1614,7 +2143,33 @@ internal partial class MainWindow : IDisposable
             if (!Directory.Exists(extractedOutputDir)) Directory.CreateDirectory(extractedOutputDir);
 
             LogMessage($"Converting extracted file: {Path.GetFileName(extractedFile)}");
-            var converted = await ConvertToChdAsync(chdmanPath, extractedFile, extractedFileOutputChd, cores, forceCd, forceDvd, timeoutMinutes, token);
+
+            bool converted;
+            if (extractedExt.Equals(FileExtensions.Ccd, StringComparison.OrdinalIgnoreCase))
+            {
+                // chdman cannot read a .ccd, so a CloneCD set inside an archive has to go through
+                // CCDSharp exactly as a loose one does.
+                converted = await ConvertCcdViaCueAsync(
+                    chdmanPath, extractedFile, extractedFileOutputChd, tempDirs, outputFolder, cores, forceCd, forceDvd, timeoutMinutes, token);
+            }
+            else if (extractedExt.Equals(FileExtensions.Mds, StringComparison.OrdinalIgnoreCase))
+            {
+                // Same for an Alcohol set: the descriptor has to become a cue first.
+                converted = await ConvertMdsViaCueAsync(
+                    chdmanPath, extractedFile, extractedFileOutputChd, tempDirs, outputFolder, cores, forceCd, forceDvd, timeoutMinutes, token);
+            }
+            else if (extractedExt.Equals(FileExtensions.Isz, StringComparison.OrdinalIgnoreCase))
+            {
+                // An archived ISZ has to be decompressed before anything can read it. It is treated
+                // the same as a loose one, including the case where it is an ordinary image that was
+                // merely given the extension.
+                converted = await ConvertIszViaImageAsync(
+                    chdmanPath, extractedFile, extractedFileOutputChd, tempDirs, outputFolder, cores, forceCd, forceDvd, timeoutMinutes, token);
+            }
+            else
+            {
+                converted = await ConvertToChdAsync(chdmanPath, extractedFile, extractedFileOutputChd, cores, forceCd, forceDvd, timeoutMinutes, token);
+            }
 
             if (!converted && BinCueGenerator.IsAutoCue(extractedFile))
             {
@@ -1624,13 +2179,11 @@ internal partial class MainWindow : IDisposable
                 var alternateMode = BinCueGenerator.GetAlternateMode(mode);
                 await BinCueGenerator.RewriteCueAsync(extractedFile, alternateMode, token);
                 LogMessage($"Auto-generated cue failed with {mode}; retrying with {alternateMode}...");
-                await TryDeleteFileAsync(extractedFileOutputChd, "failed CHD", CancellationToken.None);
                 converted = await ConvertToChdAsync(chdmanPath, extractedFile, extractedFileOutputChd, cores, forceCd, forceDvd, timeoutMinutes, token);
             }
 
             if (!converted)
             {
-                await TryDeleteFileAsync(extractedFileOutputChd, "failed CHD", CancellationToken.None);
                 allSucceeded = false;
             }
         }
@@ -1691,7 +2244,6 @@ internal partial class MainWindow : IDisposable
             var converted = await ConvertToChdAsync(chdmanPath, cueFile, cueFileOutputChd, cores, forceCd, forceDvd, timeoutMinutes, token);
             if (!converted)
             {
-                await TryDeleteFileAsync(cueFileOutputChd, "failed CHD", CancellationToken.None);
                 allSucceeded = false;
             }
         }
@@ -1725,19 +2277,14 @@ internal partial class MainWindow : IDisposable
 
         try
         {
-            LogMessage($"CCDSharp: Converting {originalName}");
-            var tempCuePath = Path.Combine(tempDir, Path.GetFileNameWithoutExtension(inputFile) + ".cue");
-
-            await Task.Run(() => CcdConverter.ConvertToCueBin(inputFile, tempCuePath), token);
-
-            var cueFileOutputChd = ComputeOutputChdPathForExtractedFile(tempCuePath, inputFile, inputFolder, outputFolder);
+            var cueFileOutputChd = ComputeOutputChdPath(inputFile, inputFolder, outputFolder);
             var cueOutputDir = Path.GetDirectoryName(cueFileOutputChd) ?? outputFolder;
             if (!Directory.Exists(cueOutputDir)) Directory.CreateDirectory(cueOutputDir);
 
-            var converted = await ConvertToChdAsync(chdmanPath, tempCuePath, cueFileOutputChd, cores, forceCd, forceDvd, timeoutMinutes, token);
+            var converted = await ConvertCcdInTempDirAsync(
+                chdmanPath, inputFile, cueFileOutputChd, tempDir, cores, forceCd, forceDvd, timeoutMinutes, token);
             if (!converted)
             {
-                await TryDeleteFileAsync(cueFileOutputChd, "failed CHD", CancellationToken.None);
                 return false;
             }
 
@@ -1777,6 +2324,305 @@ internal partial class MainWindow : IDisposable
 
             return false;
         }
+    }
+
+    /// <summary>
+    /// Converts an Alcohol 120% .mds/.mdf pair. chdman cannot read either file, so the descriptor's
+    /// track table is turned into a cue and, when the sectors carry subchannel data, the image is
+    /// repacked to plain 2352-byte sectors first.
+    /// </summary>
+    /// <param name="inputFile">Path of the .mds descriptor.</param>
+    /// <param name="originalName">File name used in log messages.</param>
+    /// <param name="inputFolder">Root of the conversion input folder.</param>
+    /// <param name="outputFolder">Root of the conversion output folder.</param>
+    /// <param name="tempDirs">Temp directories to clean up when the file is done.</param>
+    /// <param name="token">Cancellation token.</param>
+    /// <param name="chdmanPath">Path to chdman.exe.</param>
+    /// <param name="cores">Processor count passed to chdman.</param>
+    /// <param name="forceCd">Force the createcd verb.</param>
+    /// <param name="forceDvd">Force the createdvd verb.</param>
+    /// <param name="timeoutMinutes">Per-file timeout, or null for none.</param>
+    /// <param name="deleteOriginal">Delete the source files after a successful conversion.</param>
+    private async Task<bool> ProcessMdsFileForConversionAsync(string inputFile, string originalName, string inputFolder, string outputFolder, List<string> tempDirs, CancellationToken token, string chdmanPath, int cores, bool forceCd, bool forceDvd, int? timeoutMinutes, bool deleteOriginal)
+    {
+        MdsDisc disc;
+        try
+        {
+            disc = await Task.Run(() => MdsParser.Parse(inputFile), token);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            LogError($" {originalName} could not be read as an Alcohol descriptor: {ex.Message}");
+            return false;
+        }
+
+        LogMessage($"MDS: {originalName} - {disc.Summary}");
+
+        // Stripping subchannel data writes a whole second copy of the disc, so the work directory
+        // has to be chosen with room for it.
+        long requiredBytes = 0;
+        if (disc.NeedsSubchannelStrip && disc.MdfPath is not null)
+        {
+            try
+            {
+                requiredBytes = new FileInfo(disc.MdfPath).Length;
+            }
+            catch
+            {
+                /* ignored */
+            }
+        }
+
+        var tempDir = PathUtils.GetBestTempDirectory(inputFile, outputFolder, TempDirPrefix, requiredBytes);
+        tempDirs.Add(tempDir);
+        await Task.Run(() => Directory.CreateDirectory(tempDir), token);
+
+        MdsInputPreparer.Result prepared;
+        try
+        {
+            prepared = await MdsInputPreparer.PrepareAsync(disc, tempDir, LogMessage, token);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            if (IsDiskSpaceException(ex))
+            {
+                LogError($" Not enough disk space to repack {originalName}. Free up space and try again.");
+            }
+            else
+            {
+                LogError($" Failed to prepare {originalName} for conversion: {ex.Message}", ex);
+            }
+
+            return false;
+        }
+
+        if (!prepared.Success)
+        {
+            LogError($" {originalName} cannot be converted: {prepared.FailureReason}.");
+            return false;
+        }
+
+        var outputChd = ComputeOutputChdPath(inputFile, inputFolder, outputFolder);
+        var outputDir = Path.GetDirectoryName(outputChd) ?? outputFolder;
+        if (!Directory.Exists(outputDir)) Directory.CreateDirectory(outputDir);
+
+        UpdateWriteSpeedDisplay(0);
+
+        // A 2048-byte-sector .mdf is an ISO in all but name, so it is converted as a DVD image.
+        var success = prepared.DvdImagePath is not null
+            ? await ConvertToChdAsync(chdmanPath, prepared.DvdImagePath, outputChd, cores, false, true, timeoutMinutes, token)
+            : await ConvertToChdAsync(chdmanPath, prepared.CuePath!, outputChd, cores, forceCd, forceDvd, timeoutMinutes, token);
+
+        if (!success)
+        {
+            if (deleteOriginal)
+                LogMessage($"KEEPING source: {originalName} (Conversion failed, skipping deletion for safety)");
+
+            return false;
+        }
+
+        LogMessage($"Converted: {originalName}");
+
+        if (deleteOriginal)
+        {
+            LogMessage($"Deleting source: {originalName} (Option 'Delete originals' is enabled)");
+            await TryDeleteFileAsync(inputFile, "original MDS", token);
+
+            if (disc.MdfPath is not null)
+                await TryDeleteFileAsync(disc.MdfPath, "original MDF", token);
+
+            var subfolder = Path.GetDirectoryName(inputFile);
+            if (!string.IsNullOrEmpty(subfolder))
+                await TryDeleteEmptySubfolderAsync(subfolder, inputFolder, token);
+        }
+
+        return true;
+    }
+
+    /// <summary>
+    /// Converts an Alcohol .mds extracted from an archive. Same preparation as the loose-file path,
+    /// without the source deletion, which the archive handler owns.
+    /// </summary>
+    /// <param name="chdmanPath">Path to chdman.exe.</param>
+    /// <param name="mdsPath">Path of the extracted .mds descriptor.</param>
+    /// <param name="outputChd">Destination CHD path.</param>
+    /// <param name="tempDirs">Temp directories to clean up when the file is done.</param>
+    /// <param name="outputFolder">Conversion output folder, used to pick a temp location.</param>
+    /// <param name="cores">Processor count passed to chdman.</param>
+    /// <param name="forceCd">Force the createcd verb.</param>
+    /// <param name="forceDvd">Force the createdvd verb.</param>
+    /// <param name="timeoutMinutes">Per-file timeout, or null for none.</param>
+    /// <param name="token">Cancellation token.</param>
+    /// <summary>
+    /// Converts an ISZ found inside an archive, by the same route a loose one takes: decompress it,
+    /// or recognise that it is an ordinary image wearing the extension, then convert the result.
+    /// </summary>
+    /// <param name="chdmanPath">Path of chdman.exe.</param>
+    /// <param name="iszPath">The extracted .isz file.</param>
+    /// <param name="outputChd">Destination CHD path.</param>
+    /// <param name="tempDirs">Temp directories to clean up when the archive is done.</param>
+    /// <param name="outputFolder">Conversion output folder, used to pick a temp location.</param>
+    /// <param name="cores">Worker threads to give chdman.</param>
+    /// <param name="forceCd">Force the CD verb.</param>
+    /// <param name="forceDvd">Force the DVD verb.</param>
+    /// <param name="timeoutMinutes">Per-file timeout, or null for none.</param>
+    /// <param name="token">Cancellation token.</param>
+    private async Task<bool> ConvertIszViaImageAsync(string chdmanPath, string iszPath, string outputChd, List<string> tempDirs, string outputFolder, int cores, bool forceCd, bool forceDvd, int? timeoutMinutes, CancellationToken token)
+    {
+        var name = Path.GetFileName(iszPath);
+
+        var kind = DiscImageSignature.Detect(iszPath);
+
+        var resolved = kind == DiscImageKind.Isz
+            ? await ResolveIszAsync(iszPath, name, outputFolder, tempDirs, token)
+            : await ResolveMislabelledContainerAsync(iszPath, name, IszContainerDescription, kind, tempDirs, token);
+
+        if (resolved.SkipReason is not null)
+        {
+            LogWarning($" {name}: {resolved.SkipReason}");
+            return false;
+        }
+
+        return await ConvertToChdAsync(chdmanPath, resolved.PathToConvert!, outputChd, cores, forceCd, resolved.ForceDvd || forceDvd, timeoutMinutes, token);
+    }
+
+    /// <summary>How a .isz file is referred to when its content turns out not to be one.</summary>
+    private const string IszContainerDescription = "a compressed ISZ image";
+
+    /// <summary>
+    /// Handles a file whose extension promises a container - an archive, or a compressed ISZ - but
+    /// which holds an ordinary image. The image is converted where it lies, with a generated cue
+    /// when it is raw CD sectors.
+    /// </summary>
+    /// <param name="imagePath">The image with the misleading extension.</param>
+    /// <param name="originalName">File name used in log messages.</param>
+    /// <param name="claimed">What the extension claims, for the log message.</param>
+    /// <param name="kind">What the content was detected as.</param>
+    /// <param name="tempDirs">Temp directories to clean up when the file is done.</param>
+    /// <param name="token">Cancellation token.</param>
+    private async Task<ResolvedInput> ResolveMislabelledContainerAsync(string imagePath, string originalName, string claimed, DiscImageKind kind, List<string> tempDirs, CancellationToken token)
+    {
+        var trackMode = RawCdImageDetector.DetectTrackMode(imagePath);
+        if (trackMode is not null)
+        {
+            LogMessage($" {originalName} is named as {claimed} but contains {DiscImageSignature.Describe(kind)} ({trackMode}); converting it as a CD.");
+            var cuePath = await StageCueForImageAsync(imagePath, originalName, trackMode, tempDirs, token);
+
+            return cuePath is not null
+                ? ResolvedInput.Convert(cuePath, false)
+                : ResolvedInput.Skip("could not place a generated cue on the same volume as the image.");
+        }
+
+        if (IsCookedImageSize(imagePath))
+        {
+            LogMessage($" {originalName} is named as {claimed} but contains a disc image; converting it as a DVD image.");
+            return ResolvedInput.Convert(imagePath, true);
+        }
+
+        return ResolvedInput.Skip($"the extension says {claimed} but the content is {DiscImageSignature.Describe(kind)}, and it is not a usable disc image. The download is probably incomplete.");
+    }
+
+    private async Task<bool> ConvertMdsViaCueAsync(string chdmanPath, string mdsPath, string outputChd, List<string> tempDirs, string outputFolder, int cores, bool forceCd, bool forceDvd, int? timeoutMinutes, CancellationToken token)
+    {
+        MdsDisc disc;
+        try
+        {
+            disc = await Task.Run(() => MdsParser.Parse(mdsPath), token);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            LogError($" {Path.GetFileName(mdsPath)} could not be read as an Alcohol descriptor: {ex.Message}");
+            return false;
+        }
+
+        LogMessage($"MDS: {Path.GetFileName(mdsPath)} - {disc.Summary}");
+
+        long requiredBytes = 0;
+        if (disc.NeedsSubchannelStrip && disc.MdfPath is not null)
+        {
+            try
+            {
+                requiredBytes = new FileInfo(disc.MdfPath).Length;
+            }
+            catch
+            {
+                /* ignored */
+            }
+        }
+
+        var tempDir = PathUtils.GetBestTempDirectory(mdsPath, outputFolder, TempDirPrefix, requiredBytes);
+        tempDirs.Add(tempDir);
+        await Task.Run(() => Directory.CreateDirectory(tempDir), token);
+
+        MdsInputPreparer.Result prepared;
+        try
+        {
+            prepared = await MdsInputPreparer.PrepareAsync(disc, tempDir, LogMessage, token);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            LogError($" Failed to prepare {Path.GetFileName(mdsPath)} for conversion: {ex.Message}", ex);
+            return false;
+        }
+
+        if (!prepared.Success)
+        {
+            LogError($" {Path.GetFileName(mdsPath)} cannot be converted: {prepared.FailureReason}.");
+            return false;
+        }
+
+        return prepared.DvdImagePath is not null
+            ? await ConvertToChdAsync(chdmanPath, prepared.DvdImagePath, outputChd, cores, false, true, timeoutMinutes, token)
+            : await ConvertToChdAsync(chdmanPath, prepared.CuePath!, outputChd, cores, forceCd, forceDvd, timeoutMinutes, token);
+    }
+
+    /// <summary>
+    /// Converts a CloneCD set by generating a cue for it in a fresh temp directory. Used for both
+    /// loose .ccd files and .ccd files extracted from an archive, since chdman cannot read a .ccd.
+    /// </summary>
+    /// <param name="chdmanPath">Path to chdman.exe.</param>
+    /// <param name="ccdPath">Path of the .ccd descriptor.</param>
+    /// <param name="outputChd">Destination CHD path.</param>
+    /// <param name="tempDirs">Temp directories to clean up when the file is done.</param>
+    /// <param name="outputFolder">Conversion output folder, used to pick a temp location.</param>
+    /// <param name="cores">Processor count passed to chdman.</param>
+    /// <param name="forceCd">Force the createcd verb.</param>
+    /// <param name="forceDvd">Force the createdvd verb.</param>
+    /// <param name="timeoutMinutes">Per-file timeout, or null for none.</param>
+    /// <param name="token">Cancellation token.</param>
+    private async Task<bool> ConvertCcdViaCueAsync(string chdmanPath, string ccdPath, string outputChd, List<string> tempDirs, string outputFolder, int cores, bool forceCd, bool forceDvd, int? timeoutMinutes, CancellationToken token)
+    {
+        var tempDir = PathUtils.GetBestTempDirectory(ccdPath, outputFolder, TempDirPrefix);
+        tempDirs.Add(tempDir);
+        await Task.Run(() => Directory.CreateDirectory(tempDir), token);
+
+        try
+        {
+            return await ConvertCcdInTempDirAsync(chdmanPath, ccdPath, outputChd, tempDir, cores, forceCd, forceDvd, timeoutMinutes, token);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            LogError($"CCDSharp: Conversion error - {ex.Message}");
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Writes a cue for <paramref name="ccdPath"/> into <paramref name="tempDir"/> and converts it.
+    /// The .img is referenced from the cue rather than copied, so no extra disc-sized write happens.
+    /// </summary>
+    private async Task<bool> ConvertCcdInTempDirAsync(string chdmanPath, string ccdPath, string outputChd, string tempDir, int cores, bool forceCd, bool forceDvd, int? timeoutMinutes, CancellationToken token)
+    {
+        LogMessage($"CCDSharp: Converting {Path.GetFileName(ccdPath)}");
+
+        var tempCuePath = Path.Combine(tempDir, Path.GetFileNameWithoutExtension(ccdPath) + FileExtensions.Cue);
+        await Task.Run(() => CcdConverter.ConvertToCueBin(ccdPath, tempCuePath), token);
+
+        return await ConvertToChdAsync(chdmanPath, tempCuePath, outputChd, cores, forceCd, forceDvd, timeoutMinutes, token);
     }
 
     private async Task<bool> ValidateDependentFilesAsync(string ext, string inputFile, string originalName, CancellationToken token)
@@ -1866,7 +2712,6 @@ internal partial class MainWindow : IDisposable
     private async Task<bool> TryRetryConversionViaTempCopyAsync(string chdmanPath, string inputFile, string originalName, string ext, string outputFolder, string outputChd, int cores, bool forceCd, bool forceDvd, int? timeoutMinutes, List<string> tempDirs, CancellationToken token)
     {
         LogMessage($"Direct conversion failed for {originalName}. Retrying via temporary directory copy...");
-        await TryDeleteFileAsync(outputChd, "failed partial CHD", CancellationToken.None);
 
         try
         {
@@ -2006,7 +2851,12 @@ internal partial class MainWindow : IDisposable
             if (deleteOriginal)
                 LogMessage($"KEEPING source: {originalName} (Conversion failed, skipping deletion for safety)");
 
-            await TryDeleteFileAsync(outputChd, "failed CHD", CancellationToken.None);
+            // No delete at the destination. Conversions are staged and moved into place only on
+            // success, so a failure leaves whatever was already there untouched - including a good
+            // CHD produced by a different input that resolves to the same name.
+            if (File.Exists(outputChd))
+                LogMessage($"KEEPING existing output: {Path.GetFileName(outputChd)} (not produced by this attempt)");
+
             return false;
         }
     }
@@ -2166,14 +3016,17 @@ internal partial class MainWindow : IDisposable
 
         var outputFile = Path.Combine(targetDir, fileName + outputExt);
 
-        // For DVD/HDD extraction: delete existing output file before writing
-        if (extractCommand is "extractdvd" or "extracthd")
+        // An extracted file takes the CHD's own base name, so extracting into a folder that already
+        // holds a set of that name - most often the folder the CHD was made in - would replace it.
+        // Rather than overwrite, or ask, the disc goes into a subfolder of its own name. Nothing is
+        // lost and no decision is required; the log says where it went.
+        if (extractCommand is "extractdvd" or "extracthd" && File.Exists(outputFile))
         {
-            if (File.Exists(outputFile))
-            {
-                LogMessage($"Overwriting: {fileName}{outputExt} already exists in output folder.");
-                await TryDeleteFileAsync(outputFile, "existing output file", CancellationToken.None);
-            }
+            var isolatedDir = PathUtils.ReserveFreeSubdirectory(targetDir, fileName);
+            Directory.CreateDirectory(isolatedDir);
+            outputFile = Path.Combine(isolatedDir, fileName + outputExt);
+
+            LogMessage($" {fileName}{outputExt} already exists here; extracting into \"{Path.GetFileName(isolatedDir)}\" so the existing file is kept.");
         }
 
         var success = false;
@@ -2302,12 +3155,26 @@ internal partial class MainWindow : IDisposable
                 throw new InvalidOperationException($"No files extracted from '{Path.GetFileName(chdFile)}'.");
             }
 
-            // Move files from temp to target directory, overwriting existing. Retry transient
-            // lock failures (antivirus/indexer) so a locked file doesn't abort the whole disc.
+            // A multi-track extraction writes a descriptor plus its track files, all named after the
+            // CHD, so extracting into a folder that already holds that set would replace it. When any
+            // of them would clash the whole set goes into a subfolder of its own name instead: the
+            // descriptor's FILE entries are relative and the tracks travel with it, so the set stays
+            // valid without rewriting anything.
+            var destinationDir = targetDir;
+            if (extractedFiles.Any(f => File.Exists(Path.Combine(targetDir, Path.GetFileName(f)))))
+            {
+                destinationDir = PathUtils.ReserveFreeSubdirectory(targetDir, baseFileName);
+                Directory.CreateDirectory(destinationDir);
+
+                LogMessage($" Files named after this disc already exist here; extracting into \"{Path.GetFileName(destinationDir)}\" so they are kept.");
+            }
+
+            // Move files from temp to the destination. Retry transient lock failures
+            // (antivirus/indexer) so a locked file doesn't abort the whole disc.
             foreach (var srcPath in extractedFiles)
             {
                 token.ThrowIfCancellationRequested();
-                var destPath = Path.Combine(targetDir, Path.GetFileName(srcPath));
+                var destPath = Path.Combine(destinationDir, Path.GetFileName(srcPath));
                 if (File.Exists(destPath))
                 {
                     var deleted = await RetryingFileOperations.TryDeleteAsync(destPath, token).ConfigureAwait(false);
@@ -2533,12 +3400,22 @@ internal partial class MainWindow : IDisposable
             return false;
         }
 
+        // An .img sitting next to a .cue of the same name is the data half of a cue/bin pair. The cue
+        // is the only file that carries the track layout, so hand chdman the cue: passing the raw
+        // image instead selects createhd and reports "Data size ... is not divisible by sector size
+        // 512". This also routes the input through the cue work-directory preparation below.
+        var companionCue = Path.ChangeExtension(inputFile, FileExtensions.Cue);
+        if (inputFile.EndsWith(FileExtensions.Img, StringComparison.OrdinalIgnoreCase) && File.Exists(companionCue))
+        {
+            LogMessage($" {Path.GetFileName(inputFile)} is described by {Path.GetFileName(companionCue)}; converting the cue instead.");
+            inputFile = companionCue;
+        }
+
         var isImg = inputFile.EndsWith(FileExtensions.Img, StringComparison.OrdinalIgnoreCase);
         var isRaw = inputFile.EndsWith(FileExtensions.Raw, StringComparison.OrdinalIgnoreCase);
         var isIso = inputFile.EndsWith(FileExtensions.Iso, StringComparison.OrdinalIgnoreCase);
-        var hasCue = isImg && File.Exists(Path.ChangeExtension(inputFile, FileExtensions.Cue));
 
-        var command = forceCd || hasCue || (!forceDvd && !isIso && !isImg && !isRaw)
+        var command = forceCd || (!forceDvd && !isIso && !isImg && !isRaw)
             ? "createcd"
             : forceDvd || isIso
                 ? "createdvd"
@@ -2615,6 +3492,32 @@ internal partial class MainWindow : IDisposable
             asciiOutputFile = Path.Combine(asciiTempDir, Guid.NewGuid().ToString("N") + FileExtensions.Chd);
             outputFile = asciiOutputFile;
             args = args.Replace(originalOutputFile, outputFile);
+        }
+
+        // Otherwise write to a staging file beside the destination and only move it into place once
+        // chdman has succeeded. chdman is invoked with -f, so aiming it straight at the destination
+        // would truncate an existing CHD before failing - that is how a finished conversion could be
+        // destroyed by a later, unrelated input that happened to resolve to the same output name.
+        // Staging beside the destination keeps the move on one volume, so it stays a rename.
+        if (asciiOutputFile == null)
+        {
+            var stagingDir = Path.GetDirectoryName(originalOutputFile);
+            if (!string.IsNullOrEmpty(stagingDir))
+            {
+                if (!Directory.Exists(stagingDir)) Directory.CreateDirectory(stagingDir);
+
+                asciiOutputFile = Path.Combine(
+                    stagingDir,
+                    Path.GetFileNameWithoutExtension(originalOutputFile) + "." + Guid.NewGuid().ToString("N")[..8] + StagingExtension);
+                outputFile = asciiOutputFile;
+                args = args.Replace(originalOutputFile, outputFile);
+            }
+        }
+
+        if (!await HasRoomForOutputAsync(inputFile, originalInputFile, originalOutputFile, token))
+        {
+            TryCleanupAsciiTemp();
+            return false;
         }
 
         LogMessage($"CHDMAN: {command} {Path.GetFileName(originalInputFile)}");

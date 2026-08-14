@@ -49,7 +49,9 @@ Decompresses archives and compressed images for the conversion pipeline.
 - **7za.exe fallback**: zip/7z failures (except cancellation) fall back to `7za x "<archive>" -o"<output>" -y` when the exe is available; RAR has no fallback. 7za exit code 2 or "Is not archive"/"Cannot open" output → `InvalidDataException` "archive is invalid or corrupt".
 - **Retries**: ZIP open/entry writes retry 3 times on `IOException`/`UnauthorizedAccessException` with `attempt * 1000 ms` sleeps; SharpCompress temp-copy fallback covers locked source files.
 - **Error categorization** (converted to user-facing messages): unsupported ZIP compression method (Deflate64/LZMA/PPMd — re-compress advice), corrupt/incomplete archive, encrypted archive (`CryptographicException`), missing multi-part RAR volume, disk full (HResult `-2147024784`/`-2147024783`), locked file, network unavailable.
-- **Post-extraction scan**: collects files matching `PrimaryTargetExtensionsSet` (`.cue/.iso/.img/.gdi/.toc/.raw/.ccd`); if none and `.bin` files exist, generates a MODE2/2352 auto-cue for the largest bin (`BinCueGenerator`); if nothing supported → "No supported primary files found in archive."
+- **Post-extraction scan**: collects files matching `PrimaryTargetExtensionsSet` (`.cue/.iso/.img/.gdi/.toc/.raw/.ccd/.mds/.isz`); if none and `.bin` files exist, a `(Track N)` set becomes a multi-FILE cue (`TrackBinCueBuilder`), otherwise a MODE2/2352 auto-cue is generated for the largest bin (`BinCueGenerator`); if nothing supported → "No supported primary files found in archive."
+- **Companion filtering**: `InputFileFilter.RemoveCompanionDataFilesAsync` drops raw images that a descriptor in the archive already covers, so a cue/bin or CloneCD set inside an archive converts once through its descriptor rather than once per file with both attempts aimed at the same output name.
+- `.ecm` is **not** a primary target, so an archive containing only `.ecm` files still reports nothing supported. Loose `.ecm` files convert normally.
 - **Cancellation**: observed throughout; `OperationCanceledException` is rethrown.
 
 ---

@@ -20,6 +20,14 @@ internal static class FileExtensions
     internal const string Ccd = ".ccd";
     internal const string Sub = ".sub";
     internal const string Bin = ".bin";
+    internal const string Mds = ".mds";
+    internal const string Mdf = ".mdf";
+    internal const string Ecm = ".ecm";
+
+    // First volumes of split disc images. Later parts (.002, .i01, ...) are found from the first
+    // one and are deliberately not listed, so a set is only ever offered as a single input.
+    internal const string SplitFirstNumbered = ".001";
+    internal const string SplitFirstAlcohol = ".i00";
 
     // Archive formats
     internal const string Zip = ".zip";
@@ -29,6 +37,7 @@ internal static class FileExtensions
     // Compressed disc image formats
     internal const string Cso = ".cso";
     internal const string Pbp = ".pbp";
+    internal const string Isz = ".isz";
 
     // Output format
     internal const string Chd = ".chd";
@@ -39,9 +48,15 @@ internal static class FileExtensions
     /// <summary>
     /// All supported input extensions for conversion.
     /// </summary>
+    /// <remarks>
+    /// .bin is included because a disc is often distributed as a bare raw .bin with no cue at all.
+    /// A cue is generated for it at conversion time. When a sibling descriptor does cover the .bin
+    /// it is dropped from the batch by <see cref="InputFileFilter"/>, so split-track sets still
+    /// convert once, through their cue.
+    /// </remarks>
     internal static readonly string[] AllSupportedInputExtensionsForConversion =
     [
-        Cue, Iso, Img, Gdi, Toc, Raw, Ccd, Zip, SevenZip, Rar, Cso, Pbp
+        Cue, Iso, Img, Gdi, Toc, Raw, Ccd, Bin, Mds, Ecm, Isz, SplitFirstNumbered, SplitFirstAlcohol, Zip, SevenZip, Rar, Cso, Pbp
     ];
 
     /// <summary>
@@ -67,9 +82,13 @@ internal static class FileExtensions
     /// <summary>
     /// Primary target extensions for extraction from archives.
     /// </summary>
+    /// <remarks>
+    /// .isz is included because an archived ISZ is decompressed in place by the conversion loop, so
+    /// an archive holding one is convertible rather than reported as containing nothing supported.
+    /// </remarks>
     internal static readonly string[] PrimaryTargetExtensions =
     [
-        Cue, Iso, Img, Gdi, Toc, Raw, Ccd
+        Cue, Iso, Img, Gdi, Toc, Raw, Ccd, Mds, Isz
     ];
 
     /// <summary>
