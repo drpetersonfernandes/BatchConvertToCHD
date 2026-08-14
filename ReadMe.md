@@ -32,6 +32,7 @@
 *   **CSO Decompression**: Built-in support for `.cso` and `.ciso` (Compressed ISO) files via the [CSOSharp](https://github.com/PureLogicCode/CSOSharp) library (supports deflate/zlib and LZ4).
 *   **PBP Extraction**: Convert PlayStation Portable `.pbp` files to CHD format via the [PBPSharp](https://github.com/PureLogicCode/PBPSharp) library. Files without a PlayStation disc image (PSP homebrew applications, unsupported or corrupt variants) are detected and skipped with a clear message instead of a generic failure.
 *   **Smart CUE Normalization**: Detects the actual encoding of `.cue`/`.toc` files (UTF-8, Shift-JIS, Korean CP949, Cyrillic CP1251, Latin-1 and more), strips UTF-8 BOMs (which chdman's parser cannot handle — they produced the "couldn't find bin file []" error), resolves referenced files case-insensitively and zero-padding-tolerantly (`(Track 2)` vs `(Track 02)`), and hands chdman a self-contained, canonicalized cue set — eliminating the common "couldn't find bin file" failures on non-ASCII and BOM-prefixed cues. Bins are referenced in place via relative paths when possible, so no multi-hundred-MB copies are needed for BOM-only cues.
+*   **Raw Audio Track Handling**: Cue files referencing `.raw` audio tracks (common in multi-track CD audio rips) are automatically detected via `GameFileParser` and the `-us 2352` unit size flag is passed to chdman, preventing the "Unit size must be specified if no output parent CHD is supplied" error.
 *   **Archive Dependency Validation**: Cues, GDI and TOC files extracted from archives are validated before conversion — if the referenced data files are missing from the archive (incomplete download, separate bin archive), the entry is skipped with a clear warning instead of failing inside chdman.
 *   **MP3 Audio Track Support**: Cue sheets with MP3 audio tracks — `cue/bin/mp3` and `cue/iso/mp3` sets (common in Neo Geo CD and older PS1 rips) — are automatically decoded to WAV before conversion, because chdman cannot read MP3 tracks. The decoded WAVs are normalized to chdman's exact requirements (44.1 kHz, stereo, 16-bit PCM), with a built-in decoder fallback for systems without Media Foundation.
 *   **bin-only Archives**: Archives that contain only `.bin` files (no `.cue`/`.iso` descriptor) now get an auto-generated cue and convert automatically (MODE2/2352 with automatic MODE1/2352 fallback).
@@ -75,7 +76,7 @@ A file's extension is the least reliable thing about it. Every input is identifi
 
 ### 🔄 Updates & Stability
 *   **Automatic Update Checks**: Notifies you immediately if a newer version is available on GitHub at startup.
-*   **Automated Bug Reporting**: Built-in error reporting system helps improve the application by automatically sending crash reports (no personal data collected). Known OS-level issues (e.g. WPF tooltip accessibility-bridge failures) and user-data conditions (corrupt files, chdman's own failures) are filtered out automatically, while genuine application defects — including CHDSharp/PBPSharp extraction failures (with debug details) — still reach the developer.
+*   **Automated Bug Reporting**: Built-in error reporting system helps improve the application by automatically sending crash reports (no personal data collected). Known OS-level issues (e.g. WPF tooltip accessibility-bridge failures) and user-data conditions (corrupt files, chdman's own failures, stats API rate limits) are filtered out automatically, while genuine application defects — including CHDSharp/PBPSharp extraction failures (with debug details) — still reach the developer.
 
 ---
 
@@ -105,7 +106,7 @@ The application implements priority-based logic to ensure compatibility. Content
 4.  **Descriptors**: `.cue`, `.gdi` and `.toc` go to `createcd` after cue normalization. `.ccd` becomes a cue via CCDSharp, `.mds` via the Alcohol parser, and `.pbp` is extracted to CUE/BIN via PBPSharp.
 5.  **DVD Images (`.iso`)**: Defaults to `createdvd`, once content inspection has ruled out a mislabelled raw CD dump.
 6.  **Hard Disk Images (`.img`)**: Defaults to `createhd` unless an accompanying `.cue` file is detected, in which case `createcd` is used.
-7.  **Raw Data (`.raw`)**: Defaults to `createraw`.
+7.  **Raw Data (`.raw`)**: Defaults to `createraw`. Cue descriptors referencing `.raw` audio tracks also receive `-us 2352` automatically.
 
 Generated cue sheets reference the disc image where it already lies rather than copying it, because chdman resolves a cue's `FILE` entry against the cue's own directory. That also means such a cue has to be written on the same volume as the image, since chdman cannot follow an absolute `FILE` path.
 

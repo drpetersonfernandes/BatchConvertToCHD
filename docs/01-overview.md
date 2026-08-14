@@ -99,7 +99,7 @@ Content is inspected first; the extension only decides the outcome for files who
 4. **Descriptors** — `.cue`/`.gdi`/`.toc` → `createcd` after cue normalization. `.ccd` becomes a cue via CCDSharp, `.mds` via the Alcohol parser, `.pbp` is extracted to CUE/BIN via PBPSharp.
 5. **`.iso` (DVD images)** → `createdvd`, once content inspection has ruled out a mislabelled raw CD dump
 6. **`.img` (hard disk images)** → `createhd`, unless an accompanying `.cue` exists → `createcd`
-7. **`.raw` (raw data)** → `createraw` (with an explicit unit size `-us 2352`)
+7. **`.raw` (raw data)** → `createraw` (with an explicit unit size `-us 2352`). Cue descriptors referencing `.raw` audio tracks also receive `-us 2352` automatically.
 
 The user can override 5–7 via **Force CD** / **Force DVD** checkboxes. PBP always extracts first.
 

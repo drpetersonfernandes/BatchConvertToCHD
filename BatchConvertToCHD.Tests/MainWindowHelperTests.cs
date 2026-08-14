@@ -117,14 +117,14 @@ public class MainWindowHelperTests : IDisposable
     }
 
     [Fact]
-    public void SelectChdmanErrorLine_FatalSummaryOnly_FallsBackToFatalLine()
+    public void SelectChdmanErrorLine_FatalSummaryOnly_ReturnsDescriptiveMessage()
     {
         const string errorText = "Compressing, 0.0% complete... (ratio=100.0%)\n" +
                                  "Fatal error occurred: 1";
 
         var line = MainWindow.SelectChdmanErrorLine(errorText);
 
-        Assert.Equal("Fatal error occurred: 1", line);
+        Assert.Equal("chdman encountered an error. The file may be corrupted, in an unsupported format, or a required codec may be missing.", line);
     }
 
     [Fact]

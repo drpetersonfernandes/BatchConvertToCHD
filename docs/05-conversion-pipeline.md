@@ -101,6 +101,7 @@ command = forceCd || hasCue || (!forceDvd && !isIso && !isImg && !isRaw) ? "crea
 - **Verb choice is still extension-driven here**, but this code is now only reached for images that content inspection (§5.2) did not claim. So `Data size ... is not divisible by sector size` should now mean a genuinely broken file rather than a mislabelled one.
 - Base args: `{command} -i "<in>" -o "<out>" -f -np {cores}`.
 - **`.raw` inputs get `-us 2352`** (`:2478–2481`) — chdman's `createraw` requires an explicit unit size when no parent CHD is supplied ("Unit size must be specified if no output parent CHD is supplied").
+- **`.cue`/`.toc` descriptors referencing `.raw` tracks also get `-us 2352`** — when a cue file references raw audio tracks (e.g. `track02.raw`), the `createcd` command also needs an explicit unit size. `GameFileParser.GetReferencedFilesFromCueAsync` is called to check for `.raw` references, and `-us 2352` is appended to the arguments.
 - `-np` (processors) comes from a UI/core setting.
 
 ### Pre-flight validations
@@ -124,7 +125,7 @@ command = forceCd || hasCue || (!forceDvd && !isIso && !isImg && !isRaw) ? "crea
 - **Valid-output tolerance**: a non-zero exit that still produced a >0-byte output file is treated as success (`:2701–2716`).
 - **Sector-size hard check** (`:2761–2794`): for non-descriptor inputs, if the file size is not divisible by any of 2352/2048/2336/2324, the conversion fails with "file size ... is not divisible by any standard sector size ... The file may be corrupt or truncated."
 - **Disk-space detection** (`IsDiskSpaceError`, `:3281`): keywords "not enough space", "not enough disk space", "disk full", "no space left", "insufficient disk space".
-- **Error line selection** (`SelectChdmanErrorLine`, `:2860`): scans the stderr buffer from the **last** line upward, skipping progress lines (`% complete`, `Compressing,`, `Converting,`, `Output bytes`, `Compression ratio`, `ratio=`), and returns the last real error line. This fixed the class of bugs where the first line of stderr was a progress line ("Compressing, 0.0% complete... (ratio=100.0%)").
+- **Error line selection** (`SelectChdmanErrorLine`, `:2860`): scans the stderr buffer from the **last** line upward, skipping progress lines (`% complete`, `Compressing,`, `Converting,`, `Output bytes`, `Compression ratio`, `ratio=`) and the `Fatal error occurred: N` exit summary, and returns the last real error line. This fixed the class of bugs where the first line of stderr was a progress line ("Compressing, 0.0% complete... (ratio=100.0%)"). When the only output is a fatal error summary, a descriptive message is returned instead of the cryptic exit code.
 - **"couldn't find bin file" diagnostics**: when the selected error line contains that phrase, a capped, sorted directory listing of the input folder is logged (`GetDirectoryDiagnostics`, `:2890`).
 
 ## 5.4 Cue Normalization & Work Directories

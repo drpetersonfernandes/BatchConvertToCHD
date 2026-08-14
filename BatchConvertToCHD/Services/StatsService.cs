@@ -42,13 +42,18 @@ internal class StatsService
             request.Content = JsonContent.Create(payload);
 
             var response = await _httpClient.SendAsync(request).ConfigureAwait(false);
-            if (response.StatusCode == (System.Net.HttpStatusCode)429)
+
+            var statusCode = (int)response.StatusCode;
+
+            if (statusCode == 429)
             {
                 Logger.Debug("Usage statistics rate-limited (HTTP 429) - this is expected behavior");
+                return;
             }
-            else if (!response.IsSuccessStatusCode)
+
+            if (!response.IsSuccessStatusCode)
             {
-                Logger.Information("Failed to record usage statistics: HTTP {StatusCode}", (int)response.StatusCode);
+                Logger.Information("Failed to record usage statistics: HTTP {StatusCode}", statusCode);
             }
         }
         catch (Exception ex)

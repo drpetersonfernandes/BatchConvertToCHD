@@ -3402,6 +3402,9 @@ internal partial class MainWindow : IDisposable
             inputFile = companionCue;
         }
 
+        var isCueDescriptor = inputFile.EndsWith(FileExtensions.Cue, StringComparison.OrdinalIgnoreCase) ||
+                              inputFile.EndsWith(FileExtensions.Toc, StringComparison.OrdinalIgnoreCase);
+
         var isImg = inputFile.EndsWith(FileExtensions.Img, StringComparison.OrdinalIgnoreCase);
         var isRaw = inputFile.EndsWith(FileExtensions.Raw, StringComparison.OrdinalIgnoreCase);
         var isIso = inputFile.EndsWith(FileExtensions.Iso, StringComparison.OrdinalIgnoreCase);
@@ -3418,6 +3421,14 @@ internal partial class MainWindow : IDisposable
         if (isRaw)
         {
             args += " -us 2352";
+        }
+        else if (string.Equals(command, "createcd", StringComparison.Ordinal) && isCueDescriptor)
+        {
+            var refs = await GameFileParser.GetReferencedFilesFromCueAsync(inputFile, static _ => { }, token).ConfigureAwait(false);
+            if (refs.Any(static r => r.EndsWith(FileExtensions.Raw, StringComparison.OrdinalIgnoreCase)))
+            {
+                args += " -us 2352";
+            }
         }
 
         var pathNeedsAscii = Path.GetFileName(inputFile).Any(static c => c > 127);
@@ -3439,9 +3450,6 @@ internal partial class MainWindow : IDisposable
                 LogWarning($" {Path.GetFileName(originalInputFile)}: {sectorWarning} Proceeding with conversion anyway.");
             }
         }
-
-        var isCueDescriptor = inputFile.EndsWith(FileExtensions.Cue, StringComparison.OrdinalIgnoreCase) ||
-                              inputFile.EndsWith(FileExtensions.Toc, StringComparison.OrdinalIgnoreCase);
 
         // For cue/toc descriptors, hand chdman a canonicalized, self-contained cue set instead of the raw file:
         // this fixes UTF-8 BOMs, non-UTF-8 cue text (Korean/Cyrillic), zero-padding name mismatches, and
@@ -3849,7 +3857,11 @@ internal partial class MainWindow : IDisposable
             return line;
         }
 
-        return lines.Count > 0 ? lines[^1] : string.Empty;
+        return lines.Count > 0
+            ? lines[^1].StartsWith("Fatal error occurred", StringComparison.OrdinalIgnoreCase)
+                ? "chdman encountered an error. The file may be corrupted, in an unsupported format, or a required codec may be missing."
+                : lines[^1]
+            : string.Empty;
     }
 
     /// <summary>
