@@ -38,7 +38,7 @@ public class IszDecoderTests : IDisposable
     public void ChunkEntryTypeComesFromTheTopTwoBits()
     {
         // A 3-byte pointer holding 0x1234 with each of the four flags in turn.
-        foreach (var (flag, expected) in new (int, IszChunkType)[]
+        foreach (var (flag, expected) in new[]
                  {
                      (0x00, IszChunkType.Zero),
                      (0x40, IszChunkType.Stored),
@@ -285,7 +285,7 @@ public class IszDecoderTests : IDisposable
         var iszPath = Path.Combine(_tempDir, "cut.isz");
         IszImageBuilder.WriteSingle(iszPath, image, SectorSize, ChunkSize, 3, static _ => IszImageBuilder.AdiData);
 
-        using (var file = new FileStream(iszPath, FileMode.Open, FileAccess.Write))
+        await using (var file = new FileStream(iszPath, FileMode.Open, FileAccess.Write))
         {
             file.SetLength(file.Length - ChunkSize * 3);
         }
@@ -303,7 +303,7 @@ public class IszDecoderTests : IDisposable
         var iszPath = Path.Combine(_tempDir, "notable.isz");
         IszImageBuilder.WriteSingle(iszPath, image, SectorSize, ChunkSize, 3, static _ => IszImageBuilder.AdiData);
 
-        using (var file = new FileStream(iszPath, FileMode.Open, FileAccess.Write))
+        await using (var file = new FileStream(iszPath, FileMode.Open, FileAccess.Write))
         {
             file.SetLength(IszImageBuilder.HeaderLength + 4);
         }

@@ -179,21 +179,21 @@ public class InputFileFilterTests : IDisposable
     public void CollidingOutputNamesAreReported()
     {
         // Game.cue and Game.zip both resolve to Game.chd.
-        string[] inputs = ["C:\\in\\Game.cue", "C:\\in\\Game.zip", "C:\\in\\Other.iso"];
+        string[] inputs = [@"C:\in\Game.cue", @"C:\in\Game.zip", @"C:\in\Other.iso"];
 
         var collisions = InputFileFilter.FindOutputCollisions(
             inputs, f => Path.Combine("C:\\out", Path.GetFileNameWithoutExtension(f) + ".chd"));
 
         var collision = Assert.Single(collisions);
         Assert.Equal(2, collision.Count());
-        Assert.Contains("C:\\in\\Game.cue", collision, StringComparer.Ordinal);
-        Assert.Contains("C:\\in\\Game.zip", collision, StringComparer.Ordinal);
+        Assert.Contains(@"C:\in\Game.cue", collision, StringComparer.Ordinal);
+        Assert.Contains(@"C:\in\Game.zip", collision, StringComparer.Ordinal);
     }
 
     [Fact]
     public void DistinctOutputNamesReportNoCollision()
     {
-        string[] inputs = ["C:\\in\\A.cue", "C:\\in\\B.cue"];
+        string[] inputs = [@"C:\in\A.cue", @"C:\in\B.cue"];
 
         var collisions = InputFileFilter.FindOutputCollisions(
             inputs, f => Path.Combine("C:\\out", Path.GetFileNameWithoutExtension(f) + ".chd"));
@@ -204,7 +204,7 @@ public class InputFileFilterTests : IDisposable
     [Fact]
     public void OutputCollisionComparisonIgnoresCase()
     {
-        string[] inputs = ["C:\\in\\game.cue", "C:\\in\\GAME.zip"];
+        string[] inputs = [@"C:\in\game.cue", @"C:\in\GAME.zip"];
 
         var collisions = InputFileFilter.FindOutputCollisions(
             inputs, f => Path.Combine("C:\\out", Path.GetFileNameWithoutExtension(f) + ".chd"));

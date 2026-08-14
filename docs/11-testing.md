@@ -1,8 +1,8 @@
 # 11. Testing
 
-The solution contains a single test project, `BatchConvertToCHD.Tests` (xUnit, `net10.0-windows`), with **751 tests** across 43 test classes, plus the shared `FakeHttpMessageHandler` and `IszImageBuilder` helpers.
+The solution contains a single test project, `BatchConvertToCHD.Tests` (xUnit, `net10.0-windows`), with **777 tests** across 44 test classes, plus the shared `FakeHttpMessageHandler` and `IszImageBuilder` helpers.
 
-> **Expected result on a clean machine: 734 passed, 17 failed.** The 17 failures are a fixture problem, not a regression — see [§11.5](#115-the-17-expected-failures). A change that leaves exactly those 17 failing has broken nothing.
+> **Expected result on a clean machine: 762 passed, 15 failed.** The 15 failures are a fixture problem, not a regression — see [§11.5](#115-the-15-expected-failures). A change that leaves exactly those 15 failing has broken nothing.
 
 ## 11.1 Running the Tests
 
@@ -20,7 +20,7 @@ Requirements: the tests are run on Windows (the app project is `net10.0-windows`
 - Filesystem-dependent tests create a GUID temp directory per test class (`Path.GetTempPath() + $"{ClassName}_{Guid:N}"`) and clean it up in `Dispose`.
 - HTTP-dependent tests inject an `HttpClient` backed by `FakeHttpMessageHandler` (the only shared helper): a `Func<HttpRequestMessage, HttpResponseMessage>` or a convenience `(HttpStatusCode, string content, string contentType)` constructor, plus a static `WithAsyncHandler` helper.
 - Internals are tested because `BatchConvertToCHD.csproj` grants `InternalsVisibleTo("BatchConvertToCHD.Tests")`.
-- **Integration tests** are tagged `[Trait("Category", "Integration")]` and read real sample files from fixed absolute directories (`D:\Emulators\...`). Most **early-return when the samples are absent**, so on machines without the sample folders they are effectively skipped (reported as passed). `PbpFileIntegrationTests` is the exception — see [§11.5](#115-the-17-expected-failures).
+- **Integration tests** are tagged `[Trait("Category", "Integration")]` and read real sample files from fixed absolute directories (`D:\Emulators\...`). Most **early-return when the samples are absent**, so on machines without the sample folders they are effectively skipped (reported as passed). `PbpFileIntegrationTests` is the exception — see [§11.5](#115-the-15-expected-failures).
 - **Committed fixtures** live in `BatchConvertToCHD.Tests/Fixtures/` and are copied to the output directory by the csproj. There is one today, `ecm-sample.ecm`; it exists so the ECM decoder can be verified against the reference implementation's own output without that tool being installed.
 - **Format fixtures are built in code** rather than committed where the format allows it: `IszImageBuilder` writes spec-conformant ISZ files, and `MdsTests`/`RawCdImageDetectorTests`/`SplitImageJoinerTests` synthesise their descriptors and sector data. This keeps the repository free of disc-sized binaries.
 
@@ -94,7 +94,7 @@ Requirements: the tests are run on Windows (the app project is `net10.0-windows`
 4. For chdman-dependent tests, early-return when `chdman.exe` is absent from `AppContext.BaseDirectory`.
 5. Prefer building binary fixtures in code (see `IszImageBuilder`) over committing them. Commit one only when the format cannot be generated trustworthily in-repo, as with `ecm-sample.ecm`.
 6. When a fixture asserts agreement with an outside implementation, add a **guard test** that the fixture still covers the cases it is meant to. A fixture can be regenerated more simply and silently stop testing anything.
-7. Run the full suite before pushing. A good run is **734 passed / 17 failed**, with the failures being exactly the ones in §11.5.
+7. Run the full suite before pushing. A good run is **762 passed / 15 failed**, with the failures being exactly the ones in §11.5.
 
 ### Analyzer constraints worth knowing
 
@@ -107,13 +107,12 @@ The test project runs `Meziantou.Analyzer` too, and a few rules bite:
 
 ---
 
-## 11.5 The 17 Expected Failures
+## 11.5 The 15 Expected Failures
 
-On a machine without the integration sample folders, these 17 fail rather than skip. They are pre-existing and unrelated to the conversion pipeline:
+On a machine without the integration sample folders, these 15 fail rather than skip. They are pre-existing and unrelated to the conversion pipeline:
 
 | Count | Tests | Why |
 |-------|-------|-----|
 | 15 | `PbpFileIntegrationTests.*` | They need a real `.pbp` sample that is not in the repository. Unlike the CSO integration tests, they assert on the discovered-sample collection before checking whether it is empty, so an absent sample surfaces as `Assert.NotEmpty() Failure: Collection was empty` instead of an early return. |
-| 2 | `CueWorkDirectoryTests.PrepareAsyncKeepsWaveAndAiffTracksAsIs`, `CueWorkDirectoryTests.PrepareAsyncZeroPaddingMismatchCreatesWorkDirWithResolvedName` | Stale expectations. Both expect copied track files (`track01.bin`, `track02.wav`, …) in the work directory, but the BOM-only fast path added later references bins **in place** and returns only `game.cue`. The behaviour is correct; the assertions predate it. |
 
-Both groups are worth fixing — the PBP ones by adopting the CSO tests' early-return pattern, the CueWorkDirectory ones by updating the expectations to the in-place fast path — but neither indicates a defect in the application.
+The PBP group is worth fixing — by adopting the CSO tests' early-return pattern — but it does not indicate a defect in the application.

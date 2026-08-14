@@ -14,8 +14,6 @@ internal sealed class FileWatcherService : IDisposable
     private const int MaxFileHistory = 1000;
     private const int BufferSize = 65536;
 
-    private readonly Lock _lock = new();
-
     private readonly ConcurrentDictionary<string, FileEventRecord> _lastEventByFile
         = new(StringComparer.OrdinalIgnoreCase);
 
@@ -88,12 +86,9 @@ internal sealed class FileWatcherService : IDisposable
             _watcher = null;
         }
 
-        lock (_lock)
+        _lastEventByFile.Clear();
+        while (_trackedKeys.TryDequeue(out _))
         {
-            _lastEventByFile.Clear();
-            while (_trackedKeys.TryDequeue(out _))
-            {
-            }
         }
     }
 
@@ -174,12 +169,9 @@ internal sealed class FileWatcherService : IDisposable
         // clearing history so stale data is not presented as accurate.
         if (ex is InternalBufferOverflowException)
         {
-            lock (_lock)
+            _lastEventByFile.Clear();
+            while (_trackedKeys.TryDequeue(out _))
             {
-                _lastEventByFile.Clear();
-                while (_trackedKeys.TryDequeue(out _))
-                {
-                }
             }
         }
     }
@@ -198,16 +190,13 @@ internal sealed class FileWatcherService : IDisposable
     {
         var record = new FileEventRecord(DateTime.Now, eventType, relatedName);
 
-        lock (_lock)
-        {
-            _lastEventByFile[fullPath] = record;
-            _trackedKeys.Enqueue(fullPath);
+        _lastEventByFile[fullPath] = record;
+        _trackedKeys.Enqueue(fullPath);
 
-            while (_trackedKeys.Count > MaxFileHistory)
-            {
-                if (_trackedKeys.TryDequeue(out var key))
-                    _lastEventByFile.TryRemove(key, out _);
-            }
+        while (_trackedKeys.Count > MaxFileHistory)
+        {
+            if (_trackedKeys.TryDequeue(out var key))
+                _lastEventByFile.TryRemove(key, out _);
         }
     }
 

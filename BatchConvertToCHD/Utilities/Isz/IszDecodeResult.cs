@@ -9,7 +9,13 @@ namespace BatchConvertToCHD.Utilities.Isz;
 /// <param name="FailureReason">User-facing explanation, or null on success.</param>
 internal sealed record IszDecodeResult(bool Success, string? OutputPath, int SectorSize, string? FailureReason)
 {
-    internal static IszDecodeResult Succeeded(string outputPath, int sectorSize) => new(true, outputPath, sectorSize, null);
+    internal static IszDecodeResult Succeeded(string outputPath, int sectorSize)
+    {
+        return new IszDecodeResult(true, outputPath, sectorSize, null);
+    }
 
-    internal static IszDecodeResult Failed(string reason) => new(false, null, 0, reason);
+    internal static IszDecodeResult Failed(string reason)
+    {
+        return new IszDecodeResult(false, null, 0, reason);
+    }
 }

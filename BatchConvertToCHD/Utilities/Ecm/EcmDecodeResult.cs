@@ -9,7 +9,13 @@ namespace BatchConvertToCHD.Utilities.Ecm;
 /// <param name="FailureReason">User-facing explanation, or null on success.</param>
 internal sealed record EcmDecodeResult(bool Success, string? OutputPath, long BytesWritten, string? FailureReason)
 {
-    internal static EcmDecodeResult Succeeded(string outputPath, long bytesWritten) => new(true, outputPath, bytesWritten, null);
+    internal static EcmDecodeResult Succeeded(string outputPath, long bytesWritten)
+    {
+        return new EcmDecodeResult(true, outputPath, bytesWritten, null);
+    }
 
-    internal static EcmDecodeResult Failed(string reason) => new(false, null, 0, reason);
+    internal static EcmDecodeResult Failed(string reason)
+    {
+        return new EcmDecodeResult(false, null, 0, reason);
+    }
 }

@@ -27,7 +27,7 @@ This documentation covers the project from both a user and a developer perspecti
 | Fact | Value |
 |------|-------|
 | **Application name** | `BatchConvertToCHD` |
-| **Latest version** | 3.4.0 |
+| **Latest version** | 3.4.2 |
 | **Target framework** | .NET 10.0 (`net10.0-windows`), WPF |
 | **Platform** | Windows 10 / 11, x64 and ARM64 |
 | **License** | GPL v3.0 |
@@ -52,7 +52,7 @@ CSharp_BatchConvertToCHD/
 │       ├── Ecm/                  # in-process ECM decoding
 │       ├── Isz/                  # in-process ISZ decompression
 │       └── Mds/                  # Alcohol 120% .mds/.mdf support
-├── BatchConvertToCHD.Tests/      # xUnit test suite (751 tests)
+├── BatchConvertToCHD.Tests/      # xUnit test suite (777 tests)
 ├── CCDSharp/                     # CloneCD (.ccd/.img/.sub) parsing library
 ├── CSOSharp/                     # CSO/CISO decompression library (deflate + LZ4)
 ├── PBPSharp/                     # PlayStation PBP extraction + SFO parsing library

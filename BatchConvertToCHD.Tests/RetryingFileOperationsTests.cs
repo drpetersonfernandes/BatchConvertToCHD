@@ -159,8 +159,8 @@ public class RetryingFileOperationsTests : IDisposable
 
         var moved = await RetryingFileOperations.TryMoveAsync(
             source, dest, CancellationToken.None,
-            onRetry: static _ => { },
-            backoffMsProvider: static _ => 1);
+            static _ => { },
+            static _ => 1);
 
         Assert.False(moved);
         Assert.True(File.Exists(source), "source must remain in place when the move fails");

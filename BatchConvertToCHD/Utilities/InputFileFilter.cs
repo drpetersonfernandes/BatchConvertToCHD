@@ -154,9 +154,12 @@ internal static class InputFileFilter
     internal static List<IGrouping<string, string>> FindOutputCollisions(
         IEnumerable<string> files, Func<string, string> outputPathSelector)
     {
-        return [.. files
-            .GroupBy(outputPathSelector, StringComparer.OrdinalIgnoreCase)
-            .Where(static g => g.Count() > 1)];
+        return
+        [
+            .. files
+                .GroupBy(outputPathSelector, StringComparer.OrdinalIgnoreCase)
+                .Where(static g => g.Count() > 1)
+        ];
     }
 
     private static async Task<string> ReadDescriptorTextAsync(string descriptorPath, CancellationToken token)

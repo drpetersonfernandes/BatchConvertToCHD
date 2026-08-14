@@ -5,7 +5,7 @@ namespace BatchConvertToCHD.Tests;
 public class PathUtilsTests
 {
     /// <summary>Scratch space for the tests that need real directories on disk.</summary>
-    private static readonly string _reserveTempDir = Path.Combine(Path.GetTempPath(), $"PathUtilsTests_{Guid.NewGuid():N}");
+    private static readonly string ReserveTempDir = Path.Combine(Path.GetTempPath(), $"PathUtilsTests_{Guid.NewGuid():N}");
 
     [Theory]
     [InlineData("game.iso", "game.iso")]
@@ -359,7 +359,7 @@ public class PathUtilsTests
     [Fact]
     public void AFreeSubdirectoryNameIsTheDiscNameWhenNothingOccupiesIt()
     {
-        var parent = Path.Combine(_reserveTempDir, Guid.NewGuid().ToString("N"));
+        var parent = Path.Combine(ReserveTempDir, Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(parent);
 
         var reserved = PathUtils.ReserveFreeSubdirectory(parent, "Breath of Fire IV");
@@ -372,7 +372,7 @@ public class PathUtilsTests
     [Fact]
     public void AFreeSubdirectoryNameStepsAsideForAnExistingDirectory()
     {
-        var parent = Path.Combine(_reserveTempDir, Guid.NewGuid().ToString("N"));
+        var parent = Path.Combine(ReserveTempDir, Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(Path.Combine(parent, "Game"));
         Directory.CreateDirectory(Path.Combine(parent, "Game (2)"));
 
@@ -385,7 +385,7 @@ public class PathUtilsTests
     public void AFreeSubdirectoryNameStepsAsideForAnExistingFileOfThatName()
     {
         // A file called "Game" with no extension would block the directory just as a folder would.
-        var parent = Path.Combine(_reserveTempDir, Guid.NewGuid().ToString("N"));
+        var parent = Path.Combine(ReserveTempDir, Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(parent);
         File.WriteAllBytes(Path.Combine(parent, "Game"), new byte[4]);
 
@@ -397,7 +397,7 @@ public class PathUtilsTests
     [Fact]
     public void AFreeSubdirectoryNameIsSanitised()
     {
-        var parent = Path.Combine(_reserveTempDir, Guid.NewGuid().ToString("N"));
+        var parent = Path.Combine(ReserveTempDir, Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(parent);
 
         var reserved = PathUtils.ReserveFreeSubdirectory(parent, "Game: Special?Edition");

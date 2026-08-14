@@ -1,5 +1,4 @@
 using System.Buffers.Binary;
-using System.Text;
 using BatchConvertToCHD.Utilities;
 using BatchConvertToCHD.Utilities.Mds;
 
@@ -49,7 +48,7 @@ public class MdsTests : IDisposable
     private string WriteMds(string name, params (byte Mode, byte Point, ushort SectorSize, uint StartLba)[] tracks)
     {
         var bytes = new byte[TrackBlockStart + (TrackBlockSize * Math.Max(tracks.Length, 1))];
-        Encoding.ASCII.GetBytes("MEDIA DESCRIPTOR").CopyTo(bytes, 0);
+        "MEDIA DESCRIPTOR"u8.ToArray().CopyTo(bytes, 0);
         BinaryPrimitives.WriteUInt16LittleEndian(bytes.AsSpan(SessionCountOffset), 1);
         BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(SessionBlockOffsetOffset), SessionBlockStart);
 
@@ -229,7 +228,7 @@ public class MdsTests : IDisposable
     public async Task StripRejectsAnImageThatIsNotWholeSectors()
     {
         var mdf = WriteMdf("truncated.mdf", 2448, 3);
-        using (var fs = new FileStream(mdf, FileMode.Open, FileAccess.Write))
+        await using (var fs = new FileStream(mdf, FileMode.Open, FileAccess.Write))
         {
             fs.SetLength(fs.Length - 100);
         }
@@ -307,7 +306,7 @@ public class MdsTests : IDisposable
         Assert.Contains("INDEX 01 55:47:03", cue, StringComparison.Ordinal);
 
         // One FILE line only: both tracks live in the same image.
-        Assert.Equal(1, cue.Split("FILE ", StringSplitOptions.None).Length - 1);
+        Assert.Equal(1, cue.Split("FILE ").Length - 1);
     }
 
     [Fact]

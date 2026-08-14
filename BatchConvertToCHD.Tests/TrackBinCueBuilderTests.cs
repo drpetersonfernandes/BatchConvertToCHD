@@ -116,10 +116,10 @@ public class TrackBinCueBuilderTests : IDisposable
         Assert.Contains("TRACK 03 AUDIO", cue, StringComparison.Ordinal);
 
         // One FILE line per track, because the tracks live in separate files.
-        Assert.Equal(3, cue.Split("FILE ", StringSplitOptions.None).Length - 1);
+        Assert.Equal(3, cue.Split("FILE ").Length - 1);
 
         // Only the first track is data.
-        Assert.Equal(1, cue.Split("MODE2/2352", StringSplitOptions.None).Length - 1);
+        Assert.Equal(1, cue.Split("MODE2/2352").Length - 1);
     }
 
     [Fact]

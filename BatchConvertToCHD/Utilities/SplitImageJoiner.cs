@@ -110,26 +110,20 @@ internal static class SplitImageJoiner
     /// </summary>
     private static Func<int, string>? GetSuccessorFormat(string firstExtension)
     {
-        // ".001" style: three decimal digits, first volume is 001.
-        if (firstExtension.Length == 4 &&
-            firstExtension[0] == '.' &&
-            firstExtension is [_, '0', '0', '1'])
+        switch (firstExtension)
         {
-            return static index => "." + (index + 1).ToString("000", CultureInfo.InvariantCulture);
+            // ".001" style: three decimal digits, first volume is 001.
+            case ['.', _, _, _] and [_, '0', '0', '1']:
+                return static index => "." + (index + 1).ToString("000", CultureInfo.InvariantCulture);
+            // ".i00" style used by Alcohol, first volume is i00.
+            case ['.', 'i' or 'I', '0', '0']:
+            {
+                var prefix = firstExtension[1];
+                return index => "." + prefix + index.ToString("00", CultureInfo.InvariantCulture);
+            }
+            default:
+                return null;
         }
-
-        // ".i00" style used by Alcohol, first volume is i00.
-        if (firstExtension.Length == 4 &&
-            firstExtension[0] == '.' &&
-            (firstExtension[1] is 'i' or 'I') &&
-            firstExtension[2] == '0' &&
-            firstExtension[3] == '0')
-        {
-            var prefix = firstExtension[1];
-            return index => "." + prefix + index.ToString("00", CultureInfo.InvariantCulture);
-        }
-
-        return null;
     }
 
     /// <summary>

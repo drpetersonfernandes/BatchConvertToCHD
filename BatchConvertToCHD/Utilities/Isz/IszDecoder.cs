@@ -451,7 +451,7 @@ internal static class IszDecoder
     private static async Task<int> UnBzip2Async(byte[] compressed, int storedLength, byte[] plain, uint index, CancellationToken token)
     {
         using var input = new MemoryStream(compressed, 0, storedLength, writable: false);
-        await using var bzip2 = BZip2Stream.Create(input, SharpCompress.Compressors.CompressionMode.Decompress, decompressConcatenated: false);
+        await using var bzip2 = await BZip2Stream.CreateAsync(input, SharpCompress.Compressors.CompressionMode.Decompress, decompressConcatenated: false, cancellationToken: token);
 
         return await FillAsync(bzip2, plain, index, token).ConfigureAwait(false);
     }
@@ -538,6 +538,8 @@ internal static class IszDecoder
             var remaining = count;
             while (remaining > 0)
             {
+                token.ThrowIfCancellationRequested();
+
                 if (_stream is null || _remainingInRegion <= 0)
                 {
                     if (!await MoveNextAsync().ConfigureAwait(false))

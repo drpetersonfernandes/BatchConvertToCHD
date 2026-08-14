@@ -22,7 +22,7 @@ namespace BatchConvertToCHD.Utilities.Ecm;
 internal static class EcmImageDecoder
 {
     /// <summary>The four bytes every ECM file opens with: "ECM" and a zero.</summary>
-    internal static readonly byte[] Signature = [0x45, 0x43, 0x4D, 0x00];
+    internal static readonly byte[] Signature = "ECM\0"u8.ToArray();
 
     /// <summary>Stream buffer size. Disc-sized files, so keep it large.</summary>
     private const int BufferBytes = 1024 * 1024;
@@ -32,6 +32,7 @@ internal static class EcmImageDecoder
 
     /// <summary>Block kinds, taken from the low two bits of a block's leading number.</summary>
     private const int TypeLiteral = 0;
+
     private const int TypeMode1 = 1;
     private const int TypeMode2Form1 = 2;
     private const int TypeMode2Form2 = 3;

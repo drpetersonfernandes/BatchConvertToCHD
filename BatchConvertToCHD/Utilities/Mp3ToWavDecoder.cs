@@ -94,7 +94,7 @@ internal sealed class Mp3ToWavDecoder : IMp3Decoder
     /// </remarks>
     internal static ISampleProvider NormalizeForChdman(ISampleProvider source)
     {
-        ISampleProvider sample = source;
+        var sample = source;
         if (sample.WaveFormat.SampleRate != 44100)
         {
             sample = new WdlResamplingSampleProvider(sample, 44100);

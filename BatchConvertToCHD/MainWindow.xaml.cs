@@ -1436,13 +1436,12 @@ internal partial class MainWindow : IDisposable
 
         var ext = Path.GetExtension(inputFile);
         var tempDirs = new List<string>();
-        var outputChd = string.Empty;
 
         try
         {
             token.ThrowIfCancellationRequested();
 
-            outputChd = ComputeOutputChdPath(inputFile, inputFolder, outputFolder);
+            var outputChd = ComputeOutputChdPath(inputFile, inputFolder, outputFolder);
 
             // Before trusting the extension, check what the file actually is. This picks up split
             // volume sets and files whose name disagrees with their content, both of which the
@@ -1481,7 +1480,7 @@ internal partial class MainWindow : IDisposable
             }
             else if (ext.Equals(FileExtensions.Ccd, StringComparison.OrdinalIgnoreCase))
             {
-                return await ProcessCcdFileForConversionAsync(inputFile, originalName, inputFolder, outputFolder, tempDirs, token, chdmanPath, cores, forceCd, forceDvd, timeoutMinutes, deleteOriginal);
+                return await ProcessCcdFileForConversionAsync(inputFile, inputFolder, outputFolder, tempDirs, token, chdmanPath, cores, forceCd, forceDvd, timeoutMinutes, deleteOriginal);
             }
             else if (ext.Equals(FileExtensions.Mds, StringComparison.OrdinalIgnoreCase))
             {
@@ -1634,7 +1633,7 @@ internal partial class MainWindow : IDisposable
     /// Estimates the bytes chdman will read: for a descriptor, the total of the files it references;
     /// otherwise the file's own size.
     /// </summary>
-    private async Task<long> EstimateSourceBytesAsync(string chdmanInputPath, CancellationToken token)
+    private static async Task<long> EstimateSourceBytesAsync(string chdmanInputPath, CancellationToken token)
     {
         var ext = Path.GetExtension(chdmanInputPath);
         if (ext is FileExtensions.Cue or FileExtensions.Toc or FileExtensions.Gdi)
@@ -1673,9 +1672,15 @@ internal partial class MainWindow : IDisposable
     /// <param name="SkipReason">User-facing explanation, or null when there is something to convert.</param>
     private sealed record ResolvedInput(string? PathToConvert, bool ForceDvd, string? SkipReason)
     {
-        internal static ResolvedInput Convert(string path, bool forceDvd) => new(path, forceDvd, null);
+        internal static ResolvedInput Convert(string path, bool forceDvd)
+        {
+            return new ResolvedInput(path, forceDvd, null);
+        }
 
-        internal static ResolvedInput Skip(string reason) => new(null, false, reason);
+        internal static ResolvedInput Skip(string reason)
+        {
+            return new ResolvedInput(null, false, reason);
+        }
     }
 
     /// <summary>
@@ -2254,7 +2259,7 @@ internal partial class MainWindow : IDisposable
         return allSucceeded;
     }
 
-    private async Task<bool> ProcessCcdFileForConversionAsync(string inputFile, string originalName, string inputFolder, string outputFolder, List<string> tempDirs, CancellationToken token, string chdmanPath, int cores, bool forceCd, bool forceDvd, int? timeoutMinutes, bool deleteOriginal)
+    private async Task<bool> ProcessCcdFileForConversionAsync(string inputFile, string inputFolder, string outputFolder, List<string> tempDirs, CancellationToken token, string chdmanPath, int cores, bool forceCd, bool forceDvd, int? timeoutMinutes, bool deleteOriginal)
     {
         long imgSize = 0;
         DiscImage? parsedDisc = null;
@@ -2361,7 +2366,7 @@ internal partial class MainWindow : IDisposable
         // Stripping subchannel data writes a whole second copy of the disc, so the work directory
         // has to be chosen with room for it.
         long requiredBytes = 0;
-        if (disc.NeedsSubchannelStrip && disc.MdfPath is not null)
+        if (disc is { NeedsSubchannelStrip: true, MdfPath: not null })
         {
             try
             {
@@ -2439,20 +2444,6 @@ internal partial class MainWindow : IDisposable
         return true;
     }
 
-    /// <summary>
-    /// Converts an Alcohol .mds extracted from an archive. Same preparation as the loose-file path,
-    /// without the source deletion, which the archive handler owns.
-    /// </summary>
-    /// <param name="chdmanPath">Path to chdman.exe.</param>
-    /// <param name="mdsPath">Path of the extracted .mds descriptor.</param>
-    /// <param name="outputChd">Destination CHD path.</param>
-    /// <param name="tempDirs">Temp directories to clean up when the file is done.</param>
-    /// <param name="outputFolder">Conversion output folder, used to pick a temp location.</param>
-    /// <param name="cores">Processor count passed to chdman.</param>
-    /// <param name="forceCd">Force the createcd verb.</param>
-    /// <param name="forceDvd">Force the createdvd verb.</param>
-    /// <param name="timeoutMinutes">Per-file timeout, or null for none.</param>
-    /// <param name="token">Cancellation token.</param>
     /// <summary>
     /// Converts an ISZ found inside an archive, by the same route a loose one takes: decompress it,
     /// or recognise that it is an ordinary image wearing the extension, then convert the result.
@@ -2538,7 +2529,7 @@ internal partial class MainWindow : IDisposable
         LogMessage($"MDS: {Path.GetFileName(mdsPath)} - {disc.Summary}");
 
         long requiredBytes = 0;
-        if (disc.NeedsSubchannelStrip && disc.MdfPath is not null)
+        if (disc is { NeedsSubchannelStrip: true, MdfPath: not null })
         {
             try
             {

@@ -117,7 +117,7 @@ public class SplitImageJoinerTests : IDisposable
 
         Assert.Equal(6, written);
         var bytes = await File.ReadAllBytesAsync(destination);
-        Assert.Equal<byte[]>([0xAA, 0xAA, 0xAA, 0xBB, 0xBB, 0xCC], bytes);
+        Assert.Equal([0xAA, 0xAA, 0xAA, 0xBB, 0xBB, 0xCC], bytes);
     }
 
     [Fact]

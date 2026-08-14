@@ -127,7 +127,7 @@ Generated cue sheets reference the disc image where it already lies rather than 
     * [CSOSharp](https://) (v1.0.0) — Pure C# CSO/CISO decompression (deflate + LZ4)
     * [PBPSharp](https://) (v1.0.0) — Pure C# PBP extraction and SFO parsing
     * [CCDSharp](https://) (v1.0.0) — Pure C# CloneCD (.ccd/.img/.sub) parsing and conversion
-    * [SharpCompress](https://github.com/adamhathcock/sharpcompress) (v0.50.3) — Archive extraction, and bzip2 decompression for ISZ images
+    * [SharpCompress](https://github.com/adamhathcock/sharpcompress) (v0.50.4) — Archive extraction, and bzip2 decompression for ISZ images
     * [NAudio](https://github.com/naudio/NAudio) (v2.3.0) — MP3 audio track decoding (Media Foundation)
     * [Serilog](https://serilog.net/) (v4.4.0) — Structured diagnostic logging
 

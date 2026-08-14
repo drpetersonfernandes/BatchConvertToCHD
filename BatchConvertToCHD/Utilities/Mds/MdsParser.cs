@@ -161,8 +161,11 @@ internal static class MdsParser
         string[] candidates;
         try
         {
-            candidates = [.. Directory.GetFiles(directory)
-                .Where(static f => Path.GetExtension(f).Equals(FileExtensions.Mdf, StringComparison.OrdinalIgnoreCase))];
+            candidates =
+            [
+                .. Directory.GetFiles(directory)
+                    .Where(static f => Path.GetExtension(f).Equals(FileExtensions.Mdf, StringComparison.OrdinalIgnoreCase))
+            ];
         }
         catch (Exception)
         {

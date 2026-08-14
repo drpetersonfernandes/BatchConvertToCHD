@@ -26,11 +26,20 @@ internal static class MdsInputPreparer
     {
         internal bool Success => FailureReason is null;
 
-        internal static Result Cue(string cuePath) => new(cuePath, null, null);
+        internal static Result Cue(string cuePath)
+        {
+            return new Result(cuePath, null, null);
+        }
 
-        internal static Result Dvd(string imagePath) => new(null, imagePath, null);
+        internal static Result Dvd(string imagePath)
+        {
+            return new Result(null, imagePath, null);
+        }
 
-        internal static Result Failed(string reason) => new(null, null, reason);
+        internal static Result Failed(string reason)
+        {
+            return new Result(null, null, reason);
+        }
     }
 
     /// <summary>

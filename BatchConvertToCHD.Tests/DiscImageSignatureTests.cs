@@ -1,4 +1,3 @@
-using System.Text;
 using BatchConvertToCHD.Utilities;
 
 namespace BatchConvertToCHD.Tests;
@@ -52,12 +51,12 @@ public class DiscImageSignatureTests : IDisposable
     [Fact]
     public void AsciiSignaturesAreRecognised()
     {
-        Assert.Equal(DiscImageKind.Rar, DiscImageSignature.Classify(Encoding.ASCII.GetBytes("Rar!\u001a\u0007")));
-        Assert.Equal(DiscImageKind.AlcoholDescriptor, DiscImageSignature.Classify(Encoding.ASCII.GetBytes("MEDIA DESCRIPTOR")));
-        Assert.Equal(DiscImageKind.Isz, DiscImageSignature.Classify(Encoding.ASCII.GetBytes("IsZ!")));
-        Assert.Equal(DiscImageKind.Cso, DiscImageSignature.Classify(Encoding.ASCII.GetBytes("CISO")));
-        Assert.Equal(DiscImageKind.Cso, DiscImageSignature.Classify(Encoding.ASCII.GetBytes("ZISO")));
-        Assert.Equal(DiscImageKind.Chd, DiscImageSignature.Classify(Encoding.ASCII.GetBytes("MComprHD")));
+        Assert.Equal(DiscImageKind.Rar, DiscImageSignature.Classify("Rar!\u001a\a"u8));
+        Assert.Equal(DiscImageKind.AlcoholDescriptor, DiscImageSignature.Classify("MEDIA DESCRIPTOR"u8));
+        Assert.Equal(DiscImageKind.Isz, DiscImageSignature.Classify("IsZ!"u8));
+        Assert.Equal(DiscImageKind.Cso, DiscImageSignature.Classify("CISO"u8));
+        Assert.Equal(DiscImageKind.Cso, DiscImageSignature.Classify("ZISO"u8));
+        Assert.Equal(DiscImageKind.Chd, DiscImageSignature.Classify("MComprHD"u8));
     }
 
     [Fact]
@@ -65,8 +64,8 @@ public class DiscImageSignatureTests : IDisposable
     {
         Assert.Equal(DiscImageKind.Zip, DiscImageSignature.Classify([0x50, 0x4B, 0x03, 0x04]));
         Assert.Equal(DiscImageKind.SevenZip, DiscImageSignature.Classify([0x37, 0x7A, 0xBC, 0xAF, 0x27, 0x1C]));
-        Assert.Equal(DiscImageKind.Ecm, DiscImageSignature.Classify([0x45, 0x43, 0x4D, 0x00]));
-        Assert.Equal(DiscImageKind.Pbp, DiscImageSignature.Classify([0x00, 0x50, 0x42, 0x50]));
+        Assert.Equal(DiscImageKind.Ecm, DiscImageSignature.Classify("ECM\0"u8));
+        Assert.Equal(DiscImageKind.Pbp, DiscImageSignature.Classify("\0PBP"u8));
     }
 
     [Fact]

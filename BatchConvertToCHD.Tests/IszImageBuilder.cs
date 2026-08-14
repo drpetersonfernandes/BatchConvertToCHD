@@ -51,8 +51,7 @@ internal static class IszImageBuilder
         var chunkTable = BuildChunkTable(chunks, pointerLength);
         var data = Concat(chunks);
 
-        var chunkTableOffset = HeaderLength;
-        var dataOffset = chunkTableOffset + chunkTable.Length;
+        var dataOffset = HeaderLength + chunkTable.Length;
 
         var header = BuildHeader(
             sectorSize: sectorSize,
@@ -63,7 +62,7 @@ internal static class IszImageBuilder
             chunkSize: (uint)chunkSize,
             pointerLength: pointerLength,
             segmentNumber: 1,
-            chunkTableOffset: (uint)chunkTableOffset,
+            chunkTableOffset: (uint)HeaderLength,
             segmentTableOffset: 0,
             dataOffset: (uint)dataOffset,
             volumeSerial: DefaultVolumeSerial);
@@ -102,8 +101,7 @@ internal static class IszImageBuilder
         var chunkTable = BuildChunkTable(chunks, pointerLength);
         var data = Concat(chunks);
 
-        var segmentTableOffset = HeaderLength;
-        var chunkTableOffset = segmentTableOffset + 3 * SegmentEntryLength;
+        const int chunkTableOffset = HeaderLength + 3 * SegmentEntryLength;
         var dataOffset = chunkTableOffset + chunkTable.Length;
 
         var firstData = data.AsSpan(0, splitAfterBytes).ToArray();
@@ -148,7 +146,7 @@ internal static class IszImageBuilder
             pointerLength: pointerLength,
             segmentNumber: 1,
             chunkTableOffset: (uint)chunkTableOffset,
-            segmentTableOffset: (uint)segmentTableOffset,
+            segmentTableOffset: (uint)HeaderLength,
             dataOffset: (uint)dataOffset,
             volumeSerial: DefaultVolumeSerial);
 

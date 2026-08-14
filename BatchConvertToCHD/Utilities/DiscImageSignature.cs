@@ -64,17 +64,15 @@ internal static class DiscImageSignature
             return DiscImageKind.Rar;
         }
 
-        // Local file header, central directory, or a spanned/empty archive marker.
-        if (header.Length >= 4 && header[0] == 0x50 && header[1] == 0x4B &&
-            (header[2] is 0x03 or 0x05 or 0x07))
+        switch (header.Length)
         {
-            return DiscImageKind.Zip;
-        }
-
-        if (header.Length >= 6 && header[0] == 0x37 && header[1] == 0x7A &&
-            header[2] == 0xBC && header[3] == 0xAF && header[4] == 0x27 && header[5] == 0x1C)
-        {
-            return DiscImageKind.SevenZip;
+            // Local file header, central directory, or a spanned/empty archive marker.
+            case >= 4 when header[0] == 0x50 && header[1] == 0x4B &&
+                           (header[2] is 0x03 or 0x05 or 0x07):
+                return DiscImageKind.Zip;
+            case >= 6 when header[0] == 0x37 && header[1] == 0x7A &&
+                           header[2] == 0xBC && header[3] == 0xAF && header[4] == 0x27 && header[5] == 0x1C:
+                return DiscImageKind.SevenZip;
         }
 
         if (StartsWithAscii(header, "IsZ!"))

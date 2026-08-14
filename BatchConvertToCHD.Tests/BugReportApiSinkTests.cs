@@ -139,7 +139,7 @@ public class BugReportApiSinkTests
             .WriteTo.Sink(sink)
             .CreateLogger();
 
-        var ex = new ArgumentException("Arg error", "testParam");
+        var ex = new ArgumentException("Arg error");
         logger.Warning(ex, "Warning with exception");
 
         Assert.Equal(1, service.CallCount);

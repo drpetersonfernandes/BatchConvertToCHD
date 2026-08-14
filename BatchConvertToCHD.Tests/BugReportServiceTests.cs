@@ -64,7 +64,7 @@ public class BugReportServiceTests
         Assert.NotNull(method);
 
 #pragma warning disable MA0015
-        var inner = new ArgumentException("Inner error", "inner");
+        var inner = new ArgumentException("Inner error");
 #pragma warning restore MA0015
         var outer = new InvalidOperationException("Outer error", inner);
         var result = method.Invoke(service, ["Error summary", outer]) as string;
@@ -104,7 +104,7 @@ public class BugReportServiceTests
 
         var deep = new FormatException("Deep");
 #pragma warning disable MA0015
-        var mid = new ArgumentException("Mid", "mid", deep);
+        var mid = new ArgumentException("Mid", deep);
 #pragma warning restore MA0015
         var top = new InvalidOperationException("Top", mid);
         var result = method.Invoke(null, [top]) as string;

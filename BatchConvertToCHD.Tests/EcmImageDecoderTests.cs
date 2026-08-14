@@ -192,28 +192,28 @@ public class EcmImageDecoderTests : IDisposable
         {
             var sector = image.AsSpan(lba * SectorSize, SectorSize);
 
-            if (lba < 4)
+            switch (lba)
             {
-                CdSectorEccEdc.WriteSyncAndMode(sector, 0x01);
-                WriteAddress(sector, lba);
-                FillPayload(sector.Slice(0x010, 0x800), lba);
-                CdSectorEccEdc.GenerateMode1(sector);
-            }
-            else if (lba < 8)
-            {
-                CdSectorEccEdc.WriteSyncAndMode(sector, 0x02);
-                WriteAddress(sector, lba);
-                WriteSubheader(sector, form2: false);
-                FillPayload(sector.Slice(0x018, 0x800), lba);
-                CdSectorEccEdc.GenerateMode2Form1(sector);
-            }
-            else
-            {
-                CdSectorEccEdc.WriteSyncAndMode(sector, 0x02);
-                WriteAddress(sector, lba);
-                WriteSubheader(sector, form2: true);
-                FillPayload(sector.Slice(0x018, 0x914), lba);
-                CdSectorEccEdc.GenerateMode2Form2(sector);
+                case < 4:
+                    CdSectorEccEdc.WriteSyncAndMode(sector, 0x01);
+                    WriteAddress(sector, lba);
+                    FillPayload(sector.Slice(0x010, 0x800), lba);
+                    CdSectorEccEdc.GenerateMode1(sector);
+                    break;
+                case < 8:
+                    CdSectorEccEdc.WriteSyncAndMode(sector, 0x02);
+                    WriteAddress(sector, lba);
+                    WriteSubheader(sector, form2: false);
+                    FillPayload(sector.Slice(0x018, 0x800), lba);
+                    CdSectorEccEdc.GenerateMode2Form1(sector);
+                    break;
+                default:
+                    CdSectorEccEdc.WriteSyncAndMode(sector, 0x02);
+                    WriteAddress(sector, lba);
+                    WriteSubheader(sector, form2: true);
+                    FillPayload(sector.Slice(0x018, 0x914), lba);
+                    CdSectorEccEdc.GenerateMode2Form2(sector);
+                    break;
             }
         }
 
@@ -231,7 +231,7 @@ public class EcmImageDecoderTests : IDisposable
         {
             var first = bytes[offset++];
             var type = first & 3;
-            uint count = (uint)((first >> 2) & 0x1F);
+            var count = (uint)((first >> 2) & 0x1F);
             var bits = 5;
             var current = first;
 

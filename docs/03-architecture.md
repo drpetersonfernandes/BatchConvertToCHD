@@ -57,7 +57,7 @@ CSharp_BatchConvertToCHD.sln
 │           ├── MdsParser.cs               → .mds session/track table parsing
 │           ├── MdsInputPreparer.cs        → cue / subchannel strip / DVD decision
 │           └── MdsDisc.cs / MdsTrack.cs
-├── BatchConvertToCHD.Tests/               (xUnit, 751 tests; Fixtures/ holds ecm-sample.ecm)
+├── BatchConvertToCHD.Tests/               (xUnit, 777 tests; Fixtures/ holds ecm-sample.ecm)
 ├── CCDSharp/                              (CloneCD .ccd/.img/.sub parsing; net10.0;net8.0)
 ├── CSOSharp/                              (CSO/CISO decompression; net10.0;net8.0)
 ├── PBPSharp/                              (PBP/SFO parsing; net10.0;net8.0)
