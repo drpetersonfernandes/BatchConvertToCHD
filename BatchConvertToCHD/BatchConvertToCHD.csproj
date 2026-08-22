@@ -42,11 +42,11 @@
 
   <ItemGroup>
     <PackageReference Include="CHDSharp" Version="1.2.0" />
-    <PackageReference Include="Meziantou.Analyzer" Version="3.0.153">
+    <PackageReference Include="Meziantou.Analyzer" Version="3.0.177">
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
       <PrivateAssets>all</PrivateAssets>
     </PackageReference>
-    <PackageReference Include="NAudio" Version="2.3.0" />
+    <PackageReference Include="NAudio" Version="3.0.1" />
     <PackageReference Include="SharpCompress" Version="0.50.4" />
     <PackageReference Include="WPF-UI" Version="4.3.0" />
     <PackageReference Include="Serilog" Version="4.4.0" />

@@ -40,8 +40,9 @@ internal class UpdateService
 
     /// <summary>
     /// Internal overload for testing that accepts a custom <see cref="HttpClient"/> and version.
-    /// Performs the actual update check against the GitHub API, compares versions, and
-    /// prompts the user to download if a newer version is available.
+    /// Performs the actual update check against the GitHub API - trying each configured release
+    /// source in order (primary repository, then fallback) - compares versions, and prompts the
+    /// user to download if a newer version is available.
     /// </summary>
     /// <param name="httpClient">The <see cref="HttpClient"/> to use for the request.</param>
     /// <param name="currentVersion">The current application version to compare against.</param>
@@ -54,97 +55,141 @@ internal class UpdateService
         {
             onLog("Checking for updates on GitHub...");
 
-            using var request = new HttpRequestMessage(HttpMethod.Get, AppConfig.GitHubApiLatestReleaseUrl);
-            request.Headers.UserAgent.ParseAdd(_applicationName);
+            var sources = AppConfig.GitHubApiLatestReleaseUrls;
 
-            var response = await httpClient.SendAsync(request).ConfigureAwait(false);
-
-            if (response.StatusCode is System.Net.HttpStatusCode.Forbidden or System.Net.HttpStatusCode.TooManyRequests)
+            for (var i = 0; i < sources.Count; i++)
             {
-                onLog("GitHub API rate limit exceeded. Skipping update check.");
-                onStatusUpdate("Update check skipped (rate limit)");
-                return;
-            }
+                var isLastSource = i == sources.Count - 1;
+                var url = sources[i];
 
-            if (!response.IsSuccessStatusCode)
-            {
-                var statusCode = (int)response.StatusCode;
-                if (statusCode is >= 500 and < 600)
+                using var request = new HttpRequestMessage(HttpMethod.Get, url);
+                request.Headers.UserAgent.ParseAdd(_applicationName);
+
+                HttpResponseMessage response;
+                try
                 {
-                    onLog($"Update check skipped: GitHub server error ({statusCode}).");
-                    onStatusUpdate("Update check skipped (server error)");
+                    response = await httpClient.SendAsync(request).ConfigureAwait(false);
+                }
+                catch (HttpRequestException ex)
+                {
+                    // Transport-level failure: worth retrying against the next source, which may
+                    // resolve differently (DNS, redirect, CDN edge).
+                    if (!isLastSource)
+                    {
+                        onLog($"Update source unreachable ({ex.Message}); trying the fallback source...");
+                        continue;
+                    }
+
+                    throw;
+                }
+
+                if (response.StatusCode is System.Net.HttpStatusCode.Forbidden or System.Net.HttpStatusCode.TooManyRequests)
+                {
+                    // Rate limits are per IP and shared by every api.github.com URL, so trying the
+                    // fallback cannot help.
+                    onLog("GitHub API rate limit exceeded. Skipping update check.");
+                    onStatusUpdate("Update check skipped (rate limit)");
                     return;
                 }
 
-                response.EnsureSuccessStatusCode();
-            }
-
-            var responseBody = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
-            var latestRelease = JsonSerializer.Deserialize<GitHubRelease>(responseBody, JsonSerializerOptions);
-            if (latestRelease == null || latestRelease.Draft || latestRelease.Prerelease || string.IsNullOrWhiteSpace(latestRelease.TagName))
-            {
-                onLog("Latest release is invalid, draft, or prerelease. Skipping.");
-                return;
-            }
-
-            var remoteVersionString = ParseVersionFromTag(latestRelease.TagName);
-
-            if (!TryNormalizeVersions(currentVersion, remoteVersionString, out var normalizedCurrent, out var normalizedRemote))
-            {
-                onLog($"Could not compare versions. Current: {currentVersion}, Remote: {remoteVersionString}");
-                return;
-            }
-
-            onLog($"Current version: {normalizedCurrent}");
-            onLog($"Latest version: {normalizedRemote}");
-
-            if (normalizedRemote > normalizedCurrent)
-            {
-                if (Application.Current != null)
+                if (!response.IsSuccessStatusCode)
                 {
-                    await Application.Current.Dispatcher.InvokeAsync(() =>
+                    var statusCode = (int)response.StatusCode;
+
+                    if (statusCode is >= 500 and < 600 && !isLastSource)
                     {
-                        var result = MessageBox.Show(
-                            $"A new version ({remoteVersionString}) of {_applicationName} is available!\n\nWould you like to go to the download page?",
-                            "New Version Available", MessageBoxButton.YesNo, MessageBoxImage.Information);
+                        onLog($"Update source returned a server error ({statusCode}); trying the fallback source...");
+                        continue;
+                    }
 
-                        if (result == MessageBoxResult.Yes)
-                        {
-                            try
-                            {
-                                Process.Start(new ProcessStartInfo(latestRelease.HtmlUrl) { UseShellExecute = true });
-                            }
-                            catch (Exception urlEx)
-                            {
-                                onLog($"Failed to open browser: {urlEx.Message}");
-                                _ = onBugReport("Failed to open browser", urlEx);
+                    if (!isLastSource)
+                    {
+                        // Client errors such as 404 mean this repository has no reachable releases
+                        // page (e.g. the ownership transfer has not completed yet), so fall through
+                        // to the next source before giving up.
+                        onLog($"Update source unavailable ({statusCode} from {url}); trying the fallback source...");
+                        continue;
+                    }
 
-                                try
-                                {
-                                    Clipboard.SetText(latestRelease.HtmlUrl);
-                                }
-                                catch (Exception clipboardEx)
-                                {
-                                    onLog($"Failed to copy URL to clipboard: {clipboardEx.Message}");
-                                    _ = onBugReport("Failed to copy URL to clipboard", clipboardEx);
-                                }
+                    if (statusCode is >= 500 and < 600)
+                    {
+                        onLog($"Update check skipped: GitHub server error ({statusCode}).");
+                        onStatusUpdate("Update check skipped (server error)");
+                        return;
+                    }
 
-                                MessageBox.Show(
-                                    $"Unable to open browser automatically. The update URL has been copied to your clipboard.\n\nURL: {latestRelease.HtmlUrl}\n\nPlease paste it into your browser manually.",
-                                    "Browser Launch Failed",
-                                    MessageBoxButton.OK,
-                                    MessageBoxImage.Information);
-                            }
-                        }
-                    });
+                    response.EnsureSuccessStatusCode();
                 }
 
-                onStatusUpdate($"Update available: v{remoteVersionString}");
-            }
-            else
-            {
-                onLog("Application is up to date.");
-                onStatusUpdate("Application is up to date");
+                var responseBody = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
+                var latestRelease = JsonSerializer.Deserialize<GitHubRelease>(responseBody, JsonSerializerOptions);
+                if (latestRelease == null || latestRelease.Draft || latestRelease.Prerelease || string.IsNullOrWhiteSpace(latestRelease.TagName))
+                {
+                    onLog("Latest release is invalid, draft, or prerelease. Skipping.");
+                    return;
+                }
+
+                var remoteVersionString = ParseVersionFromTag(latestRelease.TagName);
+
+                if (!TryNormalizeVersions(currentVersion, remoteVersionString, out var normalizedCurrent, out var normalizedRemote))
+                {
+                    onLog($"Could not compare versions. Current: {currentVersion}, Remote: {remoteVersionString}");
+                    return;
+                }
+
+                onLog($"Current version: {normalizedCurrent}");
+                onLog($"Latest version: {normalizedRemote}");
+
+                if (normalizedRemote > normalizedCurrent)
+                {
+                    if (Application.Current != null)
+                    {
+                        await Application.Current.Dispatcher.InvokeAsync(() =>
+                        {
+                            var result = MessageBox.Show(
+                                $"A new version ({remoteVersionString}) of {_applicationName} is available!\n\nWould you like to go to the download page?",
+                                "New Version Available", MessageBoxButton.YesNo, MessageBoxImage.Information);
+
+                            if (result == MessageBoxResult.Yes)
+                            {
+                                try
+                                {
+                                    Process.Start(new ProcessStartInfo(latestRelease.HtmlUrl) { UseShellExecute = true });
+                                }
+                                catch (Exception urlEx)
+                                {
+                                    onLog($"Failed to open browser: {urlEx.Message}");
+                                    _ = onBugReport("Failed to open browser", urlEx);
+
+                                    try
+                                    {
+                                        Clipboard.SetText(latestRelease.HtmlUrl);
+                                    }
+                                    catch (Exception clipboardEx)
+                                    {
+                                        onLog($"Failed to copy URL to clipboard: {clipboardEx.Message}");
+                                        _ = onBugReport("Failed to copy URL to clipboard", clipboardEx);
+                                    }
+
+                                    MessageBox.Show(
+                                        $"Unable to open browser automatically. The update URL has been copied to your clipboard.\n\nURL: {latestRelease.HtmlUrl}\n\nPlease paste it into your browser manually.",
+                                        "Browser Launch Failed",
+                                        MessageBoxButton.OK,
+                                        MessageBoxImage.Information);
+                                }
+                            }
+                        });
+                    }
+
+                    onStatusUpdate($"Update available: v{remoteVersionString}");
+                }
+                else
+                {
+                    onLog("Application is up to date.");
+                    onStatusUpdate("Application is up to date");
+                }
+
+                return;
             }
         }
         catch (HttpRequestException ex) when (ex.StatusCode == null)

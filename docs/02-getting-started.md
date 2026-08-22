@@ -67,7 +67,7 @@ The solution contains five projects:
 | CHDSharp | 1.2.0 | Pure C# CHD reading, verification, extraction |
 | WPF-UI | 4.3.0 | Fluent Design theming and controls |
 | SharpCompress | 0.50.x | Archive extraction (7z/rar), and bzip2 decompression for ISZ chunks |
-| NAudio | 2.3.0 | MP3 decoding via Media Foundation |
+| NAudio | 3.0.1 | MP3 decoding via Media Foundation |
 | Serilog | 4.4.0 | Structured logging |
 | Serilog.Sinks.File | 7.0.0 | Rolling file logs |
 | Serilog.Sinks.Debug | 3.0.0 | Debugger sink |

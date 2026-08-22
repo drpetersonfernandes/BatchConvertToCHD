@@ -79,9 +79,26 @@ internal static class AppConfig
     public static string ApplicationStatsApiKey => GetApiKey();
 
     /// <summary>
-    /// The GitHub API URL for fetching the latest release information.
+    /// The primary GitHub API URL for checking the latest application release.
+    /// The repository is expected to move to the purelogiccode organization.
     /// </summary>
-    public const string GitHubApiLatestReleaseUrl = "https://api.github.com/repos/drpetersonfernandes/BatchConvertToCHD/releases/latest";
+    public const string PrimaryGitHubApiLatestReleaseUrl = "https://api.github.com/repos/purelogiccode/BatchConvertToCHD/releases/latest";
+
+    /// <summary>
+    /// The fallback GitHub API URL used when the primary source cannot be reached - e.g. while
+    /// the ownership transfer to purelogiccode is in flight, or if it has to be rolled back.
+    /// </summary>
+    public const string FallbackGitHubApiLatestReleaseUrl = "https://api.github.com/repos/drpetersonfernandes/BatchConvertToCHD/releases/latest";
+
+    /// <summary>
+    /// GitHub API latest-release URLs in preference order: the primary repository first, the
+    /// previous owner's repository as fallback.
+    /// </summary>
+    public static IReadOnlyList<string> GitHubApiLatestReleaseUrls =>
+    [
+        PrimaryGitHubApiLatestReleaseUrl,
+        FallbackGitHubApiLatestReleaseUrl
+    ];
 
     /// <summary>
     /// The canonical name of this application, used for API calls, window titles, and mutex naming.

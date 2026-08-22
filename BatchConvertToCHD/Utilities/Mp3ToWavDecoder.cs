@@ -26,9 +26,24 @@ internal sealed class Mp3ToWavDecoder : IMp3Decoder
             token.ThrowIfCancellationRequested();
             onLog?.Invoke($"MP3: Decoding {Path.GetFileName(mp3Path)} to WAV (required for chdman)...");
 
+            Exception? primaryError;
+
             try
             {
                 DecodeWithMediaFoundation(mp3Path, wavPath);
+
+                // Some inputs (notably crafted MPEG-2 Layer III files under recent NAudio/Media
+                // Foundation combinations) OPEN fine yet yield no samples at all. An empty audio
+                // payload means this path did not really succeed, so fall through to the built-in
+                // decoder instead of writing a header-only WAV.
+                if (WavHasAudioData(wavPath))
+                {
+                    token.ThrowIfCancellationRequested();
+                    return;
+                }
+
+                primaryError = new InvalidDataException("Media Foundation produced no audio samples for this file.");
+                onLog?.Invoke("MP3: Media Foundation decoding yielded no audio; falling back to the built-in MP3 decoder...");
             }
             catch (Exception mfEx)
             {
@@ -37,25 +52,59 @@ internal sealed class Mp3ToWavDecoder : IMp3Decoder
                     throw new OperationCanceledException(token);
                 }
 
+                primaryError = mfEx;
+
                 // Media Foundation is unavailable (Windows N / Server Core) or the codec is
-                // missing — fall back to NAudio's Mp3FileReader (ACM codec). If that also
-                // fails, chain the original Media Foundation error so the root cause
-                // (missing codec vs corrupt MP3) stays diagnosable.
+                // missing — fall back to NAudio's Mp3FileReader (ACM codec).
                 onLog?.Invoke($"MP3: Media Foundation decoding failed ({mfEx.Message}); falling back to the built-in MP3 decoder...");
-                try
-                {
-                    DecodeWithBuiltInDecoder(mp3Path, wavPath);
-                }
-                catch (Exception builtInEx)
-                {
-                    throw new InvalidDataException(
-                        $"Failed to decode MP3 '{Path.GetFileName(mp3Path)}' with Media Foundation ({mfEx.Message}) and the built-in decoder ({builtInEx.Message}).",
-                        mfEx);
-                }
             }
 
-            token.ThrowIfCancellationRequested();
+            try
+            {
+                DecodeWithBuiltInDecoder(mp3Path, wavPath);
+                if (WavHasAudioData(wavPath))
+                {
+                    token.ThrowIfCancellationRequested();
+                    return;
+                }
+
+                throw new InvalidDataException("the built-in decoder also produced no audio samples - the file may be empty or use an unsupported format.");
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (Exception builtInEx)
+            {
+                if (token.IsCancellationRequested)
+                {
+                    throw new OperationCanceledException(token);
+                }
+
+                // Chain the original Media Foundation error so the root cause (missing codec vs
+                // corrupt MP3) stays diagnosable.
+                throw new InvalidDataException(
+                    $"Failed to decode MP3 '{Path.GetFileName(mp3Path)}' with Media Foundation ({primaryError.Message}) and the built-in decoder ({builtInEx.Message}).",
+                    primaryError ?? builtInEx);
+            }
         }, token);
+    }
+
+    /// <summary>
+    /// True when the WAV at <paramref name="wavPath"/> carries an actual audio payload rather
+    /// than just a format header.
+    /// </summary>
+    private static bool WavHasAudioData(string wavPath)
+    {
+        try
+        {
+            using var reader = new WaveFileReader(wavPath);
+            return reader.Length > 0;
+        }
+        catch
+        {
+            return false;
+        }
     }
 
     private static void DecodeWithMediaFoundation(string mp3Path, string wavPath)

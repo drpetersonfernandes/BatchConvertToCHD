@@ -645,11 +645,12 @@ public class CueWorkDirectoryTests : IDisposable
         Assert.Equal(2, normalized.WaveFormat.Channels);
 
         // Actually pump samples through the WDL resampler + mono→stereo chain.
+        // NAudio 3.x replaced the array-based ISampleProvider.Read with a Span overload.
         var buffer = new float[8192];
         var total = 0;
         while (total < 44100)
         {
-            var read = normalized.Read(buffer, 0, buffer.Length);
+            var read = normalized.Read(buffer.AsSpan(0, buffer.Length));
             if (read == 0) break;
 
             total += read;
@@ -661,17 +662,19 @@ public class CueWorkDirectoryTests : IDisposable
     [Fact]
     public async Task Mono22050Mp3DecodesToChdmanCompatibleWav()
     {
-        // Craft an MPEG-2 Layer III stream (64 kbps, 22.05 kHz, mono) filled with silence.
-        // Header: 0xFF sync + 0xF3 (1111 0011 → version 10 = MPEG-2, layer 01 = Layer III, no CRC)
-        // + 0x90 (64 kbps, 22050 Hz) + 0xC0 (mono). MPEG-2 L3 frame size = 72 * bitrate / samplerate
-        // = 72 * 64000 / 22050 = 208.98 → 208 bytes (MPEG-1 L3 would be 144 * bitrate / samplerate
-        // = 417; using the wrong size misaligns every frame and the decoder skips half of them).
+        // Craft an MPEG-2 Layer III stream (80 kbps, 22.05 kHz, mono) filled with silence.
+        // Header: 0xFF sync + 0xF3 (version bits = MPEG-2, layer bits = Layer III, no CRC)
+        // + 0x90 (bitrate index 9 = 80 kbps in the MPEG-2 L3 table, samplerate index 00 =
+        // 22050 Hz) + 0xC0 (mono). MPEG-2 L3 frame size = 72 * bitrate / samplerate
+        // = 72 * 80000 / 22050 = 261.22 → 261 bytes with padding = 0 (MPEG-1 L3 would use
+        // 144 * bitrate / samplerate). A wrong frame size loses sync after the first frame
+        // and every decoder then yields zero samples.
         // Media Foundation's MP3 decoder on Windows does not support MPEG-2 streams, so this test
         // also exercises the built-in (ACM) fallback path.
-        const int frameSize = 208;
+        const int frameSize = 261;
         const int frameCount = 100;
         var frames = new byte[frameSize * frameCount];
-        var header = new byte[] { 0xFF, 0xF3, 0x90, 0xC0 }; // MPEG-2 L3, 64kbps, 22050 Hz, mono
+        var header = new byte[] { 0xFF, 0xF3, 0x90, 0xC0 }; // MPEG-2 L3, 80kbps, 22050 Hz, mono
         for (var i = 0; i < frameCount; i++)
         {
             Array.Copy(header, 0, frames, i * frameSize, header.Length);
