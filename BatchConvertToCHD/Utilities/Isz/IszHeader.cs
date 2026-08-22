@@ -59,7 +59,7 @@ internal sealed record IszHeader(
     private const uint MaxChunkSize = 64 * 1024 * 1024;
 
     /// <summary>Uncompressed size of the image this header describes.</summary>
-    internal long ImageSizeBytes => (long)TotalSectors * SectorSize;
+    internal long ImageSizeBytes => TotalSectors * SectorSize;
 
     /// <summary>True when chunk data is encrypted and cannot be read without the password.</summary>
     internal bool IsEncrypted => PasswordMode != 0;

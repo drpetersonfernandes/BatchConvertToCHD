@@ -17,6 +17,14 @@ internal static class AppConfig
     public static bool IsArm64 => RuntimeInformation.ProcessArchitecture == Architecture.Arm64;
 
     /// <summary>
+    /// Gets a value indicating whether the operating system itself is ARM64. An x64 process runs
+    /// emulated on Windows-on-Arm, so this can differ from <see cref="IsArm64"/>; there, both the
+    /// x64 and the ARM64 builds of the bundled tools execute (natively or under emulation), while
+    /// a pure x64 system cannot run the ARM64 binaries at all.
+    /// </summary>
+    public static bool IsArm64Os => RuntimeInformation.OSArchitecture == Architecture.Arm64;
+
+    /// <summary>
     /// Gets the appropriate chdman executable name based on the current architecture.
     /// Returns "chdman_arm64.exe" for ARM64 or "chdman.exe" for other architectures.
     /// </summary>
@@ -27,6 +35,23 @@ internal static class AppConfig
     /// Returns "7za_arm64.exe" for ARM64 or "7za.exe" for other architectures.
     /// </summary>
     public static string SevenZipExeName => IsArm64 ? "7za_arm64.exe" : "7za.exe";
+
+    /// <summary>
+    /// Gets the chdman executable names to probe, best first. On an ARM64 operating system both
+    /// builds run, so the native ARM64 binary comes first even when this app itself runs emulated
+    /// as x64; on a pure x64 system only the x64 build can execute, so it is the sole candidate.
+    /// </summary>
+    public static IReadOnlyList<string> ChdmanExeCandidates => IsArm64Os
+        ? ["chdman_arm64.exe", "chdman.exe"]
+        : ["chdman.exe"];
+
+    /// <summary>
+    /// Gets the 7-Zip executable names to probe, best first, following the same rules as
+    /// <see cref="ChdmanExeCandidates"/>.
+    /// </summary>
+    public static IReadOnlyList<string> SevenZipExeCandidates => IsArm64Os
+        ? ["7za_arm64.exe", "7za.exe"]
+        : ["7za.exe"];
 
     /// <summary>
     /// The API endpoint URL for submitting bug reports.

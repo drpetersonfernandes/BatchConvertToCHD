@@ -33,7 +33,10 @@ internal partial class MainWindow : IDisposable
 {
     private CancellationTokenSource _cts;
     private readonly Lock _ctsLock = new();
+    private readonly string _chdmanExePath;
+    private readonly string _chdmanResolvedName;
     private readonly bool _isChdmanAvailable;
+    private readonly string _sevenZipExePath;
 
     // Statistics
     private volatile int _totalFilesProcessed;
@@ -102,15 +105,17 @@ internal partial class MainWindow : IDisposable
         ExtractionFilesDataGrid.ItemsSource = _extractionFiles;
 
         var appDirectory = AppDomain.CurrentDomain.BaseDirectory;
-        var chdmanPath = Path.Combine(appDirectory, AppConfig.ChdmanExeName);
-        _isChdmanAvailable = File.Exists(chdmanPath);
 
-        var sevenZipExePath = Path.Combine(appDirectory, AppConfig.SevenZipExeName);
-        var isSevenZipAvailable = File.Exists(sevenZipExePath);
+        // Resolve the bundled tools once, in preference order. On an ARM64 machine both builds
+        // execute (natively or emulated), so a missing preferred binary falls back to the other
+        // architecture's file instead of failing outright; on pure x64 there is nothing to fall
+        // back to and the missing-dependency messaging stays accurate.
+        (_chdmanExePath, _chdmanResolvedName, _isChdmanAvailable) = ResolveToolExecutable(appDirectory, AppConfig.ChdmanExeCandidates);
+        (_sevenZipExePath, _, var isSevenZipAvailable) = ResolveToolExecutable(appDirectory, AppConfig.SevenZipExeCandidates);
 
         // Initialize Services
         _updateService = new UpdateService(AppConfig.ApplicationName);
-        _archiveService = new ArchiveService(sevenZipExePath, isSevenZipAvailable);
+        _archiveService = new ArchiveService(_sevenZipExePath, isSevenZipAvailable);
         _screenshotService = new ScreenshotService();
 
         // Register global F8 hotkey once the window handle is available
@@ -217,12 +222,34 @@ internal partial class MainWindow : IDisposable
         return IntPtr.Zero;
     }
 
+    /// <summary>
+    /// Returns the first candidate name that exists in <paramref name="baseDirectory"/>, together
+    /// with its name and availability. The candidate list is ordered best-first (the OS-native
+    /// build on ARM64 machines), so a partial or mixed deployment still finds an executable the
+    /// machine can run. When nothing exists, the preferred name is returned so missing-dependency
+    /// messages point at the file that should be there.
+    /// </summary>
+    private static (string Path, string Name, bool Available) ResolveToolExecutable(string baseDirectory, IReadOnlyList<string> candidateNames)
+    {
+        foreach (var name in candidateNames)
+        {
+            var path = Path.Combine(baseDirectory, name);
+            if (File.Exists(path))
+            {
+                return (path, name, true);
+            }
+        }
+
+        var preferred = candidateNames[0];
+        return (Path.Combine(baseDirectory, preferred), preferred, false);
+    }
+
     private void CheckDependenciesAndNotifyUser()
     {
         var missingDeps = new List<string>();
         if (!_isChdmanAvailable)
         {
-            missingDeps.Add(AppConfig.ChdmanExeName);
+            missingDeps.Add(_chdmanResolvedName);
         }
 
         // Critical dependency check
@@ -369,17 +396,21 @@ internal partial class MainWindow : IDisposable
                 return false;
             }
 
-            // Check for read access and file locks by attempting to open with exclusive access
+            // Check for read access. The sharing level mirrors how Windows itself opens executable
+            // images (read + delete), so a chdman.exe currently running under another instance of
+            // this app, or briefly held open by an antivirus scan, does not produce a false
+            // "locked by another process" abort; only a file that cannot be opened at all fails.
             try
             {
-                await using (File.Open(exePath, FileMode.Open, FileAccess.Read, FileShare.None))
+                await using (File.Open(exePath, FileMode.Open, FileAccess.Read, FileShare.Read | FileShare.Delete))
                 {
-                    // File is not locked and we have read access
+                    // File is readable and can be executed
                 }
             }
             catch (IOException ioEx) when (ioEx.Message.Contains("being used by another process", StringComparison.OrdinalIgnoreCase))
             {
-                LogError($" {exeName} is locked by another process.");
+                LogError($" {exeName} cannot be opened - it is held with incompatible access by another process.");
+                LogMessage("       Close other instances of this application and any antivirus scan in progress, then try again.");
                 ShowError($"{exeName} is currently in use by another process.");
                 return false;
             }
@@ -447,6 +478,22 @@ internal partial class MainWindow : IDisposable
 
             process.Start();
             await process.WaitForExitAsync(token);
+
+            // A negative exit code means Windows terminated chdman abnormally (e.g. 0xC000001D
+            // illegal instruction on a CPU without the SIMD extensions this build was compiled
+            // with). The exe launches fine but will crash on every conversion, so stop before the
+            // batch starts instead of failing each file with "produced no error output".
+            if (process.ExitCode < 0)
+            {
+                LogError($" chdman.exe terminated abnormally during the startup check (exit code {process.ExitCode}{DescribeChdmanCrash(process.ExitCode)}).");
+                LogWarning("       The bundled chdman.exe is likely incompatible with this computer's CPU or was damaged/quarantined by antivirus software.");
+                LogMessage("       Replace chdman.exe with a build that matches your CPU (e.g. an official MAME tools release) and add an antivirus exclusion for it.");
+                ShowError($"chdman.exe crashed during the startup check (exit code {process.ExitCode}).\n\n" +
+                          "The bundled build may be incompatible with this computer's CPU, or it was damaged/quarantined by antivirus software.\n" +
+                          "Replace chdman.exe with a build that matches your CPU and check your antivirus settings.");
+                return false;
+            }
+
             return true;
         }
         catch (OperationCanceledException)
@@ -470,9 +517,10 @@ internal partial class MainWindow : IDisposable
         {
             LogError(" The bundled chdman.exe is not compatible with this version of Windows.");
             LogMessage("       This typically occurs when running on older Windows versions (e.g., Windows 7).");
+            LogMessage("       It can also occur when files from the win-arm64 release are copied into a win-x64 installation (or vice versa) - keep the two releases separate.");
             LogMessage("       Please download a compatible version of chdman.exe from MAME releases.");
             ShowError("chdman.exe is not compatible with this OS.\n\n" +
-                      "The bundled chdman.exe requires a newer Windows version.\n" +
+                      "The bundled chdman.exe requires a newer Windows version, or it belongs to the other architecture release (win-x64 vs win-arm64).\n" +
                       "For Windows 7, please obtain a compatible chdman.exe from an older MAME release.");
             return false;
         }
@@ -514,6 +562,9 @@ internal partial class MainWindow : IDisposable
             sb.AppendLine("=== Environment Details ===");
             sb.AppendLine(CultureInfo.InvariantCulture, $"OS: {Environment.OSVersion}");
             sb.AppendLine(CultureInfo.InvariantCulture, $"User: {Environment.UserName}");
+            sb.AppendLine(CultureInfo.InvariantCulture, $"Process Architecture: {RuntimeInformation.ProcessArchitecture}");
+            sb.AppendLine(CultureInfo.InvariantCulture, $"OS Architecture: {RuntimeInformation.OSArchitecture}");
+            sb.AppendLine(CultureInfo.InvariantCulture, $"chdman executable: {_chdmanResolvedName} ({(_isChdmanAvailable ? "found" : "NOT FOUND")})");
             LogMessage(sb.ToString());
         }
         catch
@@ -1122,7 +1173,7 @@ internal partial class MainWindow : IDisposable
                     token = _cts.Token;
                 }
 
-                await PerformBatchConversionAsync(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, AppConfig.ChdmanExeName),
+                await PerformBatchConversionAsync(_chdmanExePath,
                     inputFolder, outputFolder, deleteFiles, processSmallerFirst, forceCd, forceDvd, timeoutMinutes, selectedFiles, token);
             }
             catch (OperationCanceledException)
@@ -1366,6 +1417,18 @@ internal partial class MainWindow : IDisposable
 
         CheckDiskSpace(outputFolder, filesToConvert, true);
 
+        // chdman reports an unwritable destination only as a per-file "Permission denied" deep in
+        // its own output (e.g. writing into "Program Files" without elevation). Probe the folder
+        // once up front so the user gets one actionable message instead of a batch of failures.
+        if (!IsOutputFolderWritable(outputFolder))
+        {
+            LogError($" The output folder is not writable: {outputFolder}");
+            LogMessage("       Choose a folder you have write access to (for example Documents or a data drive) and try again.");
+            LogMessage("       Writing into folders like 'Program Files' requires administrator rights.");
+            ShowError($"The output folder is not writable:\n\n{outputFolder}\n\nChoose a folder you have write access to and try again.");
+            return;
+        }
+
         await Application.Current.Dispatcher.InvokeAsync(() => ProgressBar.Maximum = _totalFilesProcessed);
         var processedCount = 0;
         var cores = Environment.ProcessorCount;
@@ -1398,8 +1461,6 @@ internal partial class MainWindow : IDisposable
 
     private async Task PerformBatchExtractionAsync(string inputFolder, string outputFolder, bool deleteOriginal, string[] selectedFiles, CancellationToken token)
     {
-        var chdmanPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, AppConfig.ChdmanExeName);
-
         _totalFilesProcessed = selectedFiles.Length;
         UpdateStatsDisplay();
         LogMessage($"Found {_totalFilesProcessed} CHD files to extract.");
@@ -1420,7 +1481,7 @@ internal partial class MainWindow : IDisposable
 
             UpdateProgressDisplay(processedCount, _totalFilesProcessed, Path.GetFileName(file), "Extracting");
 
-            var success = await ExtractChdAsync(chdmanPath, file, inputFolder, outputFolder, deleteOriginal, token);
+            var success = await ExtractChdAsync(_chdmanExePath, file, inputFolder, outputFolder, deleteOriginal, token);
             if (success)
             {
                 Interlocked.Increment(ref _processedOkCount);
@@ -1452,6 +1513,14 @@ internal partial class MainWindow : IDisposable
             if (watcherCtx != null)
                 LogMessage($"       {watcherCtx}");
 
+            return false;
+        }
+
+        // A folder whose name looks like an image ("Game.BIN.ISO") would otherwise be handed to
+        // chdman and fail deep inside it with a bare "Is a directory".
+        if (Directory.Exists(inputFile))
+        {
+            LogWarning($" {originalName} is a folder, not a disc image file - skipping.");
             return false;
         }
 
@@ -2257,6 +2326,19 @@ internal partial class MainWindow : IDisposable
                 var errorDetail = string.IsNullOrWhiteSpace(result.Error) ? string.Empty : $" - {result.Error}";
                 var sizeDetail = pbpSize > 0 ? $" ({pbpSize:N0} bytes)" : string.Empty;
                 LogError($" Failed to extract PBP file: {originalName}{sizeDetail}{errorDetail}");
+
+                switch (result.ErrorCode)
+                {
+                    case PbpError.TruncatedPsar:
+                        LogMessage("       The PlayStation data section has no readable tracks - the file is most likely truncated or incomplete. Re-download it.");
+                        break;
+                    case PbpError.CorruptFile or PbpError.DecompressionError or PbpError.InvalidSfo:
+                        LogMessage("       The file may be truncated or corrupt (re-download it), or it may not be a PSX PBP.");
+                        break;
+                    case PbpError.IoError:
+                        LogMessage("       The file could not be read - close any program using it and check the drive for errors.");
+                        break;
+                }
             }
 
             return false;
@@ -3458,8 +3540,6 @@ internal partial class MainWindow : IDisposable
             }
         }
 
-        var pathNeedsAscii = Path.GetFileName(inputFile).Any(static c => c > 127);
-        var pathNeedsAsciiOut = Path.GetFileName(outputFile).Any(static c => c > 127);
         string? asciiTempDir = null;
         string? asciiInputFile = null;
         string? asciiOutputFile = null;
@@ -3501,14 +3581,35 @@ internal partial class MainWindow : IDisposable
             }
         }
 
+        // chdman converts its UTF-16 command line down to the ANSI code page, so ANY non-ASCII
+        // character along the path (an accented user name, a non-Latin folder name) can be
+        // mangled before it reaches chdman's file APIs; paths at or beyond MAX_PATH fail the
+        // same way. Check the whole path - checking only the file name misses unsafe directories,
+        // e.g. "D:\Emulátory\PS2\Iso\God of War.iso" or "C:\Users\Kauê Chacon\Temp\game.cue".
+        // Computed here, after cue work-dir preparation above, so an input that was already staged
+        // into a safe work directory is not flagged again.
+        var pathNeedsAscii = !PathUtils.IsChdmanSafePath(inputFile);
+        var pathNeedsAsciiOut = !PathUtils.IsChdmanSafePath(outputFile);
+
         if (asciiTempDir == null && (pathNeedsAscii || pathNeedsAsciiOut))
         {
-            asciiTempDir = Path.Combine(Path.GetTempPath(), TempDirPrefix + Guid.NewGuid().ToString("N"));
+            // The staging location must itself be safe to hand to chdman: the system temp folder
+            // lives under the user profile and can contain non-ASCII characters or be overlong,
+            // which would reproduce the very failure this fallback exists to avoid.
+            asciiTempDir = PathUtils.CreateAsciiSafeTempDirectory(TempDirPrefix);
             Directory.CreateDirectory(asciiTempDir);
-            asciiInputFile = Path.Combine(asciiTempDir, Guid.NewGuid().ToString("N") + Path.GetExtension(inputFile));
+
+            // Only the input needs staging when its own path is unsafe; an input chdman can read
+            // in place (e.g. an ASCII cue whose destination path is overlong) keeps resolving its
+            // FILE entries against its original directory.
+            if (pathNeedsAscii)
+            {
+                asciiInputFile = Path.Combine(asciiTempDir, Guid.NewGuid().ToString("N") + Path.GetExtension(inputFile));
+                File.Copy(inputFile, asciiInputFile);
+                inputFile = asciiInputFile;
+            }
+
             asciiOutputFile = Path.Combine(asciiTempDir, Guid.NewGuid().ToString("N") + FileExtensions.Chd);
-            File.Copy(inputFile, asciiInputFile);
-            inputFile = asciiInputFile;
             outputFile = asciiOutputFile;
             args = args.Replace($"\"{originalInputFile}\"", $"\"{inputFile}\"").Replace($"\"{originalOutputFile}\"", $"\"{outputFile}\"");
         }
@@ -3811,10 +3912,21 @@ internal partial class MainWindow : IDisposable
                 var errorLine = SelectChdmanErrorLine(errorTextFinal);
                 LogError($" Failed to convert '{Path.GetFileName(originalInputFile)}': {errorLine}");
 
-                if (errorLine.Contains("couldn't find bin file", StringComparison.OrdinalIgnoreCase))
+                if (errorLine.Contains("couldn't find bin file", StringComparison.OrdinalIgnoreCase) ||
+                    errorLine.Contains("Unknown error", StringComparison.OrdinalIgnoreCase))
                 {
                     LogWarning($"       Files found in input directory ({Path.GetDirectoryName(originalInputFile) ?? "?"}): {GetDirectoryDiagnostics(originalInputFile)}");
                 }
+            }
+            else if (exitCode < 0)
+            {
+                // A negative exit code means Windows terminated chdman abnormally - it crashed
+                // before it could print anything. The most common cause is a CPU missing the
+                // SIMD instruction sets (SSE4.2/AVX) that recent MAME-based builds compile in;
+                // antivirus quarantine damage produces the same class of crash.
+                LogError($" Failed to convert '{Path.GetFileName(originalInputFile)}': chdman terminated abnormally (exit code {exitCode}{DescribeChdmanCrash(exitCode)}).");
+                LogWarning("       The bundled chdman.exe may be incompatible with this computer's CPU or was damaged/quarantined by antivirus software.");
+                LogMessage("       Replace chdman.exe with a build that matches your CPU (e.g. an official MAME tools release) and add an antivirus exclusion for it.");
             }
             else
             {
@@ -3896,6 +4008,26 @@ internal partial class MainWindow : IDisposable
                 ? "chdman encountered an error. The file may be corrupted, in an unsupported format, or a required codec may be missing."
                 : lines[^1]
             : string.Empty;
+    }
+
+    /// <summary>
+    /// Describes the NTSTATUS code behind a negative chdman exit code. chdman prints nothing when
+    /// Windows kills it outright, so the raw number is all the user sees; naming the common crash
+    /// codes turns it into something actionable (most often a CPU that lacks the instruction sets
+    /// the bundled build was compiled with).
+    /// </summary>
+    internal static string DescribeChdmanCrash(int exitCode)
+    {
+        return exitCode switch
+        {
+            -1073741795 => "; 0xC000001D, STATUS_ILLEGAL_INSTRUCTION - the CPU executed an unsupported instruction",
+            -1073741819 => "; 0xC0000005, STATUS_ACCESS_VIOLATION",
+            -1073741676 => "; 0xC0000094, integer divide by zero",
+            -1073741571 => "; 0xC00000FD, stack overflow",
+            -1073741515 => "; 0xC0000135, a required DLL could not be found",
+            -1073740791 => "; 0xC0000409, stack buffer overrun / fail fast",
+            _ => string.Empty
+        };
     }
 
     /// <summary>
@@ -4521,6 +4653,44 @@ internal partial class MainWindow : IDisposable
                errorOutput.Contains("disk full", StringComparison.OrdinalIgnoreCase) ||
                errorOutput.Contains("no space left", StringComparison.OrdinalIgnoreCase) ||
                errorOutput.Contains("insufficient disk space", StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// Probes the output folder once by creating and deleting a uniquely named file. Returns false
+    /// only on a definitive access denial; other probe failures (transient locks, network quirks)
+    /// return true so a flaky probe never blocks a batch that would in fact have worked.
+    /// </summary>
+    private static bool IsOutputFolderWritable(string outputFolder)
+    {
+        var probePath = Path.Combine(outputFolder, $".write_test_{Guid.NewGuid():N}.tmp");
+        try
+        {
+            File.WriteAllText(probePath, string.Empty);
+            return true;
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return false;
+        }
+        catch (System.Security.SecurityException)
+        {
+            return false;
+        }
+        catch
+        {
+            return true;
+        }
+        finally
+        {
+            try
+            {
+                if (File.Exists(probePath)) File.Delete(probePath);
+            }
+            catch
+            {
+                // ignored - a leftover zero-byte probe file is harmless
+            }
+        }
     }
 
     private void CheckDiskSpace(string outputFolder, string[] filesToProcess, bool isConversion)

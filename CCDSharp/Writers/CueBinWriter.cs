@@ -147,15 +147,14 @@ internal static class CueBinWriter
 
     private static void CopyWithRetry(string source, string dest)
     {
-        const int maxAttempts = 4;
-        for (var attempt = 0; attempt < maxAttempts; attempt++)
+        for (var attempt = 0; attempt < MaxCopyRetries; attempt++)
         {
             try
             {
                 File.Copy(source, dest, true);
                 return;
             }
-            catch (IOException) when (attempt < maxAttempts - 1)
+            catch (IOException) when (attempt < MaxCopyRetries - 1)
             {
                 Thread.Sleep(300 * (attempt + 1));
             }

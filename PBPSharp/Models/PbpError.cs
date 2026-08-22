@@ -48,5 +48,17 @@ public enum PbpError
     /// <summary>
     /// A decompression error occurred while reading ISO data.
     /// </summary>
-    DecompressionError
+    DecompressionError,
+
+    /// <summary>
+    /// The PSAR section identifies itself as a PlayStation disc image but contains no ISO index
+    /// entries. This almost always means the file is truncated or otherwise incomplete.
+    /// </summary>
+    TruncatedPsar,
+
+    /// <summary>
+    /// The PARAM.SFO region inside the PBP does not carry the expected "\0PSF" signature, so the
+    /// header offsets do not point at a valid SFO.
+    /// </summary>
+    InvalidSfo
 }

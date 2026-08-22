@@ -18,7 +18,6 @@ public class MdsTests : IDisposable
     private const int SessionBlockOffsetOffset = 0x50;
     private const int SessionBlockStart = 0x60;
     private const int TrackBlockStart = 0x100;
-    private const int SessionBlockSize = 24;
     private const int TrackBlockSize = 80;
 
     public MdsTests()

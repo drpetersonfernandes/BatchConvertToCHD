@@ -62,12 +62,12 @@ public sealed class PbpDiscInfo
         Toc = ReadToc();
         _isoIndex = ReadIsoIndexes();
 
-        // A disc with no ISO index entries is not a PlayStation disc image (e.g. a PSP
-        // application PBP or a truncated file). The reference implementation rejects it
-        // explicitly; without this guard the later block reads would throw a raw
-        // ArgumentOutOfRangeException instead of a clean PbpError.CorruptFile.
+        // A disc with no ISO index entries is not a usable PlayStation disc image. The container
+        // header parsed correctly, so this almost always means the file ends before its data area
+        // (truncated download). The dedicated exception lets callers report that cause instead of
+        // a generic corrupt-file error.
         if (_isoIndex.Count == 0)
-            throw new InvalidDataException("No ISO index was found.");
+            throw new NoIsoIndexException();
 
         IsoSize = ReadIsoSize();
     }

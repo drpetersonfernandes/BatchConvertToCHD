@@ -5,7 +5,8 @@ namespace BatchConvertToCHD.Utilities;
 /// <summary>
 /// Prepares an isolated ASCII work directory for a cue/toc descriptor when chdman cannot be handed
 /// the original file as-is: UTF-8 BOM (which chdman's parser does not skip, producing
-/// "couldn't find bin file []"), non-UTF-8 cue text, non-ASCII names or paths, or referenced names
+/// "couldn't find bin file []"), non-UTF-8 cue text, non-ASCII names or paths, paths at or beyond
+/// MAX_PATH (chdman's ANSI file APIs cannot open them), or referenced names
 /// that needed zero-padding correction. The work directory contains a canonicalized cue plus every
 /// referenced file under safe ASCII names (trackNN.ext), so chdman sees a self-contained cue set.
 /// When the only problem is a BOM and the bins are on the same drive as the work directory, the
@@ -38,7 +39,16 @@ internal static class CueWorkDirectory
         var hasMp3Tracks = mp3Decoder is not null && result.References.Any(static r => string.Equals(r.TrackType, "MP3", StringComparison.Ordinal));
         var namesNeedAscii = cuePath.Any(static c => c > 127) ||
                              result.References.Any(static r => r.ReferencedName.Any(static c => c > 127));
-        var needsWorkDir = !isUtf8 || result.HasBom || result.NeedsRewrite || result.ReferencesChanged || hasMp3Tracks || namesNeedAscii;
+
+        // chdman's CRT file APIs are capped at MAX_PATH (260): a descriptor or referenced file at
+        // or beyond that length fails with "No such file or directory" even though every file
+        // exists. The copy-based work directory below gives chdman short ASCII names instead.
+        // The in-place fast path is declined for these cues because its relative FILE references
+        // rejoin into the same overlong paths.
+        var pathTooLong = cuePath.Length >= PathUtils.MaxChdmanPath ||
+                          result.References.Any(r => r.ResolvedFullPath.Length >= PathUtils.MaxChdmanPath);
+
+        var needsWorkDir = !isUtf8 || result.HasBom || result.NeedsRewrite || result.ReferencesChanged || hasMp3Tracks || namesNeedAscii || pathTooLong;
         if (!needsWorkDir)
         {
             return new CueWorkDirectoryResult(null, null, []);
@@ -49,12 +59,13 @@ internal static class CueWorkDirectory
 
         try
         {
-            // Fast path for BOM-only cues (canonical content, ASCII names, no MP3): write the
-            // BOM-free canonical cue into the work directory and reference each bin via a relative
-            // path from the work directory, so chdman reads the bins in place without copying them.
-            // chdman prepends the cue's directory to every FILE name, so the relative path must stay
-            // relative — a rooted path (bins on another drive) forces the copy-based fallback below.
-            if (result.HasBom && !hasMp3Tracks && !namesNeedAscii)
+            // Fast path for BOM-only cues (canonical content, ASCII names, no MP3, safe path
+            // lengths): write the BOM-free canonical cue into the work directory and reference
+            // each bin via a relative path from the work directory, so chdman reads the bins in
+            // place without copying them. chdman prepends the cue's directory to every FILE name,
+            // so the relative path must stay relative — a rooted path (bins on another drive)
+            // forces the copy-based fallback below.
+            if (result.HasBom && !hasMp3Tracks && !namesNeedAscii && !pathTooLong)
             {
                 var inPlaceWorkCue = await TryWriteInPlaceWorkCueAsync(cuePath, workDir, token).ConfigureAwait(false);
                 if (inPlaceWorkCue is not null)

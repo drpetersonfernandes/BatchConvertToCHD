@@ -113,7 +113,11 @@ internal static class EcmImageDecoder
                 {
                     TypeLiteral => TryCopyLiteral(input, output, sector, count, ref runningEdc, ref written),
                     TypeMode1 => TryExpandMode1(input, output, sector, count, ref runningEdc, ref written),
-                    _ => TryExpandMode2(input, output, sector, count, type == TypeMode2Form1, ref runningEdc, ref written)
+
+                    // The block header masks its kind to two bits, so these four are the only values
+                    // possible; both Mode 2 forms expand through the same routine.
+                    TypeMode2Form1 or TypeMode2Form2 => TryExpandMode2(input, output, sector, count, type == TypeMode2Form1, ref runningEdc, ref written),
+                    _ => false
                 };
 
                 if (!ok)

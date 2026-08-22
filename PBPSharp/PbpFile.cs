@@ -122,6 +122,12 @@ public sealed class PbpFile : IDisposable
         {
             return PbpError.IoError;
         }
+        catch (NoIsoIndexException)
+        {
+            // The PSAR header parsed correctly but no ISO index entries followed: the file ends
+            // before its data area, which is the signature of a truncated or incomplete download.
+            return PbpError.TruncatedPsar;
+        }
         catch (InvalidDataException)
         {
             return PbpError.CorruptFile;
@@ -172,7 +178,7 @@ public sealed class PbpFile : IDisposable
         // uint32 is 0x46535000. Anything else means the SFO region is corrupt or the PBP
         // header offsets point at the wrong place.
         if (sfoData.Magic != 0x46535000)
-            return PbpError.CorruptFile;
+            return PbpError.InvalidSfo;
 
         sfoData.KeyTableOffset = ReadUInt32(stream, sfoBuffer);
         sfoData.DataTableOffset = ReadUInt32(stream, sfoBuffer);

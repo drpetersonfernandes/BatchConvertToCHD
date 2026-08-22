@@ -82,7 +82,7 @@ public class PbpFileTests : IDisposable
     }
 
     [Fact]
-    public void OpenFileWithInvalidSfoMagicReturnsCorruptFile()
+    public void OpenFileWithInvalidSfoMagicReturnsInvalidSfo()
     {
         var path = Path.Combine(_tempDir, $"badsfo_{Guid.NewGuid():N}.pbp");
 
@@ -99,7 +99,7 @@ public class PbpFileTests : IDisposable
         File.WriteAllBytes(path, ms.ToArray());
 
         var error = PbpFile.Open(path, out var pbp);
-        Assert.Equal(PbpError.CorruptFile, error);
+        Assert.Equal(PbpError.InvalidSfo, error);
         Assert.Null(pbp);
     }
 
@@ -127,7 +127,7 @@ public class PbpFileTests : IDisposable
     }
 
     [Fact]
-    public void OpenSingleDiscPbpWithNoIsoIndexReturnsCorruptFile()
+    public void OpenSingleDiscPbpWithNoIsoIndexReturnsTruncatedPsar()
     {
         var path = Path.Combine(_tempDir, $"noindex_{Guid.NewGuid():N}.pbp");
 
@@ -146,7 +146,7 @@ public class PbpFileTests : IDisposable
         File.WriteAllBytes(path, ms.ToArray());
 
         var error = PbpFile.Open(path, out var pbp);
-        Assert.Equal(PbpError.CorruptFile, error);
+        Assert.Equal(PbpError.TruncatedPsar, error);
         Assert.Null(pbp);
     }
 

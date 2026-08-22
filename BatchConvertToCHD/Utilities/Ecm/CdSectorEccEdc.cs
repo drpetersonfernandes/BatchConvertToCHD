@@ -84,9 +84,9 @@ internal static class CdSectorEccEdc
     {
         sector.Clear();
         sector[0] = 0x00;
-        sector.Slice(1, 10).Fill(0xFF);
-        sector[11] = 0x00;
-        sector[0x0F] = mode;
+        sector.Slice(1, SyncLength - 2).Fill(0xFF);
+        sector[SyncLength - 1] = 0x00;
+        sector[AddressOffset + 3] = mode;
     }
 
     /// <summary>

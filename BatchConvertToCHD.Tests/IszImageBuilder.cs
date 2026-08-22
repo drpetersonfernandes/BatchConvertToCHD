@@ -62,7 +62,7 @@ internal static class IszImageBuilder
             chunkSize: (uint)chunkSize,
             pointerLength: pointerLength,
             segmentNumber: 1,
-            chunkTableOffset: (uint)HeaderLength,
+            chunkTableOffset: HeaderLength,
             segmentTableOffset: 0,
             dataOffset: (uint)dataOffset,
             volumeSerial: DefaultVolumeSerial);
@@ -145,8 +145,8 @@ internal static class IszImageBuilder
             chunkSize: (uint)chunkSize,
             pointerLength: pointerLength,
             segmentNumber: 1,
-            chunkTableOffset: (uint)chunkTableOffset,
-            segmentTableOffset: (uint)HeaderLength,
+            chunkTableOffset: chunkTableOffset,
+            segmentTableOffset: HeaderLength,
             dataOffset: (uint)dataOffset,
             volumeSerial: DefaultVolumeSerial);
 
@@ -310,7 +310,7 @@ internal static class IszImageBuilder
 
             // The flag occupies the top two bits of the whole entry, so it lands in the top two bits
             // of the last byte of a little-endian value.
-            var entry = (ulong)(uint)chunk.Stored.Length | ((ulong)(chunk.Flag >> 6) << (8 * pointerLength - 2));
+            var entry = (uint)chunk.Stored.Length | ((ulong)(chunk.Flag >> 6) << (8 * pointerLength - 2));
 
             for (var b = 0; b < pointerLength; b++)
             {
