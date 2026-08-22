@@ -1,3 +1,8 @@
+---
+title: Utilities Reference
+nav_order: 9
+---
+
 # 8. Utilities Reference
 
 All classes live in `BatchConvertToCHD/Utilities/` (and `Models/` where noted).
@@ -10,14 +15,18 @@ All classes live in `BatchConvertToCHD/Utilities/` (and `Models/` where noted).
 
 | Member | Behavior |
 |--------|----------|
-| `SanitizeFileName(name)` | Replaces invalid filename chars with `_`; collapses a trailing period to `_`; falls back to a GUID when the result is empty/all underscores. |
+| `MaxChdmanPath` | Path length chdman handles reliably (260). Its CRT file APIs use ANSI paths capped at MAX_PATH; longer input/output paths fail with "No such file or directory" even when the file exists. |
+| `IsAsciiPath(path)` | True when every character is ASCII (`&lt;=` 127). chdman converts its UTF-16 command line down to the ANSI code page, so non-ASCII characters anywhere along a path (accented user names such as `C:\Users\Kauê`, non-Latin folder names) can be mangled before they reach its file APIs. |
+| `IsChdmanSafePath(path)` | True when the path can be handed to chdman as-is: pure ASCII **and** below `MaxChdmanPath`. |
+| `CreateAsciiSafeTempDirectory(tempDirPrefix)` | Creates a unique staging directory whose full path is pure ASCII and well below MAX_PATH. Prefers the system temp location but falls back to `{drive}\BatchConvertToCHD_Temp` on fixed drives (roomiest first), because `%TEMP%` lives under the user profile and can contain exactly the characters this exists to avoid. The drive-root folders are the same ones startup cleanup knows about. |
+| `SanitizeFileName(name)` | Replaces invalid filename chars with `_`; makes the final trailing period an `_` (one pass: `"file..."` → `"file.._"`, `"..."` → `".."_`), keeping names recognizable instead of collapsing them; falls back to a GUID when the result is empty/all underscores. |
 | `GetSafeTempFileName(original, desiredExt, tempDir)` | Sanitized base name + desired extension (leading dot stripped), combined under `tempDir`. |
 | `GetSafeRelativePath(relativeTo, path)` | `Path.GetRelativePath` when both paths share a root; otherwise `"."` (same folder). Used to preserve the directory structure in outputs. |
 | `IsSameOrInsideDirectory(root, candidate)` | True when `candidate` is the same directory as `root` or nested inside it. Compares **normalized full paths**, so `D:\Games`, `D:\Games\` and `D:\Games\..\Games` all match, and appends the separator before the prefix test so `D:\Games2` is not read as being inside `D:\Games`. Never throws — a bad path returns false, because callers only use it to decide whether to log a note. |
 | `ReserveFreeSubdirectory(parentDirectory, baseName)` | Returns a path under `parentDirectory` named after a sanitized `baseName` that nothing currently occupies, stepping through `Name (2)`, `Name (3)` … up to 999 and then falling back to a GUID suffix. Tests for both a directory **and** a file of that name, since an extension-less file would block the directory just as a folder would. Does **not** create the directory — the caller decides whether it is needed. Used by extraction to divert a disc that would otherwise overwrite existing files (see [Extraction §6](06-extraction-and-verification.md#extracting-into-the-source-folder)). |
-| `GetBestTempDirectory(inputFilePath, outputFolderPath, tempDirPrefix, requiredBytes)` | Selects the best temp root: candidates = input-file root, output-folder root, system temp root, and every ready fixed drive. Requires ≥ 1 GiB free; when `requiredBytes > 0` prefers a drive with enough free space (most free among those); probes writability (create+delete a `writetest_<guid>` dir); falls back to system temp with an informational log. Base path is `{root}\BatchConvertToCHD_Temp` unless it equals the system temp root. Final: `{base}\{tempDirPrefix}{guid}`. |
+| `GetBestTempDirectory(inputFilePath, outputFolderPath, tempDirPrefix, requiredBytes)` | Selects the best temp root: candidates = input-file root, output-folder root, system temp root, and every ready fixed drive. Requires ≥ 1 GiB free; when `requiredBytes > 0` prefers a drive with enough free space (most free among those); probes writability (create+delete a `writetest_<guid>` dir); falls back to system temp with an informational log. When the chosen root *is* the system-temp volume, `%TEMP%` is used only if its own path is chdman-safe — otherwise the base path is `{root}\BatchConvertToCHD_Temp`, so work directories never land under e.g. `C:\Users\Kauê Chacon\AppData\Local\Temp`. Final: `{base}\{tempDirPrefix}{guid}`. |
 | `GetPossibleTempBasePaths()` | System temp plus every existing `X:\BatchConvertToCHD_Temp` on fixed drives — used by startup cleanup. |
-| `CreateTempDirectoryOnSameVolume(referencePath, tempDirPrefix)` | Creates and returns a temp directory **on the same volume as `referencePath`**, or `null` when none can be created there. Prefers the system temp directory when it already happens to be on that volume (no special permissions needed), otherwise `{root}\BatchConvertToCHD_Temp` — the same layout `GetBestTempDirectory` uses, so startup cleanup already finds it. |
+| `CreateTempDirectoryOnSameVolume(referencePath, tempDirPrefix)` | Creates and returns a temp directory **on the same volume as `referencePath`**, or `null` when none can be created there. Prefers the system temp directory when it already happens to be on that volume **and** its path is chdman-safe (no special permissions needed), otherwise `{root}\BatchConvertToCHD_Temp` — the same layout `GetBestTempDirectory` uses, so startup cleanup already finds it. An unsafe `%TEMP%` remains the last resort so a generated cue still gets a chance to convert. |
 | `ValidateAndNormalizePath(path, pathName, onLog, onError)` | `GetFullPath` + existence check with friendly errors. |
 
 > **`GetBestTempDirectory` vs `CreateTempDirectoryOnSameVolume`.** The first picks the roomiest drive, which is what you want when a whole disc image is about to be written. The second pins the directory to one volume, which is what a **generated cue** needs: chdman joins a cue's `FILE` entry to the cue's own directory and cannot follow an absolute path, so a cue on the wrong volume simply cannot reach its image (see [Conversion Pipeline §5.8](05-conversion-pipeline.md#58-generated-cues-and-the-same-volume-constraint)). Using the roomiest-drive helper for cue staging silently disabled the generated-cue feature whenever the source drive was not the emptiest drive.
@@ -46,9 +55,9 @@ All classes live in `BatchConvertToCHD/Utilities/` (and `Models/` where noted).
 `internal static class CueWorkDirectory` — builds a self-contained ASCII work directory when the cue can't be handed to chdman as-is.
 
 - `PrepareAsync(cuePath, tempDirPrefix, mp3Decoder?, onLog?, token)` → `CueWorkDirectoryResult(WorkCuePath, WorkDir, UnresolvedNames)`:
-  - No work needed (UTF-8, no BOM, ASCII names, no corrections, no MP3) → `(null, null, [])`.
-  - **BOM-only fast path**: writes a BOM-free canonical `game.cue` into the work dir that references bins **in place via relative paths** — no bin copies. Declined when any bin is on another drive.
-  - Full path: copies every referenced file under safe `trackNN.ext` names (MP3 tracks decoded to `trackNN.wav` via the MP3 decoder, track type rewritten to `WAVE`), then writes the canonical cue.
+  - No work needed (UTF-8, no BOM, ASCII names, no corrections, no MP3, safe path lengths) → `(null, null, [])`.
+  - **BOM-only fast path**: writes a BOM-free canonical `game.cue` into the work dir that references bins **in place via relative paths** — no bin copies. Declined when any bin is on another drive or when the descriptor/references are at or beyond MAX_PATH (the relative references would rejoin into the same overlong paths).
+  - Full path: copies every referenced file under safe `trackNN.ext` names (MP3 tracks decoded to `trackNN.wav` via the MP3 decoder, track type rewritten to `WAVE`), then writes the canonical cue. Overlong paths force this copy-based route so chdman only ever sees short ASCII names.
   - Unresolved references → returned in `UnresolvedNames` (caller skips conversion).
   - On failure the work dir is deleted and the exception rethrown.
 - `TryWriteInPlaceWorkCueAsync` — the fast path above; `CopyWithRetryAsync` copies bins with up to 4 attempts (300 ms × attempt backoff).

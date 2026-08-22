@@ -1,3 +1,8 @@
+---
+title: User Guide
+nav_order: 5
+---
+
 # 4. User Guide
 
 The main window has three tabs: **Convert to CHD**, **Verify CHD Files**, and **Extract CHD Files**. A terminal-style log view sits on the right, stat cards and the progress bar at the bottom, and a status bar with the CHDMAN dependency indicator at the very bottom.

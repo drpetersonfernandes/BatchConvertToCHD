@@ -1,3 +1,8 @@
+---
+title: Application Data
+nav_order: 13
+---
+
 # 12. Application Data
 
 Everything the application persists lives under the per-user AppData folder:

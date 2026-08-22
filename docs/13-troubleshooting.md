@@ -1,3 +1,8 @@
+---
+title: Troubleshooting
+nav_order: 14
+---
+
 # 13. Troubleshooting
 
 Common messages, their meaning, and what to do.
@@ -25,6 +30,13 @@ Common messages, their meaning, and what to do.
 | `Failed to convert '<file>': Compressing, 0.0% complete...` | (Old versions) a chdman progress line was shown instead of the real error. | Update the app; the real error line is now selected from the end of chdman's output. |
 | `Failed to convert '<file>': Error creating CHD file (...): Unknown error` | chdman could not create the output file (drive issues, permissions, full disk). | Check the output drive is writable, has free space, and the path isn't overlong. |
 | `TIMEOUT: Conversion of '<file>' exceeded N minute(s). Marking as failed.` | The per-file time limit fired. | Increase the limit (max 4 hours) or convert fewer/larger files at once. |
+| `Failed to convert '<file>': chdman terminated abnormally (exit code -1073741795; 0xC000001D, STATUS_ILLEGAL_INSTRUCTION ...)` | Windows killed chdman before it could print anything. Most often the bundled build uses CPU instructions this computer lacks (older CPUs without SSE4.2/AVX); antivirus quarantine damage produces the same class of crash. | Replace `chdman.exe`/`chdman_arm64.exe` with a build that matches your CPU (e.g. an official MAME tools release) and add an antivirus exclusion for it. |
+| `chdman.exe terminated abnormally during the startup check (...)` and a message box | Same crash as above, detected before the batch starts — every conversion would have failed the same way. | Same action as the previous row. |
+| `The output folder is not writable: <path>` | Detected before the batch starts: writing there needs administrator rights (e.g. inside `Program Files`). | Choose an output folder you can write to (Documents, a data drive); nothing was converted yet. |
+| `chdman.exe cannot be opened - it is held with incompatible access by another process.` | Rare: something holds chdman with sharing that blocks even read access. A second app instance or a normal antivirus scan no longer triggers this. | Close other instances of the app and any antivirus scan in progress, then retry. |
+| `<name> is a folder, not a disc image file - skipping.` | Something that looks like an image name (`Game.BIN.ISO`) is actually a directory. Folders are skipped instead of being handed to chdman ("Is a directory"). | Point the app at the files inside it, or rename the folder so it does not end in an image extension. |
+| `PBPSharp: Extraction failed - ... TruncatedPsar (code 9)` / `The PlayStation data section has no readable tracks - the file is most likely truncated or incomplete.` | The PBP's PlayStation data area ends before any track index — the signature of a truncated download. | Re-download the `.pbp`. |
+| `PBPSharp: Extraction failed - ... InvalidSfo (code 10)` | The PBP header offsets do not point at a valid PARAM.SFO, so the container structure is damaged or non-standard. | Re-download the file, or confirm it is really a PSX PBP. |
 | `Retrying with createdvd (unrecognized track type)...` | A CD attempt failed; the app retries as DVD. | Usually succeeds automatically. If it fails again, force CD/DVD manually. |
 | `chdman exited with code N but produced a valid output file...` | Non-zero exit but a valid output; treated as success. | Informational — nothing to do. |
 
@@ -54,6 +66,8 @@ Common messages, their meaning, and what to do.
 | Message | Meaning | Action |
 |---------|---------|--------|
 | `chdman.exe not found at '<path>'` | chdman is missing or was moved. | Keep `chdman.exe`/`chdman_arm64.exe` in the app folder. |
+| `chdman.exe is not compatible with this OS.` (Win32 error 193) | The exe cannot run on this Windows, or files from the win-arm64 release were copied into a win-x64 install (or vice versa). | Keep the two releases separate; use a chdman build for your Windows version. |
+| Startup log `Process Architecture:` / `OS Architecture:` / `chdman executable:` lines | Informational: which build is running, what the machine is, and which tool binary was resolved. On ARM64 machines the native build is preferred even when the app itself runs emulated as x64. | Include these when reporting a crash — they make the report instantly classifiable. |
 | Status bar CHDMAN indicator red | Same as above. | See previous row. |
 | `Selected temp root "X:\" is not writable, falling back to system temp` | The preferred temp drive can't be written (e.g. `E:\` is a card reader / locked). | Informational; the app uses the system temp instead. Free space on `C:` matters then. |
 | `Another instance of BatchConvertToCHD is already running.` | Single-instance mutex. | The first instance is still running; close it first. |

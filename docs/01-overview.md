@@ -1,3 +1,8 @@
+---
+title: Overview
+nav_order: 2
+---
+
 # 1. Project Overview
 
 **Batch Convert to CHD** is a high-performance Windows desktop utility designed to streamline the conversion of various disk image formats into the **Compressed Hunks of Data (CHD)** format — the format used by MAME, and increasingly by emulation frontends for PlayStation, Dreamcast, and other systems.
@@ -51,6 +56,9 @@ A file's extension is the least reliable thing about it. Every input's leading b
 - **Output collision warnings** — the output name comes from the input's base name, so `Game.cue`, `Game.zip` and `Game.ccd` in one folder all target `Game.chd`. Colliding inputs are reported at the start of the batch, before time is spent on them.
 - **In-place conversion and extraction** — the output folder may be the same as the source folder, or inside it. Conversion is inherently safe there (the output is always `<base>.chd`, which is never an input, and it is staged before replacing anything). Extraction takes the CHD's base name, so when its output would land on existing files the whole disc is diverted into a subfolder named after it instead. Nothing is overwritten, nothing is asked, and the layout only changes for the discs that actually clash.
 - **Disk-space preflight** — free space on the output drive is checked immediately before chdman starts; clearly insufficient space skips the file with both figures named instead of failing an hour in.
+- **Output-folder preflight** — the destination is probed for write access before a batch starts; an unwritable folder (e.g. inside `Program Files` without elevation) produces one clear message instead of a run of per-file "Permission denied" failures.
+- **chdman-safe path handling** — non-ASCII characters anywhere along a path (`C:\Users\Kauê Chacon\...`, `D:\Emulátory\...`) and paths at or beyond MAX_PATH are routed through short ASCII staging directories, because older chdman builds mangle or cannot open such paths. Cue work directories avoid a non-ASCII system temp folder the same way.
+- **Crash-aware error reporting** — when Windows kills chdman outright (e.g. exit code `0xC000001D` on a CPU lacking the build's instruction sets), the code is decoded into plain language with guidance, and a startup check refuses to begin a batch that would fail on every file. Startup logs record the process and OS architectures and which tool binary was selected.
 - **Safe deletion** — source files (and dependencies such as `.bin`, `.sub`) are only deleted after confirmed success.
 - **Batch verification** — checksums and structural integrity of existing CHD files via CHDSharp.
 - **Automated organization** — optionally move verified/failed files into `Success`/`Failed` subfolders; these folders are excluded from subsequent scans.

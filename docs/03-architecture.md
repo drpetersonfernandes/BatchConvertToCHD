@@ -1,3 +1,8 @@
+---
+title: Architecture
+nav_order: 4
+---
+
 # 3. Architecture
 
 This page describes the solution structure, the runtime startup sequence, and the high-level data flow of the application. Detailed deep dives live in [Conversion Pipeline](05-conversion-pipeline.md), [Extraction & Verification](06-extraction-and-verification.md), [Services Reference](07-services-reference.md), and [Utilities Reference](08-utilities-reference.md).

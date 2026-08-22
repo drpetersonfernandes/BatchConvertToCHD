@@ -1,3 +1,8 @@
+---
+title: Extraction & Verification
+nav_order: 7
+---
+
 # 6. Extraction & Verification (Technical)
 
 This page covers the internals of the two CHD-consuming workflows. References are to `BatchConvertToCHD/MainWindow.xaml.cs` unless noted.

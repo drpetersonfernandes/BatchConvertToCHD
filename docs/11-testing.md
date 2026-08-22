@@ -1,3 +1,8 @@
+---
+title: Testing
+nav_order: 12
+---
+
 # 11. Testing
 
 The solution contains a single test project, `BatchConvertToCHD.Tests` (xUnit, `net10.0-windows`), with **777 tests** across 44 test classes, plus the shared `FakeHttpMessageHandler` and `IszImageBuilder` helpers.

@@ -21,6 +21,7 @@
 
 ### 💻 Multi-Architecture Support
 *   **Native ARM64 & x64**: Automatically detects your system architecture and utilizes the appropriate `chdman` binaries for conversion for maximum efficiency.
+*   **OS-Native Tool Selection**: On ARM64 machines the native `chdman_arm64.exe` is preferred even when the app itself runs emulated as x64, and a missing preferred binary falls back to the other architecture's build instead of failing.
 *   **Optimized Performance**: Leverages native instructions on ARM64 hardware to reduce overhead during heavy compression tasks.
 
 ### 🛠️ Intelligent Conversion & Extraction
@@ -58,6 +59,9 @@ A file's extension is the least reliable thing about it. Every input is identifi
 *   **Output Collision Warnings**: The output `.chd` name comes from the input's base name, so `Game.cue`, `Game.zip` and `Game.ccd` in one folder all target `Game.chd`. Inputs that would collide are reported at the start of the batch, before any time is spent on them.
 *   **Convert and Extract In Place**: The output folder can be the same as the source folder, or inside it. Conversion is safe there by construction: the output is always `<name>.chd`, which is never itself an input, and it is written to a staging file so an existing CHD is only replaced after success. Extraction takes the CHD's base name, so when its output would land on files that already exist, the whole disc is written to a subfolder named after it instead — existing files are never overwritten, nothing has to be confirmed, and discs with nothing in their way still land directly in the output folder.
 *   **Disk Space Preflight**: Free space on the output drive is checked immediately before chdman starts. Clearly insufficient space skips the file with both figures named, rather than discovering the problem an hour into a large conversion.
+*   **Output Folder Preflight**: The destination is probed for write access before a batch starts, so an unwritable folder (e.g. inside `Program Files` without elevation) produces one clear message instead of a run of per-file "Permission denied" failures.
+*   **chdman-Safe Path Handling**: Non-ASCII characters anywhere along a path (`C:\Users\Kauê Chacon\...`, `D:\Emulátory\...`) and paths at or beyond the 260-character MAX_PATH limit are routed through short ASCII staging directories — older chdman builds mangle or cannot open such paths and fail with a misleading "No such file or directory". Cue work directories avoid a non-ASCII system temp folder the same way.
+*   **Crash-Aware Error Reporting**: When Windows kills chdman outright (e.g. exit code `-1073741795` = `0xC000001D`, illegal instruction — typically an older CPU missing instructions the bundled build requires), the code is decoded into plain language with actionable guidance. A startup check refuses to begin a batch that would fail on every file, and startup logs record the process/OS architectures plus which tool binary was selected.
 *   **Safe Deletion**: Source files (and their dependencies like `.bin`, `.sub`, etc.) are only deleted if the conversion/extraction is confirmed successful.
 *   **Batch Verification**: Validate the checksums and structural integrity of existing CHD files using the [CHDSharp](https://www.nuget.org/packages/CHDSharp) library.
 *   **Automated Organization**: Optionally move verified or failed files into dedicated subfolders (`Success`/`Failed`) while ignoring these special folders during subsequent scans.

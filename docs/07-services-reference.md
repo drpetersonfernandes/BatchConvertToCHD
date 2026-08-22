@@ -1,3 +1,8 @@
+---
+title: Services Reference
+nav_order: 8
+---
+
 # 7. Services Reference
 
 All classes live in `BatchConvertToCHD/Services/`. Namespaces are `BatchConvertToCHD.Services` unless noted.

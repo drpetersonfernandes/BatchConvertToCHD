@@ -1,3 +1,8 @@
+---
+title: Getting Started
+nav_order: 3
+---
+
 # 2. Getting Started
 
 ## 2.1 Requirements

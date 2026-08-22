@@ -1,3 +1,8 @@
+---
+title: Conversion Pipeline
+nav_order: 6
+---
+
 # 5. Conversion Pipeline (Technical)
 
 This page is a deep dive into the conversion machinery. All references are to `BatchConvertToCHD/MainWindow.xaml.cs` unless noted.
@@ -10,7 +15,7 @@ This page is a deep dive into the conversion machinery. All references are to `B
 
 `PerformBatchConversionAsync` does, in order:
 
-1. **Executable validation** — `ValidateExecutableAccessAsync` (`:345`): file exists, is `.exe`, is not locked exclusively, and (when not running as admin) is not read-only. `ValidateChdmanCompatibilityAsync` (`:424`) runs `chdman help` and gives specific guidance for old-Windows "not a valid application" errors (Win32 error 193) and access-denied (error 5).
+1. **Executable validation** — `ValidateExecutableAccessAsync` (`:353`): file exists, is `.exe`, and can be opened for reading with the same sharing Windows uses for executable images (read + delete), so a `chdman.exe` running under another app instance or held briefly by an antivirus scan no longer produces a false "locked by another process" abort. `ValidateChdmanCompatibilityAsync` (`:436`) runs `chdman help` and gives specific guidance for old-Windows "not a valid application" errors (Win32 error 193, including files mixed from the win-x64 and win-arm64 releases), access-denied (error 5), and abnormal termination (negative exit codes — see [Exit-code handling](#exit-code-handling) below).
 2. **Sorting** — when "process smaller files first" is set, files are ordered by ascending size (`:1300–1313`).
 3. **Disk space check** — `CheckDiskSpace` (`:3292`): warns when the output drive's free space is below 50 % of the total input size for conversion (100 % for extraction), and separately checks the temp drive when it differs from the output drive.
 4. **Per-file loop** — `ProcessSingleFileForConversionAsync` (`:1395`), with Interlocked ok/failed counters and progress/speed updates.
@@ -107,8 +112,8 @@ command = forceCd || hasCue || (!forceDvd && !isIso && !isImg && !isRaw) ? "crea
 ### Pre-flight validations
 
 1. **Sector-size warning for DVD**: `IsoSectorValidator.GetSectorSizeWarning` flags sizes not divisible by 2352/2048/2336/2324/2448/2368, but conversion proceeds — the hard gate is the post-failure check (some legitimate images use non-standard layouts).
-2. **Cue work-dir preparation** for `.cue`/`.toc` (`:2503–2527`): `PrepareCueWorkDirAsync` (`:2417`) → `CueWorkDirectory.PrepareAsync` (see [Utilities](08-utilities-reference.md#cueworkdirectory)). If MP3 tracks exist and decoding failed, conversion is aborted with a clear message instead of handing chdman an MP3 cue.
-3. **ASCII temp work dir** (`:2508–2546`): if the input or output filename contains non-ASCII characters, the input is copied into a GUID-named temp dir and the output is written there too; after success the output is moved to the real destination with `RetryingFileOperations.TryMoveAsync`.
+2. **Cue work-dir preparation** for `.cue`/`.toc` (`:2503–2527`): `PrepareCueWorkDirAsync` (`:2417`) → `CueWorkDirectory.PrepareAsync` (see [Utilities](08-utilities-reference.md#cueworkdirectory)). If MP3 tracks exist and decoding failed, conversion is aborted with a clear message instead of handing chdman an MP3 cue. Overlong paths (descriptor or referenced files at or beyond MAX_PATH) also trigger the copy-based work directory.
+3. **ASCII temp work dir** (`:2508–2546`): if any part of the input or output path is unsafe for chdman — non-ASCII characters *anywhere along the path* (an accented user name, a non-Latin folder name) or a total length at or beyond MAX_PATH (260) — the input is copied into an ASCII-safe GUID-named staging directory and the output is written there too; after success the output is moved to the real destination with `RetryingFileOperations.TryMoveAsync`. Only an unsafe *input* is staged: an input chdman can read in place (e.g. an ASCII cue whose destination path is overlong) keeps resolving its `FILE` entries against its original directory. The staging location itself is chosen by `PathUtils.CreateAsciiSafeTempDirectory`, because the system temp folder lives under the user profile and can contain exactly the characters this fallback exists to avoid (`C:\Users\Kauê Chacon\...`).
 
 ### Process execution
 
@@ -126,8 +131,9 @@ command = forceCd || hasCue || (!forceDvd && !isIso && !isImg && !isRaw) ? "crea
 - **Sector-size hard check** (`:2761–2794`): for non-descriptor inputs, if the file size is not divisible by any of 2352/2048/2336/2324, the conversion fails with "file size ... is not divisible by any standard sector size ... The file may be corrupt or truncated."
 - **Disk-space detection** (`IsDiskSpaceError`, `:3281`): keywords "not enough space", "not enough disk space", "disk full", "no space left", "insufficient disk space".
 - **Error line selection** (`SelectChdmanErrorLine`, `:2860`): scans the stderr buffer from the **last** line upward, skipping progress lines (`% complete`, `Compressing,`, `Converting,`, `Output bytes`, `Compression ratio`, `ratio=`) and the `Fatal error occurred: N` exit summary, and returns the last real error line. This fixed the class of bugs where the first line of stderr was a progress line ("Compressing, 0.0% complete... (ratio=100.0%)"). When the only output is a fatal error summary, a descriptive message is returned instead of the cryptic exit code.
+- **Abnormal-termination decoding** (`DescribeChdmanCrash`): a negative exit code means Windows killed chdman before it printed anything. Common NTSTATUS codes are named (e.g. `-1073741795` → `0xC000001D, STATUS_ILLEGAL_INSTRUCTION - the CPU executed an unsupported instruction`) with guidance to replace `chdman.exe` with a CPU-appropriate build and check antivirus quarantine. The startup compatibility check (`ValidateChdmanCompatibilityAsync`) runs `chdman help` first and refuses to start a batch when even that crashes, so one clear message replaces a run of per-file failures.
 - **Path substitution via quoted matching** (`:3474,3494,3501,3520`): argument paths are replaced using `$"\"{originalPath}\""` quoted-pattern matching instead of bare `string.Replace`, preventing a path that is a substring of another argument from causing corruption.
-- **"couldn't find bin file" diagnostics**: when the selected error line contains that phrase, a capped, sorted directory listing of the input folder is logged (`GetDirectoryDiagnostics`, `:2890`).
+- **Diagnostics on unexplained errors**: when the selected error line contains "couldn't find bin file" or "Unknown error", a capped, sorted directory listing of the input folder is logged (`GetDirectoryDiagnostics`).
 
 ## 5.4 Cue Normalization & Work Directories
 

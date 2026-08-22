@@ -1,3 +1,8 @@
+---
+title: Embedded Libraries
+nav_order: 11
+---
+
 # 10. Embedded Libraries
 
 The solution ships three in-house libraries that replace external tools (maxcso, psxpackager) and add CloneCD support. All three multi-target `net10.0;net8.0`, are packable, and expose internals to `BatchConvertToCHD.Tests` via `InternalsVisibleTo`.
@@ -38,9 +43,9 @@ The solution ships three in-house libraries that replace external tools (maxcso,
 - Main type: `PbpFile` — `Open(path, out PbpFile)` / `Open(stream, ownsStream, out PbpFile)`; properties `Header`, `SfoData`, `Discs` (`IReadOnlyList<PbpDiscInfo>`), `IsMultiDisc`, `Title`, `DiscId`, `Category`.
 - Header: magic `0x50425000`, 40-byte header with offsets for SFO/ICON0/ICON1/PIC0/PIC1/SND0/DATA.PSP/DATA.PSAR.
 - **Disc detection**: PSAR header `PSISOIMG0000` → single disc; `PSTITLEIMG000000` → multi-disc (reads 5 position slots); anything else → `PbpError.InvalidPsarHeader` (the app treats this as "not a PlayStation disc image — PSP application, unsupported variant, or corrupt file" and skips informatively).
-- `PbpDiscInfo` — `ReadBlock`, `ExtractTo(stream, progress?, token)`, `ExtractToBinCue(binPath, cuePath?, progress?, token)`; ISO blocks are raw or raw-deflate decompressed; TOC parsed from the PSAR TOC (A0/A1/A2 markers, BCD track numbers).
+- `PbpDiscInfo` — `ReadBlock`, `ExtractTo(stream, progress?, token)`, `ExtractToBinCue(binPath, cuePath?, progress?, token)`; ISO blocks are raw or raw-deflate decompressed; TOC parsed from the PSAR TOC (A0/A1/A2 markers, BCD track numbers). A disc container whose header parsed but that carries **no ISO index entries** throws `NoIsoIndexException` (public, derives from `Exception`) so callers can report the likely cause: a truncated or incomplete download.
 - `CueSheetWriter.GenerateCueSheet(binFileName, tocEntries)` — emits `FILE ... BINARY`, `TRACK nn MODE2/2352` (data) / `AUDIO` (audio), with `INDEX 00` for audio tracks computed as track start **minus 150-frame lead-in** (clamped ≥ 0).
 - SFO model: `SfoData` (magic `0x46535000`; `GetString`/`GetUInt32`; static `Keys` with `BOOTABLE`, `CATEGORY`, `DISC_ID`, `DISC_VERSION`, `LICENSE`, `PARENTAL_LEVEL`, `PSP_SYSTEM_VER`, `REGION`, `TITLE`), `SfoEntry` (formats 0x0204 string / 0x0404 uint32), `TocEntry`, `TrackType { Data = 0x41, Audio = 0x01 }`.
-- `PbpError` enum: `None=0, InvalidHeader=1, FileNotFound=2, IoError=3, CorruptFile=4, InvalidPsarHeader=5, DiscOutOfRange=6, ResourceNotFound=7, DecompressionError=8` (ordinals asserted in tests).
+- `PbpError` enum: `None=0, InvalidHeader=1, FileNotFound=2, IoError=3, CorruptFile=4, InvalidPsarHeader=5, DiscOutOfRange=6, ResourceNotFound=7, DecompressionError=8, TruncatedPsar=9, InvalidSfo=10`. `TruncatedPsar` is returned when the PSAR container parses but no ISO index follows (see `NoIsoIndexException`); `InvalidSfo` when the PARAM.SFO region lacks the `\0PSF` signature. The app maps these to targeted guidance ("most likely truncated or incomplete — re-download") instead of a generic corrupt-file message.
 - Integration: `ExtractPbpToCueBinAsync` (`MainWindow.xaml.cs:2918`) — multi-disc PBPs produce `"{name} - Disc N.bin/.cue"` sets; the result (`PbpExtractionResult`) carries `ErrorCode` + a human-readable `Error` so the caller can distinguish skippable conditions from real failures.
 - Tests: `PbpFileTests`, `PbpHeaderTests`, `SfoDataTests`, `SfoEntryTests`, `TocEntryTests`, `CueSheetWriterTests`, plus real-file integration tests (`PbpFileIntegrationTests`).

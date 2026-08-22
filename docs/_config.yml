@@ -1,5 +1,17 @@
 # Jekyll configuration for the docs/ wiki site (GitHub Pages).
 # Reference: https://jekyllrb.com/docs/configuration/
+# Theme: just-the-docs provides the left-hand navigation menu on every page.
+# It ships with the github-pages gem, so no plugin installation is needed.
 title: BatchConvertToCHD — Wiki
 description: Official documentation for Batch Convert to CHD — user guide, architecture, developer references, and troubleshooting.
-theme: jekyll-theme-cayman
+theme: just-the-docs
+
+color_scheme: light
+
+search_enabled: true
+
+heading_anchors: true
+
+aux_links:
+  "GitHub Repository":
+    - "https://github.com/drpetersonfernandes/BatchConvertToCHD"

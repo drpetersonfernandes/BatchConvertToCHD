@@ -1,3 +1,8 @@
+---
+title: Bug Reporting System
+nav_order: 10
+---
+
 # 9. Bug Reporting System
 
 The application has a built-in, automatic bug-reporting channel that forwards **warning-and-above** log events to the PureLogicCode BugReport API. This page documents the full pipeline, the API contract, and — importantly — the noise-filtering rules.
@@ -38,7 +43,7 @@ Additionally, **unhandled exceptions** are reported directly (not via the sink):
 
 | Field | Source |
 |-------|--------|
-| `message` | `BuildFormattedReport` — three sections: `=== Environment Details ===`, `=== Error Details ===` (the raw message), `=== Exception Details ===` (inner-exception chain, max depth 5) |
+| `message` | `BuildFormattedReport` — three sections: `=== Environment Details ===` (includes both the **process** and the **OS** architecture, so a crash report from an emulated build is instantly classifiable), `=== Error Details ===` (the raw message), `=== Exception Details ===` (inner-exception chain, max depth 5) |
 | `applicationName` | `AppConfig.ApplicationName` = `"BatchConvertToCHD"` |
 | `version` | Assembly version (e.g. `3.4.0.0`) |
 | `userInfo` | `Environment.UserName` |

@@ -1,3 +1,8 @@
+---
+title: Home
+nav_order: 1
+---
+
 # BatchConvertToCHD — Wiki
 
 Welcome to the official wiki for **Batch Convert to CHD**, a high-performance Windows desktop utility for converting disk images into the **Compressed Hunks of Data (CHD)** format.
